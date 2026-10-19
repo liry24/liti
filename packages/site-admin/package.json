@@ -147,23 +147,23 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@better-auth/drizzle-adapter": "1.7.10",
+        "@better-auth/drizzle-adapter": "1.7.11",
         "@nuxt/devtools-kit": "4.0.0-beta.5",
-        "@nuxt/kit": "^4.6.1",
-        "@nuxt/schema": "^4.6.1",
+        "@nuxt/kit": "^4.6.2",
+        "@nuxt/schema": "^4.6.2",
         "@standard-schema/spec": "^1.1.0",
         "@tanstack/vue-form": "2.0.0-alpha.2",
-        "auth": "^1.7.10",
+        "auth": "^1.7.11",
         "comark-content": "^0.4.1",
-        "devframe": "1.2.5",
+        "devframe": "1.2.6",
         "drizzle-orm": "0.45.4",
         "h3": "^1.15.11",
         "jiti": "^2.7.0",
-        "nitropack": "2.13.4",
+        "nitropack": "2.13.5",
         "nypm": "^0.6.10",
         "pathe": "^2.0.3",
         "rou3": "^1.0.0",
-        "void": "1.1.11"
+        "void": "1.1.12"
     },
     "peerDependencies": {
         "@nuxtjs/better-auth": "^0.3.9",

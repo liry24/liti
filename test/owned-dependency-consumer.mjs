@@ -28,7 +28,8 @@ export async function verifyPeerDependencies(tarball, manager) {
         ' } }'
     try {
         const version = run(manager, ['--version']).stdout.trim()
-        const overrides = { vue: consumerDependencies(['vue']).vue, auth: '1.7.10' }
+        const versions = consumerDependencies(['vue', 'better-auth'])
+        const overrides = { vue: versions.vue, auth: versions['better-auth'] }
         await writeFile(
             join(directory, 'package.json'),
             JSON.stringify({

@@ -10,6 +10,7 @@ import {
 import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
 import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
 
+// Exercise the translator version owned by Nuxt i18n, without a separate dependency pin.
 const require = createRequire(import.meta.resolve('@nuxtjs/i18n'))
 const native = await import(pathToFileURL(require.resolve('@intlify/h3')).href)
 

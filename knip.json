@@ -16,7 +16,7 @@
                 "test/seo-types.ts"
             ],
             "project": ["*.ts", "test/**/*.{ts,mjs,vue}"],
-            "ignoreDependencies": ["@takumi-rs/core", "@vue/compiler-sfc", "tailwindcss"],
+            "ignoreDependencies": ["@intlify/h3"],
             "ignore": ["test/fixtures/**/.nuxt/**", "test/fixtures/**/.wrangler/**"]
         },
         "packages/site-admin": {
