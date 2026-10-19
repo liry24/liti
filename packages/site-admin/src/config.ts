@@ -92,10 +92,11 @@ export type InferSiteAdminMeta<Config extends { models: Record<string, unknown> 
 export interface SiteAdminLifecycleEvent {
     version?: number
     actorId?: string
+    data?: Record<string, unknown>
     entryId: string
     model: string
     revisionId?: string
-    type: 'create' | 'delete' | 'publish' | 'restore' | 'schedule' | 'unpublish' | 'update'
+    type: 'create' | 'delete' | 'publish' | 'restore' | 'schedule' | 'cancelSchedule' | 'sort' | 'unpublish' | 'update'
 }
 
 export interface SiteAdminAIConfig {

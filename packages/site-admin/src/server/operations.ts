@@ -184,16 +184,22 @@ export const createManagementOperations = <
                 return admin.schedulePublish(id, { ...input, actorId: current.id }, entry)
             }),
         cancelScheduledPublish: (id: string, input: { expectedVersion: number }) =>
-            write(id, 'schedule', input, (admin, _actor, entry) => admin.cancelScheduledPublish(id, input, entry)),
+            write(id, 'schedule', input, (admin, actor, entry) =>
+                admin.cancelScheduledPublish(id, { ...input, actorId: actor.id }, entry),
+            ),
         setSortOrder: (id: string, sortOrder: number | null, expectedVersion: number) =>
-            write(id, 'sort', { expectedVersion }, (admin) => admin.setSortOrder(id, sortOrder, expectedVersion)),
+            write(id, 'sort', { expectedVersion }, (admin, actor) =>
+                admin.setSortOrder(id, sortOrder, expectedVersion, actor.id),
+            ),
         setSortOrders: async (
             model: string,
             items: Array<{ id: string; expectedVersion: number; sortOrder: number | null }>,
         ) => {
             const { admin, actor: current } = await authorize()
             admin.assertPermission(current, 'model', 'sort', model)
-            return (await admin.setSortOrders(model, items)).map((entry) => projectResult(admin, current, entry))
+            return (await admin.setSortOrders(model, items, current.id)).map((entry) =>
+                projectResult(admin, current, entry),
+            )
         },
         listRevisions: (id: string) =>
             entryOperation(id, 'readDraft', async (admin, _actor, entry) =>

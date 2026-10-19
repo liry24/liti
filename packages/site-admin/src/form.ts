@@ -494,26 +494,18 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
         if (!definition || !['image', 'images', 'file'].includes(definition.kind)) throw invalid()
         return { definition, rows, value }
     }
-    const fieldPriority = (field: { key: string; kind: string }) =>
-        field.key === (context.descriptor.value?.displayFields?.title ?? 'title')
-            ? 0
-            : ['image', 'images'].includes(field.kind)
-              ? 1
-              : 2
     const result = {
         form,
         operation: readonly(operation),
         fields: computed(() =>
-            Object.entries(context.descriptor.value?.fields ?? {})
-                .map(([key, field]) => ({
-                    ...field,
-                    key,
-                    name: key as Extract<keyof Data, string>,
-                    label:
-                        field.label ??
-                        key.replace(/([a-z])([A-Z])/gu, '$1 $2').replace(/^./u, (letter) => letter.toUpperCase()),
-                }))
-                .sort((a, b) => fieldPriority(a) - fieldPriority(b)),
+            Object.entries(context.descriptor.value?.fields ?? {}).map(([key, field]) => ({
+                ...field,
+                key,
+                name: key as Extract<keyof Data, string>,
+                label:
+                    field.label ??
+                    key.replace(/([a-z])([A-Z])/gu, '$1 $2').replace(/^./u, (letter) => letter.toUpperCase()),
+            })),
         ),
         publish: () => publish(),
         schedule: (value: Date | string) => {

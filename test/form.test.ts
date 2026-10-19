@@ -5,6 +5,18 @@ import { siteAdminModelContext } from '../packages/site-admin/src/model'
 import { formDescriptor, modelEntry, modelFixture } from './model-fixture'
 
 describe('native resource form', () => {
+    it('preserves schema field order without applying a screen layout policy', () => {
+        const { resource } = modelFixture(async () => Response.json(null))
+        const editor = useEntryForm(resource)
+        expect(editor.fields.value.map((field) => field.key)).toEqual([
+            'slug',
+            'title',
+            'optional',
+            'image',
+            'gallery',
+            'publication',
+        ])
+    })
     it('retains dirty input and reports conflicts after AsyncData clears its previous error', () => {
         const { resource } = modelFixture(async () => Response.json(null))
         const editor = useEntryForm(resource)

@@ -932,6 +932,7 @@ export class SiteAdmin<Context = unknown> {
                 model: modelName,
                 revisionId,
                 type: 'create',
+                data: prepared.data,
                 version: 1,
             },
             publicGraphChanged,
@@ -1008,6 +1009,7 @@ export class SiteAdmin<Context = unknown> {
                 model: entry.model,
                 revisionId,
                 type,
+                data: prepared.data,
                 version: input.expectedVersion + 1,
             },
             publicGraphChanged,
@@ -1152,6 +1154,7 @@ export class SiteAdmin<Context = unknown> {
                 model: entry.model,
                 revisionId,
                 type: 'publish',
+                data: prepared!.data,
                 version: input.expectedVersion + 1,
             },
             synchronize && definition.public !== false,
@@ -1223,6 +1226,7 @@ export class SiteAdmin<Context = unknown> {
                 model: entry.model,
                 version: input.expectedVersion + 1,
                 type: 'unpublish',
+                data: entry.data,
             },
             publicGraphChanged,
         )
@@ -1242,12 +1246,8 @@ export class SiteAdmin<Context = unknown> {
             throw new SiteAdminError('SITE_ADMIN_INVALID_INPUT', 'Scheduled publish time must be in the future.')
         const candidate = await this.#publicationCandidate(entry, input, false)
         const { revisionId, time, conditions, revisions } = candidate
-        entryPath(
-            entry.model,
-            candidate.definition,
-            { id: entry.id, data: input.draft?.data ?? (await this.#revision(revisionId, entry.id)).data },
-            this.#apiBases(),
-        )
+        const scheduledData = candidate.prepared?.data ?? (await this.#revision(revisionId, entry.id)).data
+        entryPath(entry.model, candidate.definition, { id: entry.id, data: scheduledData }, this.#apiBases())
         await this.#commit({
             conditions,
             revisions,
@@ -1269,6 +1269,7 @@ export class SiteAdmin<Context = unknown> {
             model: entry.model,
             revisionId,
             type: 'schedule',
+            data: scheduledData,
             version: input.expectedVersion + 1,
         })
         return this.getEntry(entryId)
@@ -1276,14 +1277,23 @@ export class SiteAdmin<Context = unknown> {
 
     async cancelScheduledPublish(
         entryId: string,
-        input: { expectedVersion: number },
+        input: { actorId?: string; expectedVersion: number },
         loaded?: EntryRecord,
     ): Promise<EntryRecord> {
         await this.initialize()
-        this.#assertFeature((await this.#requiredEntry(entryId, loaded)).model, 'scheduling')
+        const entry = await this.#requiredEntry(entryId, loaded)
+        this.#assertFeature(entry.model, 'scheduling')
         await this.#commit({
             conditions: [this.#guard(entryId, input.expectedVersion)],
             updates: [{ id: entryId, patch: { scheduledRevisionId: null, scheduledAt: null, updatedAt: this.#now() } }],
+        })
+        await this.#afterCommit({
+            ...(input.actorId ? { actorId: input.actorId } : {}),
+            entryId,
+            model: entry.model,
+            data: entry.data,
+            type: 'cancelSchedule',
+            version: input.expectedVersion + 1,
         })
         return this.getEntry(entryId)
     }
@@ -1316,14 +1326,20 @@ export class SiteAdmin<Context = unknown> {
         return result
     }
 
-    async setSortOrder(entryId: string, sortOrder: number | null, expectedVersion: number): Promise<EntryRecord> {
+    async setSortOrder(
+        entryId: string,
+        sortOrder: number | null,
+        expectedVersion: number,
+        actorId?: string,
+    ): Promise<EntryRecord> {
         const entry = await this.getEntry(entryId)
-        return (await this.setSortOrders(entry.model, [{ id: entryId, sortOrder, expectedVersion }]))[0]!
+        return (await this.setSortOrders(entry.model, [{ id: entryId, sortOrder, expectedVersion }], actorId))[0]!
     }
 
     async setSortOrders(
         model: string,
         items: Array<{ id: string; sortOrder: number | null; expectedVersion: number }>,
+        actorId?: string,
     ): Promise<EntryRecord[]> {
         await this.initialize()
         if (!this.#model(model).sortable) throw new SiteAdminError('SITE_ADMIN_INVALID_INPUT', 'Model is not sortable.')
@@ -1365,6 +1381,18 @@ export class SiteAdmin<Context = unknown> {
                 },
             })),
         })
+        for (const [index, item] of items.entries()) {
+            const entry = entries[index]
+            if (entry?.sortOrder === item.sortOrder) continue
+            await this.#afterCommit({
+                ...(actorId ? { actorId } : {}),
+                entryId: item.id,
+                model,
+                ...(entry ? { data: entry.data } : {}),
+                type: 'sort',
+                version: item.expectedVersion + 1,
+            })
+        }
         return Promise.all(items.map((item) => this.getEntry(item.id)))
     }
 
@@ -1391,6 +1419,7 @@ export class SiteAdmin<Context = unknown> {
                 model: entry.model,
                 version: input.expectedVersion + 1,
                 type: 'delete',
+                data: entry.data,
             },
             publicGraphChanged,
         )
