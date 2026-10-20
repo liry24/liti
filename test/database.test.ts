@@ -10,7 +10,7 @@ import type { DrizzleLitiDatabase } from '../packages/void/src/database'
 const queryRows = (database: DrizzleLitiDatabase, sql: string) => database.query(sql)
 const runAtomic = (database: DrizzleLitiDatabase, statements: Parameters<DrizzleLitiDatabase['atomic']>[0]) =>
     database.atomic(statements)
-import { createMigratedTestAdmin, testAdapter } from './migrate'
+import { testAdapter } from './migrate'
 import { defineLitiConfig, text } from '../packages/liti/src'
 import { createD1Database, type DrizzleConnection } from '../packages/void/src/database'
 import { createNativeSqliteDatabase } from '../packages/sqlite/src/native'

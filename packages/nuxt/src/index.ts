@@ -23,7 +23,6 @@ import { litiModuleDependencies } from './nuxt/dependencies'
 import { stopNitroDevReloadOnClose } from './nuxt/dev-close'
 import type { NitroConfig } from 'nitropack/types'
 import { readLitiNuxtConfig } from './nuxt/config'
-import type { ModuleOptions as NuxtLLMsOptions } from 'nuxt-llms'
 
 import type { LitiConfig, LitiLifecycleEvent } from '../../liti/src/config'
 import type { EntryPrepareContext } from '../../vue/src/model'
@@ -35,7 +34,6 @@ import { moduleMeta } from './meta'
 import { litiNuxtMetadataTemplate, litiNuxtRouteTemplate } from './nuxt/route-templates'
 
 export interface ModuleOptions {
-    ai?: boolean
     auth: boolean
     client: { basePath: string; origin?: string }
     configFile: string
@@ -70,17 +68,14 @@ export interface LitiNuxtHost {
     platformProperties: string[]
 }
 
-// Build-time registries live on @nuxt/schema and are bridged by nuxt/schema.
 declare module '@nuxt/schema' {
     interface NuxtConfig {
-        llms?: Partial<NuxtLLMsOptions>
         liti?: ModuleConfig
     }
 
     interface NuxtOptions {
         liti: ModuleOptions
     }
-
     interface NuxtHooks {
         'liti:config': (config: LitiConfig) => void | Promise<void>
         'liti:host': (host: LitiNuxtHost) => void | Promise<void>
@@ -244,7 +239,7 @@ export default defineNuxtModule<ModuleConfig>({
             ...(options.auth ? [resolve(nuxt.options.buildDir, 'better-auth/database.mjs')] : []),
         )
 
-        let domainConfig: LitiConfig | undefined
+        let domainConfig: NonNullable<Awaited<ReturnType<typeof readLitiNuxtConfig>>>['config'] | undefined
         let configPath: string | undefined
         const declaration = await readLitiNuxtConfig(nuxt, options.configFile, options.server.enabled)
         const environments = declaration?.environments ?? []
@@ -267,7 +262,11 @@ export default defineNuxtModule<ModuleConfig>({
                 // shortcut: watch entrypoints; configure Nuxt watch for additional imported helpers.
                 nuxt.options.watch.push(...configFiles.map(normalize))
             }
-            if (options.server.enabled && !domainConfig.adapter?.database)
+            if (
+                options.server.enabled &&
+                (Object.keys(domainConfig.models).length || domainConfig.assets) &&
+                !domainConfig.adapter?.database
+            )
                 throw new Error('[liti] Select adapter.database in liti.config.ts.')
             if (Object.values(domainConfig.models).some((model) => Object.values(model.fields).some(hasMarkdown))) {
                 if (!options.markdown) throw new Error('[liti] Enable markdown for Markdown fields.')
@@ -298,9 +297,7 @@ export default defineNuxtModule<ModuleConfig>({
             }
         }
 
-        const aiEnabled = options.ai ?? Boolean(domainConfig?.ai)
-        const namedAiActions = aiEnabled && Boolean(Object.keys(domainConfig?.ai?.actions ?? {}).length)
-        if (namedAiActions) await resolvePeer('ai', nuxt)
+        const namedActions = Boolean(Object.keys(domainConfig?.actions ?? {}).length)
         const cmsConfigured = !domainConfig || Boolean(Object.keys(domainConfig.models).length || domainConfig.assets)
         if (options.routing.enabled && cmsConfigured) {
             const middleware = addTemplate({
@@ -329,7 +326,15 @@ export default defineNuxtModule<ModuleConfig>({
                     managementBase: options.server.managementBase,
                     i18n: options.i18n,
                     auth: options.auth,
-                    aiActions: namedAiActions,
+                    actions: namedActions,
+                    vue: [
+                        ...new Set(domainConfig?.plugins?.flatMap((plugin) => (plugin.vue ? [plugin.vue] : [])) ?? []),
+                    ],
+                    editors: Object.fromEntries(
+                        Object.entries(domainConfig?.models ?? {})
+                            .filter(([, model]) => model.editor)
+                            .map(([name, model]) => [name, Object.keys(model.editor!)]),
+                    ),
                     ...(options.client.origin ? { origin: options.client.origin } : {}),
                 }),
             write: true,
@@ -344,7 +349,7 @@ export default defineNuxtModule<ModuleConfig>({
             { from: clientTemplate.dst, name: 'useLitiModels' },
             { from: clientTemplate.dst, name: 'useLitiForm' },
         ])
-        if (namedAiActions) {
+        if (namedActions) {
             nuxt.options.optimization.keyedComposables.push({
                 name: 'litiAiFetch',
                 source: clientTemplate.dst,
@@ -363,7 +368,12 @@ export default defineNuxtModule<ModuleConfig>({
             addTypeTemplate(
                 {
                     filename: 'types/liti-models.d.ts',
-                    getContents: () => litiNuxtModelTypes(configPath!, environments),
+                    getContents: () =>
+                        litiNuxtModelTypes(configPath!, environments, [
+                            ...new Set(
+                                domainConfig?.plugins?.flatMap((plugin) => (plugin.vue ? [plugin.vue] : [])) ?? [],
+                            ),
+                        ]),
                 },
                 { nuxt: true, nitro: true, node: false },
             )
@@ -429,7 +439,7 @@ import { createPresentationContext } from 'liti/internal/runtime/presentation'`
         : ''
 }
 ${host.imports.join('\n')}
-${namedAiActions ? "import { executeLitiAiAction } from 'liti/internal/ai'" : ''}
+${namedActions ? "import { executeAction } from 'liti/server'" : ''}
 ${databaseSchema ? `import * as databaseSchema from ${JSON.stringify(normalize(resolve(nuxt.options.rootDir, databaseSchema.entry)))}` : ''}
 import inputConfig from ${JSON.stringify(normalize(configPath))}
 import { resolveLitiConfig } from 'liti/internal/config-resolution'
@@ -545,8 +555,8 @@ export default defineNitroPlugin((nitroApp) => {
     presentation: async (_event, path) => resolvePublicPresentation(domainConfig, path, await presentation()),
     initializeRequest: (event) => { nativeEvents.set(event.context, event) },
     ${
-        namedAiActions
-            ? `runAiAction: async (event, name, input) => executeLitiAiAction(domainConfig, name, input, {
+        namedActions
+            ? `executeAction: async (event, name, input) => executeAction(domainConfig, name, input, {
       actor: await authorize?.(event.req, event), request: event.req, platformContext: event.context,
     }),`
             : ''
@@ -570,10 +580,10 @@ export default defineNitroPlugin((nitroApp) => {
                 route: `${options.client.basePath}/**`,
             })
         {
-            if (namedAiActions)
+            if (namedActions)
                 addServerHandler({
-                    handler: resolver.resolve('./runtime/ai-action-handler'),
-                    route: `${options.server.managementBase}/ai/actions/**`,
+                    handler: resolver.resolve('./runtime/action-handler'),
+                    route: `${options.server.managementBase}/actions/**`,
                 })
             addServerHandler({
                 handler: resolver.resolve('./runtime/management-handler'),

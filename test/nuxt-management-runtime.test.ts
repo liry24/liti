@@ -23,7 +23,7 @@ import { defineLitiConfig, image, text } from '../packages/liti/src'
 import { litiNuxtClientTemplate } from '../packages/nuxt/src/nuxt/client-templates'
 import { normalizeLitiQuery } from '../packages/liti/src/query'
 import { litiModelCatalog } from '../packages/liti/src/admin-client'
-import { projectQuery } from '../packages/vue/src/query'
+import { projectQuery, queryTotal } from '../packages/vue/src/query'
 import { useEntryForm } from '../packages/vue/src/form'
 import { createLitiModel, litiModelError, type LitiModel } from '../packages/vue/src/model'
 
@@ -36,6 +36,7 @@ interface State {
     refresh(options?: { cachedData?: unknown; signal?: AbortSignal; dedupe?: 'cancel' | 'defer' }): Promise<void>
 }
 interface Helpers {
+    useLitiQuery(model: string, options?: Record<string, unknown>): State & Promise<State> & { total: Vue.Ref<number> }
     useLitiForm(model: string, options?: Record<string, unknown>): Promise<FormResource> & FormResource
     litiManagementKey(
         connection: import('../packages/liti/src/client').LitiManagementClientOptions,
@@ -138,7 +139,7 @@ const nativeEnvironment = async (
             basePath: '/content',
             managementBase: '/manage',
             i18n,
-            aiActions,
+            actions: aiActions,
         }),
         { serverFetch, asyncData: true },
     )
@@ -149,6 +150,7 @@ const nativeEnvironment = async (
         normalizeLitiQuery,
         litiModelCatalog,
         projectQuery,
+        queryTotal,
         useEntryForm,
         createLitiModel,
         litiModelError,
@@ -203,6 +205,60 @@ const flush = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     await Vue.nextTick()
 }
+
+it.each(['published', 'current'])(
+    'keeps native Nuxt %s pagination totals separate from transformed data',
+    async (view) => {
+        const page = Vue.ref({ limit: 1, offset: 0 })
+        const requests: string[] = []
+        const { helpers } = await nativeEnvironment(async (input) => {
+            const url = new URL(String(input), 'http://site.test')
+            if (url.pathname.endsWith('/models'))
+                return Response.json(
+                    createLitiDescriptor(defineLitiConfig({ models: { posts: { fields: { title: text() } } } })),
+                )
+            requests.push(url.href)
+            const offset = Number(url.searchParams.get('offset'))
+            return Response.json({
+                items: [
+                    view === 'current'
+                        ? modelRecord(`entry-${offset}`, 1, { title: String(offset) })
+                        : {
+                              data: { _liti: { id: `entry-${offset}`, model: 'posts' }, title: String(offset) },
+                          },
+                ],
+                total: 37,
+                limit: 1,
+                offset,
+            })
+        })
+        const scope = Vue.effectScope()
+        const handle = scope.run(() =>
+            helpers.useLitiQuery('posts', {
+                view,
+                page,
+                transform: (rows: Array<{ data: { title: string } }>) => rows.map((row) => row.data.title),
+            }),
+        )!
+        try {
+            const { total } = handle
+            expect(total.value).toBe(0)
+            await handle
+            expect(handle.total).toBe(total)
+            expect(handle.data.value).toEqual(['0'])
+            expect(total.value).toBe(37)
+            page.value = { limit: 1, offset: 1 }
+            await flush()
+            expect(handle.data.value).toEqual(['1'])
+            expect(total.value).toBe(37)
+            expect(requests.every((url) => url.includes('limit=1'))).toBe(true)
+            handle.clear()
+            expect(total.value).toBe(0)
+        } finally {
+            scope.stop()
+        }
+    },
+)
 const settles = async (pending: Promise<void>) => {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -238,7 +294,7 @@ describe('native createUseFetch AI actions', () => {
                 const { helpers } = await nativeEnvironment(
                     async () => {
                         calls++
-                        return Response.json('Retried')
+                        return Response.json({ data: 'Retried' })
                     },
                     { aiActions: true },
                 )
@@ -276,7 +332,7 @@ describe('native createUseFetch AI actions', () => {
                 await new Promise<void>((resolve) => {
                     complete = resolve
                 })
-                return Response.json('Completed')
+                return Response.json({ data: 'Completed' })
             },
             { aiActions: true },
         )
@@ -321,7 +377,7 @@ describe('native createUseFetch AI actions', () => {
                         })
                     })
                 }
-                return Response.json('Retried')
+                return Response.json({ data: 'Retried' })
             },
             { aiActions: true },
         )
@@ -350,7 +406,7 @@ describe('native createUseFetch AI actions', () => {
         const { helpers } = await nativeEnvironment(
             async () => {
                 calls++
-                return Response.json('Retried')
+                return Response.json({ data: 'Retried' })
             },
             { aiActions: true },
         )
@@ -392,7 +448,7 @@ describe('native createUseFetch AI actions', () => {
                         })
                     })
                 }
-                return Response.json('Retried')
+                return Response.json({ data: 'Retried' })
             },
             { aiActions: true },
         )
@@ -423,7 +479,7 @@ describe('native createUseFetch AI actions', () => {
             async (_, init) => {
                 bodies.push(JSON.parse(String(init?.body)))
                 expect(init?.method?.toLowerCase()).toBe('post')
-                return Response.json({ content: 'Corrected' })
+                return Response.json({ data: { content: 'Corrected' } })
             },
             { aiActions: true },
         )
@@ -451,7 +507,7 @@ describe('native createUseFetch AI actions', () => {
         const { app, helpers } = await nativeEnvironment(
             async (_, init) => {
                 calls++
-                return Response.json(JSON.parse(String(init?.body)).input.content)
+                return Response.json({ data: JSON.parse(String(init?.body)).input.content })
             },
             { aiActions: true },
         )
@@ -460,6 +516,8 @@ describe('native createUseFetch AI actions', () => {
         const a = scope.run(() => helpers.useAi('plain', { input: { content: 'A' }, authScope: auth }))!
         const b = scope.run(() => helpers.useAi('plain', { input: { content: 'B' }, authScope: auth }))!
         await Promise.all([a, b])
+        expect(calls).toBe(0)
+        await Promise.all([a.execute(), b.execute()])
         expect(a.data.value).toBe('A')
         expect(b.data.value).toBe('B')
         expect(calls).toBe(2)
@@ -520,6 +578,38 @@ const modelDescriptor = createLitiDescriptor(
         },
     }),
 )
+
+it('preserves public query failure codes, status and issues in native Nuxt payload errors', async () => {
+    const { helpers, app } = await nativeEnvironment(async () =>
+        Response.json(
+            {
+                error: {
+                    code: 'LITI_INVALID_QUERY',
+                    message: 'Invalid selector.',
+                    issues: [{ path: 'id', message: 'Invalid.' }],
+                },
+            },
+            { status: 422 },
+        ),
+    )
+    const scope = Vue.effectScope()
+    try {
+        const query = scope.run(() => helpers.publicEntry('posts', 'invalid', { immediate: false }))!
+        await query.execute()
+        expect(query.status.value).toBe('error')
+        expect(query.error.value).toMatchObject({
+            statusCode: 422,
+            message: 'Invalid selector.',
+            data: { code: 'LITI_INVALID_QUERY', issues: [{ path: 'id', message: 'Invalid.' }] },
+        })
+        const payload = JSON.stringify(app.payload._errors)
+        expect(payload).toContain('LITI_INVALID_QUERY')
+        expect(payload).not.toContain('"cause"')
+        expect(payload).not.toContain('"stack"')
+    } finally {
+        scope.stop()
+    }
+})
 
 describe('native management AsyncData and mutation invalidation', () => {
     it('isolates immediate forms, restores their saved identities, and resets on instance or actor changes', async () => {

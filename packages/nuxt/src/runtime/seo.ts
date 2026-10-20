@@ -69,6 +69,8 @@ export const createSeoMetadata =
                 twitterDescription: () => resolved.value.description,
                 twitterCard: () => resolved.value.twitterCard ?? 'summary_large_image',
                 ogType: () => resolved.value.type ?? 'website',
+                articlePublishedTime: () => resolved.value.articlePublishedTime,
+                articleModifiedTime: () => resolved.value.articleModifiedTime,
                 ogImage: imageUrl,
                 twitterImage: imageUrl,
                 ogImageType: clearImageDetails,

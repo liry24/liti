@@ -251,7 +251,7 @@ test('native Files template prunes inactive storage and keeps named environment 
         storage: { content: { adapter: 'memory', prefix: 'active' } },
         models: { secret: { fields: {} } },
         database: () => { throw new Error('DOMAIN_SERVER_ONLY_SENTINEL') },
-        ai: { models: { secret: { suggest: () => 'AI_SERVER_ONLY_SENTINEL' } } },
+        plugins: [{ id: 'server-only', apiVersion: 1, validate: () => { void 'AI_SERVER_ONLY_SENTINEL' } }],
         $development: { storage: { content: { adapter: 'fs', config: { root: 'INACTIVE_FILES_SECRET_SENTINEL' } } } },
         $env: { production: { storage: { content: { prefix: 'named-production' } } } },
     }`,

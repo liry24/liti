@@ -3,7 +3,19 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import type { GenerationPlan } from '../../liti/src/plugins'
+
+export async function generationRuntime() {
+    if (!process.versions.bun) return process.execPath
+    // Tooling uses Node loader hooks even when the CLI itself was started with Bun.
+    const { stdout } = await promisify(execFile)('node', ['--version'])
+    const [major, minor] = stdout.trim().replace(/^v/u, '').split('.').map(Number)
+    if (!major || major < 24 || (major === 24 && (!minor || minor < 21)))
+        throw new Error('Migration generation requires Node >=24.21.0 on PATH.')
+    return 'node'
+}
 
 /** Run the project's installed executable and its declared peers without changing dependency resolution elsewhere. */
 export async function resolveGenerationCommand(

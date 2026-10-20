@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { ai, createTextAction } from '../packages/ai/src'
+import { aiSdk } from '../packages/ai/src/ai-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
@@ -23,10 +25,12 @@ const setup = async () => {
     let actor: LitiActor | null = { id: 'admin', roles: ['admin'] }
     let sequence = 0
     const config = defineLitiConfig({
-        ai: {
-            model: new MockLanguageModelV4(),
-            actions: { publication: { type: 'text-generation', input: z.object({}).strict(), prompt: prepare } },
-        },
+        plugins: [
+            ai({
+                provider: aiSdk({ text: new MockLanguageModelV4() }),
+                actions: { publication: createTextAction({ input: z.object({}).strict(), prompt: prepare }) },
+            }),
+        ],
         authorization: {
             roles: {
                 publisher: { models: { notes: ['publish'] } },

@@ -35,6 +35,7 @@ export type StorageEntryPatch = Partial<
         | 'scheduledRevisionId'
         | 'scheduledAt'
         | 'publishedAt'
+        | 'firstPublishedAt'
         | 'sortOrder'
         | 'updatedAt'
     >
@@ -46,6 +47,8 @@ export interface StoragePublishedEntry {
     id: string
     locale: string
     model: string
+    firstPublishedAt: string | null
+    updatedAt: string
     publishedAt: string
     revisionId: string
 }
@@ -60,6 +63,12 @@ export interface StorageRoute {
     createdAt: string
 }
 export type StorageCondition =
+    | {
+          kind: 'uniqueValues'
+          model: string
+          entryId: string
+          values: Readonly<Record<string, string | number | boolean>>
+      }
     | { kind: 'entryVersion'; id: string; version: number; model?: string }
     | { kind: 'publicGeneration'; generation: number }
     | { kind: 'assetsReady'; ids: readonly string[] }

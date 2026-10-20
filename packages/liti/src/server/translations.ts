@@ -11,6 +11,7 @@ export const prepareTranslations = async (
     supported: readonly string[],
     input: TranslationInput = {},
     previous: Translations = {},
+    prepare?: (data: Record<string, unknown>, locale: string) => Promise<Record<string, unknown>>,
 ): Promise<Translations> => {
     if (!input || typeof input !== 'object' || Array.isArray(input))
         throw new LitiError('LITI_INVALID_INPUT', 'Translations must be an object.')
@@ -30,7 +31,9 @@ export const prepareTranslations = async (
             if (!definition.fields[key]?.i18n)
                 throw new LitiError('LITI_INVALID_INPUT', `Field "${key}" is not translatable.`)
         const candidate = { ...data, ...value }
-        const validated = await validateModelData(definition, candidate)
+        const validated = prepare
+            ? { data: await prepare(candidate, locale), issues: [] }
+            : await validateModelData(definition, candidate)
         if (!validated.data)
             throw new LitiError('LITI_INVALID_INPUT', `Invalid ${locale} translation.`, validated.issues)
         output[locale] = Object.fromEntries(

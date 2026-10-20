@@ -3,6 +3,7 @@ export { resolveLitiConfig } from './config-resolution'
 export { defineLitiPlugin } from './plugins'
 export type {
     ActionDefinition,
+    ActionResult,
     AdapterContext,
     AuthAdapter,
     BlobObject,
@@ -21,6 +22,7 @@ export type {
     InferPublicModelData,
     InferLitiModels,
     InferLitiMeta,
+    InferLitiModelExtensions,
     InferLitiFormModels,
     InferLitiPublicModels,
     ModelDefinition,
@@ -28,7 +30,6 @@ export type {
     ModelDisplayFields,
     ModelRouteOptions,
     LitiAssetAction,
-    LitiAIConfig,
     LitiSeoOptions,
     ModelSeoOptions,
     LitiAuthorization,
@@ -42,13 +43,6 @@ export type {
     LitiSystemAction,
 } from './config'
 export type { LitiRouteRule, LitiRouteRules } from './seo'
-export type {
-    InferLitiNamedAiActions,
-    LitiAiActionData,
-    LitiAiActionInput,
-    LitiNamedAiAction,
-    LitiDecisionModel,
-} from './ai/actions'
 export { LitiError } from './errors'
 export type { LitiErrorCode, LitiIssue } from './errors'
 export {
@@ -68,6 +62,7 @@ export {
     url,
 } from './fields'
 export type { AnyField, AssetInput, AssetValue, PublicAsset, FieldRecord, InferField, InferFields } from './fields'
+export type { Field, BaseFieldOptions, StringFieldOptions, AssetFieldOptions } from './fields'
 export type {
     PublicEntry,
     PublicEntrySeo,
@@ -80,6 +75,7 @@ export type {
 
 export type { Entry, Revision, Content, Asset } from './public-client'
 export type { EntryFeatures, EntryPrepareContext } from './entry-preparation'
+export type { ModelPreparation, ModelPreparationContext, PreparationRead } from './preparation'
 export type { LitiLifecycleEvent } from './config'
 export type {
     LitiSchema,

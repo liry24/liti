@@ -7,6 +7,8 @@
       "devDependencies": {
         "@arethetypeswrong/cli": "^0.18.5",
         "@better-auth/drizzle-adapter": "1.7.11",
+        "@litijs/ai": "workspace:*",
+        "@litijs/blog": "workspace:*",
         "@litijs/drizzle": "workspace:*",
         "@litijs/sqlite": "workspace:*",
         "@litijs/void": "workspace:*",
@@ -39,6 +41,7 @@
         "nuxt-schema-org": "^7.0.1",
         "nuxt-seo-utils": "^9.0.1",
         "nuxt-site-config": "^5.0.3",
+        "nypm": "^0.6.10",
         "pathe": "^2.0.3",
         "pkg-pr-new": "0.0.91",
         "publint": "^0.3.25",
@@ -55,8 +58,59 @@
         "zod": "^4.6.7",
       },
     },
+    "packages/ai": {
+      "name": "@litijs/ai",
+      "version": "0.0.3",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+      },
+      "devDependencies": {
+        "ai": "7.0.145",
+        "liti": "workspace:*",
+        "void": "1.1.12",
+      },
+      "peerDependencies": {
+        "ai": "7.0.145",
+        "liti": "^0.0.3",
+        "void": "1.1.12",
+      },
+      "optionalPeers": [
+        "ai",
+        "void",
+      ],
+    },
+    "packages/blog": {
+      "name": "@litijs/blog",
+      "version": "0.0.3",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "comark": "^0.7.0",
+      },
+      "devDependencies": {
+        "liti": "workspace:*",
+        "vue": "3.6.0-rc.12",
+      },
+      "peerDependencies": {
+        "@litijs/ai": "^0.0.3",
+        "liti": "^0.0.3",
+        "vue": "^3.5.44 || ^3.6.0-rc.2",
+      },
+      "optionalPeers": [
+        "@litijs/ai",
+        "vue",
+      ],
+    },
     "packages/cli": {
       "name": "@liti-internal/cli",
+      "devDependencies": {
+        "@babel/parser": "^7.29.9",
+        "@babel/types": "^7.29.7",
+        "@types/semver": "^7.7.1",
+        "jiti": "^2.7.0",
+        "nypm": "^0.6.10",
+        "semver": "^7.8.5",
+        "yaml": "^2.9.1",
+      },
     },
     "packages/drizzle": {
       "name": "@litijs/drizzle",
@@ -86,58 +140,39 @@
         "liti": "./dist/cli.mjs",
       },
       "dependencies": {
-        "@better-auth/drizzle-adapter": "1.7.11",
+        "@babel/parser": "^7.29.9",
         "@noble/hashes": "2.4.0",
-        "@nuxt/devtools-kit": "4.0.0-beta.5",
-        "@nuxt/kit": "^4.6.2",
-        "@nuxt/schema": "^4.6.2",
         "@standard-schema/spec": "^1.1.0",
-        "@tanstack/vue-form": "2.0.0-alpha.2",
-        "auth": "^1.7.11",
+        "@types/markdown-it": "^14.1.2",
+        "comark": "^0.7.0",
         "comark-content": "^0.4.1",
-        "devframe": "1.2.6",
-        "drizzle-orm": "0.45.4",
-        "h3": "^1.15.11",
         "jiti": "^2.7.0",
-        "nitropack": "2.13.5",
         "nypm": "^0.6.10",
-        "pathe": "^2.0.3",
         "rou3": "^1.0.0",
-        "void": "1.1.12",
+        "semver": "^7.8.5",
+        "yaml": "^2.9.1",
       },
       "peerDependencies": {
-        "@nuxtjs/better-auth": "^0.3.9",
         "@nuxtjs/i18n": "^10.6.0",
         "@nuxtjs/robots": "^7.0.2",
         "@nuxtjs/sitemap": "^9.1.0",
         "@takumi-rs/core": "^2.16.2",
         "@takumi-rs/wasm": "^2.16.2",
-        "ai": "^7.0.141",
-        "better-auth": "^1.7.9",
-        "comark": "^0.7.0",
-        "files-sdk": "^3.1.1",
         "nuxt": "^4.6.1",
-        "nuxt-files-sdk": "^0.3.1",
         "nuxt-llms": "^0.2.0",
         "nuxt-og-image": "^7.0.7",
         "nuxt-schema-org": "^7.0.1",
         "nuxt-seo-utils": "^9.0.1",
         "nuxt-site-config": "^5.0.3",
-        "vue": "^3.6.0-rc.2",
+        "vue": "^3.5.44 || ^3.6.0-rc.2",
       },
       "optionalPeers": [
-        "@nuxtjs/better-auth",
         "@nuxtjs/i18n",
         "@nuxtjs/robots",
         "@nuxtjs/sitemap",
         "@takumi-rs/core",
         "@takumi-rs/wasm",
-        "ai",
-        "better-auth",
-        "comark",
-        "files-sdk",
         "nuxt",
-        "nuxt-files-sdk",
         "nuxt-llms",
         "nuxt-og-image",
         "nuxt-schema-org",
@@ -154,7 +189,11 @@
         "@nuxt/schema": "^4.6.2",
         "@standard-schema/spec": "^1.1.0",
         "devframe": "1.2.6",
-        "nypm": "^0.6.10",
+        "h3": "^1.15.11",
+        "jiti": "^2.7.0",
+        "nitropack": "2.13.5",
+        "nuxt": "4.6.2",
+        "vue": "3.6.0-rc.12",
       },
     },
     "packages/sqlite": {
@@ -206,6 +245,7 @@
       "devDependencies": {
         "@standard-schema/spec": "^1.1.0",
         "@tanstack/vue-form": "2.0.0-alpha.2",
+        "vue": "3.6.0-rc.12",
       },
     },
   },
@@ -552,6 +592,10 @@
     "@liti-internal/nuxt": ["@liti-internal/nuxt@workspace:packages/nuxt"],
 
     "@liti-internal/vue": ["@liti-internal/vue@workspace:packages/vue"],
+
+    "@litijs/ai": ["@litijs/ai@workspace:packages/ai"],
+
+    "@litijs/blog": ["@litijs/blog@workspace:packages/blog"],
 
     "@litijs/drizzle": ["@litijs/drizzle@workspace:packages/drizzle"],
 
@@ -1029,11 +1073,15 @@
 
     "@types/linkify-it": ["@types/linkify-it@5.0.0", "", {}, "sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q=="],
 
+    "@types/markdown-it": ["@types/markdown-it@14.2.0", "", { "dependencies": { "@types/linkify-it": "^5", "@types/mdurl": "^2" } }, "sha512-NoQ2yGlLWj4wpxMs+TYmRKk3thDrQ97agr7sFqfLsAlvoS8SNQuTrlObhFqG9iugdTtgOE9jpJ6FNM4ZGsa5xQ=="],
+
     "@types/mdurl": ["@types/mdurl@2.0.0", "", {}, "sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg=="],
 
     "@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
 
     "@types/resolve": ["@types/resolve@1.20.2", "", {}, "sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q=="],
+
+    "@types/semver": ["@types/semver@7.8.0", "", {}, "sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ=="],
 
     "@types/web-bluetooth": ["@types/web-bluetooth@0.0.21", "", {}, "sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA=="],
 

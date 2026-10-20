@@ -1,10 +1,19 @@
 import type { Ref, MaybeRefOrGetter } from 'vue'
 import type { LitiEntry, LitiFormModels } from '../../liti/src/client'
-import type { LitiQueryModel, LitiQueryResult, RegisteredLitiSchema } from '../../liti/src/query'
+import type { LitiQueryModel, LitiQueryResult, RegisteredLitiSchema, ActionMetadata } from '../../liti/src/query'
 import type { ReactiveQuerySelection } from './query'
 import type { LitiModelError } from './model'
 import type { UseEntryFormOptions, useEntryForm } from './form'
 import { useLitiRuntime } from './provider'
+import type { LitiFormExtensions } from './extensions'
+export interface LitiFormExtensionTypes {}
+export type {
+    LitiFormExtensions,
+    LitiFormExtensionContext,
+    LitiFormExtension,
+    LitiFormExtensionFactory,
+    LitiFormExtensionRegistry,
+} from './extensions'
 
 export { createLitiVue } from './provider'
 export type { LitiVueOptions } from './provider'
@@ -63,6 +72,7 @@ export interface UseLitiQuery {
             },
     ): Awaitable<
         LitiQueryHandle<PickResult<Data, Key>> &
+            (Mode extends 'many' ? { total: Readonly<Ref<number>> } : {}) &
             (View extends 'current'
                 ? {
                       remove(
@@ -93,6 +103,7 @@ export interface UseLitiQuery {
             },
     ): Awaitable<
         LitiQueryHandle<PickResult<Data, Key>> &
+            (Mode extends 'many' ? { total: Readonly<Ref<number>> } : {}) &
             (View extends 'current'
                 ? {
                       remove(
@@ -115,6 +126,21 @@ export const useLitiModels = () =>
         LitiQueryHandle<ReturnType<typeof import('../../liti/src/admin-client').litiModelCatalog>>
     >
 
+type Actions = RegisteredLitiSchema['actions']
+export type UseAiOptions<Name extends Extract<keyof Actions, string>> = {
+    input: MaybeRefOrGetter<Actions[Name]['input']>
+    immediate?: boolean
+    timeout?: number
+}
+export const useAi = <Name extends Extract<keyof Actions, string>>(name: Name, options: UseAiOptions<Name>) =>
+    useLitiRuntime().action(name, options.input, options) as Awaitable<
+        Omit<LitiQueryHandle<Actions[Name]['output'] | undefined>, 'execute' | 'refresh'> & {
+            metadata: Readonly<Ref<ActionMetadata<Actions[Name]> | undefined>>
+            execute(options?: { signal?: AbortSignal; dedupe?: 'cancel' | 'defer' }): Promise<void>
+            refresh(options?: { signal?: AbortSignal; dedupe?: 'cancel' | 'defer' }): Promise<void>
+        }
+    >
+
 export type LitiFormOptions<Data extends Record<string, unknown>> = UseEntryFormOptions<Data> & {
     id?: MaybeRefOrGetter<string | null | undefined>
     instance?: MaybeRefOrGetter<string | undefined>
@@ -127,6 +153,7 @@ export const useLitiForm = <Name extends Extract<keyof LitiFormModels, string>>(
 ) =>
     useLitiRuntime().form(model, options as LitiFormOptions<Record<string, unknown>>) as unknown as Awaitable<
         ReturnType<typeof useEntryForm<FormData<Name>>> &
+            LitiFormExtensions<Name> &
             LitiQueryHandle<LitiEntry<FormData<Name>> | null> & {
                 remove(): Promise<unknown>
             }

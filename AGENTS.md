@@ -44,17 +44,23 @@ Generic proofreading, article dates and slug preparation move to the feature pac
 
 ## Progress
 
-| Phase | State                                                                                                                                      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| P0    | Baselines inspected and integrated; regression ownership recorded                                                                          |
-| P1    | In progress: package/config/error/schema/URI names changed; private CLI and bridge source separation; role and plugin declaration resolver |
-| P2    | In progress: native SQLite conformance, explicit-context server bootstrap, neutral blob storage boundary                                   |
-| P3    | In progress: selected Void/Drizzle/native SQLite adapters, separate ORM versions, CLI tooling and Nuxt host dispatch                       |
-| P4–P8 | Pending; shared Query/Form groundwork exists, full acceptance remains                                                                      |
+| Phase | State                                                                                                                                              |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0    | Baselines integrated and regression ownership recorded                                                                                             |
+| P1    | Six public packages and three bundled private workspaces; new config, plugin, adapter and generated type contracts implemented                     |
+| P2    | Explicit-context service, canonical SQLite storage, publication history and neutral streaming storage implemented and covered by conformance tests |
+| P3    | Independent Drizzle 1.0.0-rc.4 and Void 0.45.4 isolation verified; packed pnpm Void Worker integration passed                                      |
+| P4    | init, plugin add/remove, generate and upgrade implemented, including dry-run and partial-failure reporting                                         |
+| P5    | Query/Models/Form migration implemented; isolated Vue 3.5/3.6 SSR hydration and packed Nuxt public queries verified                                |
+| P6    | Optional AI/blog packages, publication preparation, article dates and native-form proofreading implemented                                         |
+| P7    | liry24.com dev configuration, public queries, native forms and business preparation migrated; app validation in progress                           |
+| P8    | Packed npm/pnpm/Bun matrix in progress; final CI, commit-specific preview and application validation pending                                       |
 
 Configuration tests cover empty input, plugin order, collisions, missing references, opaque schemas, and whole-provider replacement.
-The CLI help/version entry is lazy and does not evaluate project configuration. Generation delegates to the selected database tooling; init, plugin management and upgrade remain.
-The build produces the private CLI and Vue/Nuxt bridges inside the public package. Packed dependency independence remains to be verified.
+The CLI help/version entry is lazy and does not evaluate project configuration. Generation delegates to the selected database tooling and never applies migrations.
+The build includes private CLI and Vue/Nuxt bridges and their declarations in liti; Vue and Nuxt remain host-owned optional peers.
+Packed core, blog-only, AI-only, SQLite and Vue consumers install normally without forced peer resolution or a workspace source alias.
+Third-party code bundled in each public artifact has a generated `THIRD_PARTY_LICENSES.txt`; every public tarball includes the project license.
 
 The new physical namespace is `liti_*`, the asset URI is `liti://asset/<id>`, configuration is `liti.config.ts`, and errors use `LITI_*`.
 There is no reader for the former asset URI or automatic adoption of existing database histories.
@@ -75,14 +81,42 @@ Files SDK identity and Workers' known-length streaming belong to the Void storag
 Streaming SHA-256 uses the shared incremental implementation; it does not buffer an entire file.
 Public Query and Form changes have targeted runtime, type and SSR coverage; the full packed-consumer matrix is still outstanding.
 
-The root configuration still exposes the old AI configuration contract; it must move into the AI plugin.
+AI is declared through `@litijs/ai` plugins and named actions; the former root AI configuration is rejected.
+Text, native decision and native extraction have separate provider contracts. Nuxt production and local Worker HTTP checks pass after this extraction, with mocked providers and no real inference.
+First publication history is entry-wide: a revision publishes the original and its translations atomically.
+`firstPublishedAt` is written only by the first successful publication commit and survives unpublish, restore and later translations.
+`updatedAt` tracks content saves; the public projection uses the published revision's creation time, so draft edits do not expose an unpublished update date.
 Void owns its native Nuxt auth/Files integration; Nuxt setup and builds do not install missing dependencies.
 The independent Drizzle profile owns ORM/Kit 1.0.0-rc.4 while Void keeps its own 0.45.4 ORM. No global Drizzle override is used.
 The shared D1 conformance suite passes 33 cases for this profile; Bun native schema/storage checks pass 31 cases.
 Nuxt production build and local Worker HTTP checks, Files configuration (14 cases), and live HMR/config reload/server types pass.
-The broad unit run passed 483 cases with three source-alias type-fixture failures; those fixtures were corrected and passed separately.
-Complete CLI commands, blog/AI plugins, application migration, dependency isolation and final consumer checks remain required.
-The current extraction is implementation groundwork, not completion of P1 or P2.
+The latest broad unit run passed 534 tests with one skipped test. Source type checking, lint, workspace checks and both unused-code checks passed.
+Blog now contributes manual/automatic article models, publication preparation, shared dates/SEO and proofreading through the common form controller.
+Publication transforms run only for new draft candidates; existing revisions and publishDue only validate. Save preparation receives the real entry ID, actor, locale, previous entry, field issues and authorized read services.
+The runtime retains up to 32 successful publication preparations keyed by actor, model, entry/version, operation, locale and input. Repeated commits after a route conflict reuse them.
+This is bounded in-process retry protection, not durable exactly-once inference across Worker instances or restarts.
+Scheduled Nuxt jobs use the trusted `liti:task:publishDue` system actor for preparation reads; request-triggered jobs retain the authenticated actor.
+Blog Vue extensions expose stable review/proofread/apply/discard operations, use the native form, preserve unrelated edits and guard publish/schedule.
+Blog/AI-only consumers import without Vue, Nuxt or the AI SDK installed. No production AI requests have run.
+Packed standalone Vue checks cover native Field/Subscribe, reset, array operations, redisplay, stable handles and reuse of the server-rendered DOM.
+Packed Nuxt checks cover public error status/code, SSR deduplication, hydration, cancellation, timeouts and reactive query races.
+Nuxt 4.6.2 has 592 native strict declaration diagnostics and Drizzle 1.0.0-rc.4 has 44 in the tested dependency graph.
+The fixtures run with `skipLibCheck: false` and compare against the same native dependencies without liti, requiring no added SDK diagnostics. This does not mean upstream declarations pass strict checking.
+Packed Void generation exposes the schema to its native CommonJS Drizzle loader; the fixture verifies SQL exists and boots the resulting Worker.
+Many-query handles retain the server's total independently of transformed items. The imperative client also exposes paginated DTOs through `queryPage`.
+Model `unique` tuples constrain non-null, non-translated scalar values among current entries in the atomic commit. This replaces app triggers against private content tables without weakening concurrent-save protection.
+The first implementation scans current revisions; add a dedicated keyed index only when write profiling warrants it.
+Application validation, the remaining consumer matrix and final CI are still required.
 
 The transferred repository initially lacked pkg-pr-new GitHub App access. The user has enabled it; publication must be rerun and its returned artifact URLs verified.
 Stable publication must retain the existing uppt release PR/tag/pack/publish workflow. No release tag or npm publish has been requested or performed.
+
+## Deferred first release
+
+The first stable target is `0.1.0` for every public workspace. Keep the current development versions until uppt opens the lockstep release PR; the breaking-change commit makes its pre-1.0 bump `0.1.0`. Review the generated PR's versions and first-party ranges (`^0.1.0`), then regenerate the lockfile before merging. CLI version output reads the installed manifest.
+
+The publishable set is `packages/*` excluding manifests with `private: true`, used by uppt and the artifact fixtures. Private CLI/Vue/Nuxt workspaces stay bundled inside liti. Pack runs only after the tagged commit's required CI succeeds. The exact archives are checked, hashed into `release-manifest.json`, and installed by the consumer matrix before being passed to uppt/publish.
+
+Before authorizing a stable release, verify npm ownership/team access for all six names, public access, provenance, and each trusted-publisher binding to `liry24/liti`, `release.yml`, environment `npm`. GitHub repository transfer does not establish npm permissions. No credentials belong in repository files. The workflow uses Node 24 and uppt's npm setup.
+
+Approve staged packages in dependency order: liti, sqlite, then drizzle/void/ai, then blog. Prerelease identifiers use the matching dist-tag; a numeric identifier uses `next`. If publication partially succeeds, rerun only the failed publish job while the original artifacts remain available. Its registry check skips already published versions only when their integrity matches the verified archive; mismatches and registry errors stop the run. Pending npm stages must be resolved before retrying. Never overwrite a published version or rebuild a replacement archive during that retry. See the pinned [uppt publish implementation](https://github.com/danielroe/uppt/blob/6ec27140623aa835e362f866d8ab0018ab057f4d/scripts/publish.ts).

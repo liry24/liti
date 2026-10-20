@@ -141,8 +141,8 @@ describe('native Better Auth integration', () => {
             config.authorization = {
                 roles: {
                     admin: { models: { '*': ['update'], posts: ['readDraft'] } },
-                    user: { ai: ['*'] },
-                    editor: { models: { '*': ['readDraft'] }, ai: ['proofread'] },
+                    user: { actions: ['*'] },
+                    editor: { models: { '*': ['readDraft'] }, actions: ['proofread'] },
                 },
             }
         })
@@ -172,8 +172,8 @@ describe('native Better Auth integration', () => {
         expect(Object.keys(client.roles)).toEqual(['admin', 'user', 'editor'])
         expect(permissions.admin?.['liti:model:posts']).toEqual(['update', 'readDraft'])
         expect(permissions.admin?.user).toEqual([])
-        expect(permissions.user?.['liti:ai']).toEqual(['proofread', 'plain'])
-        expect(permissions.editor?.['liti:ai']).toEqual(['proofread'])
+        expect(permissions.user?.['liti:actions']).toEqual(['editorial', 'proofread', 'plain'])
+        expect(permissions.editor?.['liti:actions']).toEqual(['proofread'])
 
         const providerHook = hook.mock.calls.find(([name]) => name === 'better-auth:database:providers')![1]
         const providers: Record<string, { buildDatabaseCode: () => string }> = {}

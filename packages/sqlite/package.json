@@ -55,5 +55,13 @@
     },
     "peerDependencies": {
         "liti": "^0.0.3"
+    },
+    "liti": {
+        "id": "sqlite",
+        "apiVersion": 1,
+        "kind": "adapter",
+        "liti": "^0.0.3 || ^0.1.0",
+        "factory": "sqlite",
+        "config": "@litijs/sqlite"
     }
 }

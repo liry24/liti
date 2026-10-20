@@ -19,6 +19,27 @@ import { queryRows, runAtomic } from './sqlite-queries'
 import { createLitiManagementClient } from '../packages/liti/src/client'
 
 const cleanup: Array<() => Promise<void>> = []
+it('rejects unsupported unique declarations instead of silently dropping their protection', () => {
+    for (const unique of [[], ['missing'], ['title', 'title'], ['translated'], ['details']]) {
+        expect(() =>
+            createRuntime({
+                database: createMemoryDatabase(),
+                config: {
+                    models: {
+                        records: {
+                            fields: {
+                                title: text(),
+                                translated: text({ i18n: true }),
+                                details: object({ title: text() }),
+                            },
+                            unique: [unique],
+                        },
+                    },
+                },
+            }),
+        ).toThrow('unique constraints')
+    }
+})
 type BatchControls = {
     beforeBatch?: (queries: readonly string[]) => Promise<void>
     otherConnection?: () => Promise<LitiDatabase>
@@ -193,6 +214,93 @@ for (const kind of [
     ...(process.versions.bun ? (['drizzle-bun'] as const) : []),
 ] as const)
     describe(`${kind} domain storage conformance`, () => {
+        it('enforces current-entry unique tuples atomically across creates, updates, publication and restore', async () => {
+            const definition = defineLitiConfig({
+                models: {
+                    records: {
+                        route: false,
+                        unique: [['group', 'code']],
+                        fields: { group: text(), code: text() },
+                    },
+                },
+            })
+            const database = await backend(kind, definition)
+            const core = createRuntime({ config: definition, database })
+            await core.initialize()
+            const input = { data: { group: 'a', code: 'collision' } }
+            const attempts = await Promise.allSettled([
+                core.createEntry('records', { ...input, id: 'first' }),
+                core.createEntry('records', { ...input, id: 'second' }),
+            ])
+            expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+            expect(attempts.find((result) => result.status === 'rejected')).toMatchObject({
+                reason: { code: 'LITI_CONFLICT' },
+            })
+            let entry = (await core.listEntries('records'))[0]!
+            const original = entry.currentRevisionId
+            const other = await core.createEntry('records', { data: { group: 'b', code: 'collision' } })
+            await expect(
+                core.updateEntry(other.id, { expectedVersion: other.version, data: { group: 'a' } }),
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+            expect(await core.listRevisions(other.id)).toHaveLength(1)
+            entry = await core.updateEntry(entry.id, { expectedVersion: entry.version, data: { code: 'free' } })
+            const replacement = await core.createEntry('records', input)
+            for (const attempt of [
+                () => core.restoreRevision(entry.id, original, { expectedVersion: entry.version }),
+                () => core.publishEntry(entry.id, { expectedVersion: entry.version, draft: input }),
+                () =>
+                    core.schedulePublish(entry.id, {
+                        expectedVersion: entry.version,
+                        draft: input,
+                        at: '2099-01-01T00:00:00Z',
+                    }),
+            ])
+                await expect(attempt()).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+            expect(await core.getEntry(entry.id)).toMatchObject({
+                version: entry.version,
+                data: { code: 'free' },
+                publishedRevisionId: null,
+                scheduledRevisionId: null,
+            })
+            expect(await core.listRevisions(entry.id)).toHaveLength(2)
+            await core.deleteEntry(replacement.id, { expectedVersion: replacement.version })
+            expect(await core.restoreRevision(entry.id, original, { expectedVersion: entry.version })).toMatchObject({
+                data: input.data,
+            })
+            await core.createEntry('records', { data: { group: 'a' } })
+            await core.createEntry('records', { data: { group: 'a', code: null } })
+        })
+        it('records first publication only after commit and preserves it across restore and republish', async () => {
+            const { core, tick } = await setup(kind)
+            let entry = await core.createEntry('posts', { data: { slug: 'dated', title: 'Original' } })
+            const revision = entry.currentRevisionId!
+            const createdAt = entry.updatedAt
+            tick()
+            entry = await core.schedulePublish(entry.id, {
+                expectedVersion: entry.version,
+                at: '2026-10-09T12:00:00Z',
+            })
+            expect(entry.firstPublishedAt).toBeNull()
+            await core.publishDue(new Date('2026-10-09T13:00:00Z'))
+            entry = await core.getEntry(entry.id)
+            const first = entry.firstPublishedAt
+            expect(first).toBe('2026-10-09T10:00:01.000Z')
+            expect(entry.updatedAt).toBe(createdAt)
+            tick()
+            entry = await core.unpublishEntry(entry.id, { expectedVersion: entry.version })
+            entry = await core.updateEntry(entry.id, {
+                expectedVersion: entry.version,
+                data: { title: 'Edited' },
+            })
+            entry = await core.restoreRevision(entry.id, revision, { expectedVersion: entry.version })
+            entry = await core.publishEntry(entry.id, { expectedVersion: entry.version })
+            expect(entry.firstPublishedAt).toBe(first)
+            const conflict = await core.createEntry('posts', { data: { slug: 'dated', title: 'Conflict' } })
+            await expect(core.publishEntry(conflict.id, { expectedVersion: conflict.version })).rejects.toMatchObject({
+                code: 'LITI_ROUTE_CONFLICT',
+            })
+            expect((await core.getEntry(conflict.id)).firstPublishedAt).toBeNull()
+        })
         it('guards all commit effects with the public generation, including the initial generation', async () => {
             const { core, storage } = await setup(kind)
             await storage.commit({ conditions: [{ kind: 'publicGeneration', generation: 0 }], publicGeneration: true })

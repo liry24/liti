@@ -7,8 +7,14 @@ import type {
     LitiPublicSummaryModels,
 } from './client'
 import { LitiClientError } from './client'
-import type { LitiConfig, InferLitiModels, InferLitiFormModels, InferLitiPublicModels } from './config'
-import type { PluginActions } from './plugins'
+import type {
+    LitiConfig,
+    InferLitiModels,
+    InferLitiFormModels,
+    InferLitiPublicModels,
+    InferLitiModelExtensions,
+} from './config'
+import type { ActionResult, PluginActions } from './plugins'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 /** A generated module supplies these maps without importing server configuration at runtime. */
@@ -17,15 +23,19 @@ export interface LitiSchema {
     publicSummaryModels: Record<string, unknown>
     managementModels: Record<string, unknown>
     formModels: Record<string, unknown>
-    actions: Record<string, { input: unknown; output: unknown }>
+    actions: Record<string, { input: unknown; output: unknown; metadata?: unknown }>
 }
+export type ActionMetadata<Action> = Action extends { metadata: infer Metadata } ? Metadata : unknown
 
 export type InferLitiActions<Config> = {
     [Name in keyof PluginActions<Config>]: PluginActions<Config>[Name] extends {
-        input: StandardSchemaV1<unknown, infer Input>
+        input: StandardSchemaV1<infer Input, unknown>
         output: StandardSchemaV1<unknown, infer Output>
+        execute: (
+            ...args: never[]
+        ) => ActionResult<unknown, infer Metadata> | Promise<ActionResult<unknown, infer Metadata>>
     }
-        ? { input: Input; output: Output }
+        ? { input: Input; output: Output; metadata: Metadata }
         : never
 }
 
@@ -35,6 +45,7 @@ export type InferLitiSchema<Config extends LitiConfig> = {
     managementModels: InferLitiModels<Config>
     formModels: InferLitiFormModels<Config>
     actions: InferLitiActions<Config>
+    modelExtensions: InferLitiModelExtensions<Config>
 }
 
 export interface RegisteredLitiSchema extends LitiSchema {
@@ -71,6 +82,14 @@ export type LitiQueryOptions = (PublishedQuery | CurrentQuery) & {
     locale?: string
     markdown?: 'full' | 'summary'
     signal?: AbortSignal
+}
+
+export type LitiQueryPageOptions = Extract<LitiQueryOptions, { mode?: 'many' }> &
+    ({ page: QueryPage } | { pageSize: number })
+
+export type LitiQueryPage<Schema extends LitiSchema, Name extends string, Options> = QueryPage & {
+    items: LitiQueryItem<Schema, Name, Options>[]
+    total: number
 }
 
 export type LitiQuerySelection<

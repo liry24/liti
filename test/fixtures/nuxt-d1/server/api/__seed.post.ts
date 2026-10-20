@@ -11,6 +11,6 @@ export default defineEventHandler((event) =>
             expectedVersion: entry.version,
             at: new Date(Date.now() + 500),
         })
-        return { id: entry.id, scheduledAt: scheduled.scheduledAt }
+        return { id: entry.id, scheduledAt: scheduled.scheduledAt, firstPublishedAt: scheduled.firstPublishedAt }
     }),
 )

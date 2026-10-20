@@ -14,9 +14,10 @@ const fixture = await mkdtemp(join(workspace, '.tmp/nuxt-module-'))
 const lifecycleFile = `${fixture}-lifecycle.jsonl`
 const config = (title: string, aiChanged = false) => `import { defineLitiConfig, text } from 'liti'
 import { voidAdapter } from '@litijs/void'
+import { ai, createTextAction } from '@litijs/ai'
 import { required } from '#policy'
 import { z } from 'zod'
-export default defineLitiConfig({ adapter: voidAdapter(), ai: { actions: ${aiChanged ? "{ suggest: { type: 'text-generation', input: z.object({}), prompt: () => 'AI server sentinel' } }" : '{}'} }, assets: {}, models: { posts: { fields: { title: text({ required, default: ${JSON.stringify(title)} }) } } } })`
+export default defineLitiConfig({ adapter: voidAdapter(), plugins: [ai({ provider: { id: 'fixture', text: { generate: async () => { throw new Error('No inference during prepare') } } }, actions: ${aiChanged ? "{ suggest: createTextAction({ input: z.object({}), prompt: () => 'AI server sentinel' }) }" : '{}'} })], assets: {}, models: { posts: { fields: { title: text({ required, default: ${JSON.stringify(title)} }) } } } })`
 await mkdir(join(fixture, 'server/api'), { recursive: true })
 await mkdir(join(fixture, 'app'), { recursive: true })
 await mkdir(join(fixture, 'db'), { recursive: true })
@@ -49,7 +50,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   alias: { '#policy': fileURLToPath(new URL('./policy.ts', import.meta.url)) },
   typescript: { nodeTsConfig: { compilerOptions: { paths: { '#policy': [fileURLToPath(new URL('./policy.ts', import.meta.url))] } } } },
-  liti: { auth: false, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, ai: true },
+  liti: { auth: false, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false } },
   runtimeConfig: { probe: { title: '', generation: randomUUID() } },
 })`,
 )

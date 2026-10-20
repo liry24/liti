@@ -43,7 +43,10 @@ describe('liti Nitro tasks', () => {
             failed: [],
         })
         expect(fixture.runtime.getLiti).toHaveBeenCalledWith(undefined, context)
-        expect(fixture.admin.publishDue).toHaveBeenCalledExactlyOnceWith()
+        expect(fixture.admin.publishDue).toHaveBeenCalledExactlyOnceWith(undefined, {
+            actor: { id: 'liti:task:publishDue', roles: ['admin'] },
+            platformContext: context,
+        })
         expect(fixture.admin.runAssetGC).toHaveBeenCalledExactlyOnceWith()
         expect(fixture.admin.syncAssetCopies).toHaveBeenCalledExactlyOnceWith()
     })

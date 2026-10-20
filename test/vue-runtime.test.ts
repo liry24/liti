@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { createRenderer, nextTick, ref } from 'vue'
-import { createLitiVue, useLitiForm, useLitiModels, useLitiQuery } from '../packages/vue/src'
+import { createLitiVue, useAi, useLitiForm, useLitiModels, useLitiQuery } from '../packages/vue/src'
 import { createLitiClient } from '../packages/liti/src/public-client'
 import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { formConfig, modelEntry } from './model-fixture'
@@ -31,6 +31,35 @@ const mount = <Value>(setup: () => Value, fetch: NonNullable<LitiClientOptions['
     app.mount({})
     return { value, stop: () => app.unmount() }
 }
+
+it('runs Vue actions explicitly and discards a proposal when its reactive input changes', async () => {
+    const input = ref({ content: 'First' })
+    const response = Promise.withResolvers<Response>()
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        expect(JSON.parse(String(init?.body))).toEqual({ input: { content: 'First' } })
+        return response.promise
+    })
+    const runtime = mount(() => useAi('proofread', { input }), fetch)
+    try {
+        const handle = await runtime.value
+        expect(fetch).not.toHaveBeenCalled()
+        const pending = handle.execute()
+        input.value.content = 'Second'
+        response.resolve(Response.json({ data: { content: 'Obsolete' }, metadata: { usage: { inputTokens: 3 } } }))
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+        expect(handle.data.value).toBeUndefined()
+        expect(handle.metadata.value).toBeUndefined()
+        expect(handle.status.value).toBe('idle')
+        fetch.mockImplementation(async () =>
+            Response.json({ data: { content: 'Second corrected' }, metadata: { usage: { inputTokens: 4 } } }),
+        )
+        await handle.execute()
+        expect(handle.data.value).toEqual({ content: 'Second corrected' })
+        expect(handle.metadata.value).toEqual({ usage: { inputTokens: 4 } })
+    } finally {
+        runtime.stop()
+    }
+})
 
 it('shares a descriptor DTO while exposing a catalog and stable query handles in ordinary Vue', async () => {
     const requests: string[] = []
@@ -106,6 +135,52 @@ it('keeps a fixed field on the native form across reset and identity changes', a
         runtime.stop()
     }
 })
+
+it.each(['published', 'current'] as const)(
+    'retains the %s page total before projection and across page changes',
+    async (view) => {
+        const page = ref({ limit: 1, offset: 0 })
+        const requests: string[] = []
+        const runtime = mount(
+            () => useLitiQuery('posts', { view, page, transform: (rows) => rows.map((row) => row.data.title) }),
+            async (input) => {
+                const url = new URL(String(input), 'http://test')
+                if (url.pathname.endsWith('/models')) return Response.json(descriptor)
+                requests.push(url.href)
+                const offset = Number(url.searchParams.get('offset'))
+                return Response.json({
+                    items: [
+                        view === 'current'
+                            ? modelEntry(`entry-${offset}`, 1, { title: String(offset) })
+                            : {
+                                  data: { _liti: { id: `entry-${offset}`, model: 'posts' }, title: String(offset) },
+                              },
+                    ],
+                    total: 37,
+                    limit: 1,
+                    offset,
+                })
+            },
+        )
+        try {
+            const { total } = runtime.value
+            expect(total.value).toBe(0)
+            expect((await runtime.value).total).toBe(total)
+            expect(runtime.value.data.value).toEqual(['0'])
+            expect(total.value).toBe(37)
+            page.value = { limit: 1, offset: 1 }
+            expect(total.value).toBe(0)
+            await runtime.value.refresh()
+            expect(runtime.value.data.value).toEqual(['1'])
+            expect(total.value).toBe(37)
+            expect(requests).toHaveLength(2)
+            runtime.value.clear()
+            expect(total.value).toBe(0)
+        } finally {
+            runtime.stop()
+        }
+    },
+)
 
 it('isolates simultaneous new editors with distinct instances', async () => {
     const runtime = mount(

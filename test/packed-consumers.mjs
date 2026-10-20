@@ -5,16 +5,16 @@ import { stopProcess as stop } from './stop-process.ts'
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join, resolve as resolvePath } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 
-import { verifyStandalone } from './standalone-consumer.mjs'
 import { verifyPeerDependencies } from './owned-dependency-consumer.mjs'
 import { verifyPublicDataConsumer } from './public-data-consumer.mjs'
 import { assertAiOmitted } from './assert-ai-omitted.mjs'
-import { consumerDependencies } from './consumer-dependencies.mjs'
+import { consumerDependencies, stableVue } from './consumer-dependencies.mjs'
+import { archiveDependencies, archiveOverrides, consumerPackages } from './consumer-packages.mjs'
 
-const workspace = fileURLToPath(new URL('../', import.meta.url))
+import { installDependencies } from 'nypm'
 const packageManager = process.env.LITI_PACKAGE_MANAGER || 'bun'
 if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown LITI_PACKAGE_MANAGER.')
 const integrations = !process.env.LITI_PACKAGE_MANAGER || packageManager === 'pnpm'
@@ -41,38 +41,18 @@ const run = (command, args, cwd = temporary, env = process.env) => {
     return result.stdout.trim()
 }
 const install = async (cwd = temporary, production = false) => {
-    if (packageManager === 'npm') {
-        // The fixture tests prereleases outside upstream stable peer ranges. Nitro emits a new manifest.
-        const path = join(cwd, 'package.json')
-        const manifest = JSON.parse(await readFile(path, 'utf8'))
-        manifest.overrides = Object.fromEntries(
-            ['vue', 'drizzle-orm'].filter((name) => manifest.dependencies?.[name]).map((name) => [name, `$${name}`]),
-        )
-        // npm otherwise selects Prisma 8 RC for Drizzle's wildcard optional peer, outside Better Auth's range.
-        manifest.overrides.prisma = '^7.0.0'
-        await writeFile(path, JSON.stringify(manifest))
-        // npm cannot reify Nitro's traced links; install the generated production manifest into a clean tree.
-        if (production) await rm(join(cwd, 'node_modules'), { force: true, recursive: true })
-    }
-    const result = run(
-        packageManager,
-        [
-            'install',
-            ...(production ? [packageManager === 'npm' ? '--omit=dev' : '--production'] : []),
-            ...(packageManager === 'pnpm' ? ['--no-frozen-lockfile'] : []),
-        ],
-        cwd,
-    )
-    return result
+    // npm cannot reify Nitro's traced links; its production manifest contains no development dependencies.
+    if (packageManager === 'npm' && production) await rm(join(cwd, 'node_modules'), { force: true, recursive: true })
+    await installDependencies({ cwd, packageManager, silent: true })
 }
-const exec = (args, cwd = temporary) =>
-    run(
-        packageManager,
-        packageManager === 'bun'
-            ? ['x', '--no-install', ...args]
-            : ['exec', ...(packageManager === 'npm' ? ['--'] : []), ...args],
-        cwd,
-    )
+const exec = ([name, ...args], cwd = temporary) => {
+    const local = createRequire(join(temporary, 'package.json'))
+    const packageName = name === 'tsc' ? 'typescript' : name
+    const path = local.resolve(`${packageName}/package.json`)
+    const manifest = local(path)
+    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin[name]
+    return run(process.execPath, [join(dirname(path), bin), ...args], cwd)
+}
 const reservePort = () =>
     new Promise((resolve, reject) => {
         const server = createServer()
@@ -129,17 +109,10 @@ const filesUnder = async (directory) => {
 }
 
 try {
-    let tarball = process.env.LITI_TARBALL ? resolvePath(process.env.LITI_TARBALL) : undefined
-    if (!tarball) {
-        run('bun', ['pm', 'pack', '--destination', temporary, '--ignore-scripts'], join(workspace, 'packages/liti'))
-        const tarballName = (await readdir(temporary)).find((name) => name.endsWith('.tgz'))
-        if (!tarballName) throw new Error('Package tarball was not created.')
-        tarball = join(temporary, tarballName)
-    }
-    if (!(await stat(tarball)).isFile()) throw new Error('LITI_TARBALL must be a package file.')
+    const packages = await consumerPackages(temporary, run)
+    const tarball = packages.liti
     console.log(`Testing ${tarball} with ${packageManager}`)
     if (packageManager === 'npm') {
-        await verifyStandalone(tarball)
         await verifyPublicDataConsumer(tarball)
     }
     await verifyPeerDependencies(tarball, packageManager)
@@ -147,11 +120,11 @@ try {
     await writeFile(
         join(temporary, 'package.json'),
         JSON.stringify({
+            ...archiveOverrides(packages, packageManager),
             dependencies: {
-                liti: `file:${tarball.replaceAll('\\', '/')}`,
+                ...archiveDependencies(packages, ['liti', '@litijs/sqlite', '@litijs/void']),
                 ...consumerDependencies([
                     'better-auth',
-                    'ai',
                     'comark',
                     'nuxt-files-sdk',
                     'files-sdk',
@@ -170,34 +143,29 @@ try {
                     'nuxt',
                     'nitropack',
                     'typescript',
-                    'vue',
+                    '@types/node',
                 ]),
+                vue: stableVue,
                 ...(!integrations ? renderers : {}),
-                // Select Vite's optional compiler at the root; Drizzle Kit keeps its older compiler nested.
-                ...(packageManager === 'npm' ? { esbuild: '^0.28.2' } : {}),
             },
             private: true,
-            overrides: { vue: consumerDependencies(['vue']).vue },
-            pnpm: { overrides: { vue: consumerDependencies(['vue']).vue } },
             type: 'module',
         }),
     )
     await writeFile(
         join(temporary, 'core.ts'),
         `import { defineLitiConfig, image, text, type InferLitiPublicModels } from 'liti'
-import { createPublicClient, managementAssetUrl, type PublicAsset } from 'liti/internal/client'
-import { createRuntime } from 'liti/internal/server'
+import { createLitiClient } from 'liti/client'
+import { createLiti } from 'liti/server'
 const config = defineLitiConfig({ models: { posts: { fields: { cover: image(), title: text({ required: true }) } } } })
 const data = { title: 'Public', cover: { id: 'asset', url: '/api/content/_assets/asset' } } satisfies InferLitiPublicModels<typeof config>['posts']['data']
-const cover: PublicAsset = data.cover
-if (managementAssetUrl(cover.id, '/manage/') !== '/manage/assets/asset/content') throw new Error('management asset helper invalid')
-if (!config.models.posts || typeof createRuntime !== 'function' || typeof createPublicClient !== 'function') throw new Error('core exports missing')
+if (!data.cover || !config.models.posts || typeof createLiti !== 'function' || typeof createLitiClient !== 'function') throw new Error('core exports missing')
 `,
     )
     await writeFile(
         join(temporary, 'form.ts'),
-        `import { useEntryForm } from 'liti/internal/form'
-if (typeof useEntryForm !== 'function') throw new Error('form export missing')
+        `import { useForm } from 'liti/vue'
+if (typeof useForm !== 'function') throw new Error('form export missing')
 `,
     )
     await writeFile(
@@ -207,7 +175,7 @@ if (typeof useEntryForm !== 'function') throw new Error('form export missing')
                 module: 'Preserve',
                 moduleResolution: 'Bundler',
                 noEmit: true,
-                skipLibCheck: true,
+                skipLibCheck: false,
                 strict: true,
                 target: 'ES2024',
             },
@@ -221,6 +189,7 @@ if (typeof useEntryForm !== 'function') throw new Error('form export missing')
 export default defineNuxtConfig({
   modules: ['liti/nuxt'],
   ...{ files: false },
+  liti: { auth: true, i18n: true, llms: true, ogImage: true, robots: true, schemaOrg: true, seo: true, sitemap: true },
   i18n: { locales: ['en'], defaultLocale: 'en' },
   llms: { domain: 'http://localhost', title: 'Packed' },
 })
@@ -229,7 +198,8 @@ export default defineNuxtConfig({
     await writeFile(
         join(temporary, 'server/liti.config.ts'),
         `import { defineLitiConfig, text } from 'liti'
-export default defineLitiConfig({ authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
+import { voidAdapter } from '@litijs/void'
+export default defineLitiConfig({ adapter: voidAdapter(), authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
 `,
     )
     await mkdir(join(temporary, 'server/app/components/OgImage'), { recursive: true })
@@ -282,9 +252,9 @@ registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context)
 } })
 await import('liti')
-await import('liti/internal/client')
-await import('liti/internal/server')
-await import('liti/internal/adapter')
+await import('liti/client')
+await import('liti/server')
+await import('liti/adapter')
 for (const module of ['assets', 'content', 'document', 'plugins']) {
   try {
     import.meta.resolve('liti/markdown/' + module)
@@ -305,35 +275,24 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === 'comark' || specifier.startsWith('comark/') || specifier.startsWith('markdown-exit') || specifier.startsWith('mdurl') || specifier.startsWith('linkify-it')) throw new Error('Form imported Markdown parser: ' + specifier)
   return next(specifier, context)
 } })
-await import('liti/internal/form')
+await import('liti/vue')
 `,
     ])
-    exec(['liti', 'generate', '--config', 'server/liti.config.ts', '--out', 'server/db/schema.ts'])
+    exec(['liti', 'generate', '--cwd', 'server', '--schema-only'])
+    await mkdir(join(temporary, 'server/server'), { recursive: true })
     await writeFile(
-        join(temporary, 'server/auth.config.ts'),
+        join(temporary, 'server/server/auth.config.ts'),
         `import { defineServerAuth } from '@nuxtjs/better-auth/config'
 export default defineServerAuth({
   emailAndPassword: { enabled: true },
 })
 `,
     )
-    exec([
-        'liti',
-        'generate',
-        '--config',
-        'server/liti.config.ts',
-        '--out',
-        'server/db/schema.ts',
-        '--auth',
-        'server/auth.config.ts',
-    ])
-    await mkdir(join(temporary, 'server/server'), { recursive: true })
-    await writeFile(join(temporary, 'server/server/auth.config.ts'), `export { default } from '../auth.config'`)
-    run(
-        process.execPath,
-        [join(temporary, 'node_modules/void/dist/cli/cli.mjs'), 'db', 'generate'],
-        join(temporary, 'server'),
+    exec(['liti', 'generate', '--cwd', 'server'])
+    const migrationFiles = (await readdir(join(temporary, 'server/db/migrations'))).filter((name) =>
+        name.endsWith('.sql'),
     )
+    if (migrationFiles.length !== 1) throw new Error('Void must generate one baseline migration from the packed schema')
     await mkdir(join(temporary, 'server/.data'), { recursive: true })
     await writeFile(
         join(temporary, 'server/.data/wrangler.json'),
@@ -350,7 +309,10 @@ export default defineServerAuth({
                     migrations_dir: '../db/migrations',
                 },
             ],
-            vars: { NUXT_BETTER_AUTH_SECRET: 'packed-consumer-test-secret-000000000000000' },
+            vars: {
+                NUXT_BETTER_AUTH_SECRET: 'packed-consumer-test-secret-000000000000000',
+                NUXT_APP_SECRET: 'packed-consumer-test-app-secret-000000000000000',
+            },
         }),
     )
     run(
@@ -392,6 +354,16 @@ export default () => {
 const admin: ReturnType<typeof import('liti/nuxt/server').useAdmin> = useAdmin()
 void admin
 `,
+    )
+    await mkdir(join(temporary, 'server/server/api'), { recursive: true })
+    await writeFile(
+        join(temporary, 'server/server/api/__runtime.get.ts'),
+        `import { defineEventHandler } from 'nuxt/server'
+import { useLitiRuntime } from 'liti/internal/nuxt/server'
+export default defineEventHandler(async (event) => {
+  try { const runtime = useLitiRuntime(); await runtime.getLiti(event); return { ready: true } }
+  catch (error) { return { message: String(error), stack: error instanceof Error ? error.stack : undefined } }
+})`,
     )
     await writeFile(
         join(temporary, 'server/app/types.ts'),
@@ -507,7 +479,7 @@ void invalidImpersonatedBy
         const body = await response.text()
         if (!response.ok || body !== '[]') {
             throw new Error(
-                `Packed server runtime probe failed (${response.status}): ${body}\n${local.output.join('')}`,
+                `Packed server runtime probe failed (${response.status}): ${body}\n${await fetch(`${local.origin}/api/__runtime`).then((result) => result.text())}\n${local.output.join('')}`,
             )
         }
     } finally {
@@ -568,5 +540,6 @@ void invalidImpersonatedBy
         }
     }
 } finally {
-    await rm(temporary, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
+    if (!process.env.LITI_KEEP_CONSUMER)
+        await rm(temporary, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
 }

@@ -3,17 +3,20 @@ import { addTemplate } from 'nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import type { NitroConfig } from 'nitropack/types'
 import type { LitiConfig } from 'liti/adapter'
+// oxlint-disable-next-line import/no-empty-named-blocks -- load the host's module augmentation without a runtime import
 import type {} from '@nuxtjs/better-auth'
 import { allowGeneratedFilesConfig } from './nuxt-files'
+import type { ActionDefinition } from 'liti'
 
 const accessControl = (config: LitiConfig) => {
+    const actions = (config as LitiConfig & { actions?: Record<string, ActionDefinition> }).actions ?? {}
     const modelActions = ['create', 'delete', 'publish', 'prune', 'readDraft', 'restore', 'schedule', 'sort', 'update']
     const assetActions = ['delete', 'gc', 'read', 'upload']
     const systemActions = ['diagnostics', 'publishDue', 'rebuildSearch']
     const resources = {
         ...Object.fromEntries(Object.keys(config.models).map((name) => [`liti:model:${name}`, modelActions])),
         'liti:assets': assetActions,
-        ...(config.ai?.actions ? { 'liti:ai': Object.keys(config.ai.actions) } : {}),
+        'liti:actions': Object.keys(actions),
         'liti:system': systemActions,
         session: ['list', 'revoke', 'delete'],
         user: [
@@ -34,9 +37,7 @@ const accessControl = (config: LitiConfig) => {
             const statements: Record<string, readonly string[]> = {
                 'liti:assets': role.assets ?? [],
                 'liti:system': role.system ?? [],
-                ...(config.ai?.actions
-                    ? { 'liti:ai': role.ai?.includes('*') ? Object.keys(config.ai.actions) : (role.ai ?? []) }
-                    : {}),
+                'liti:actions': role.actions?.includes('*') ? Object.keys(actions) : (role.actions ?? []),
                 session: [],
                 user: [],
             }

@@ -12,13 +12,13 @@ it('runs event-bound AI without resolving content storage or an entry', async ()
     const getLiti = vi.fn(() => {
         throw new Error('Content database must stay unopened')
     })
-    const runAiAction = vi.fn(async () => ({ text: 'Prepared' }))
-    configureLitiRuntime({ managementBase: '/manage', publicBase: '/content', getLiti, runAiAction })
+    const executeAction = vi.fn(async () => ({ text: 'Prepared' }))
+    configureLitiRuntime({ managementBase: '/manage', publicBase: '/content', getLiti, executeAction })
     const event = { req: new Request('https://site.test/action') } as RequestEvent
-    expect(await useAdmin(event).ai.run('prepare', { text: 'Input' })).toEqual({ text: 'Prepared' })
-    expect(runAiAction).toHaveBeenCalledWith(event, 'prepare', { input: { text: 'Input' } })
+    expect(await useAdmin(event).actions.run('prepare', { text: 'Input' })).toEqual({ text: 'Prepared' })
+    expect(executeAction).toHaveBeenCalledWith(event, 'prepare', { text: 'Input' })
     expect(getLiti).not.toHaveBeenCalled()
-    await expect(useAdmin().ai.run('prepare', {})).rejects.toMatchObject({ code: 'LITI_AUTH_REQUIRED' })
+    await expect(useAdmin().actions.run('prepare', {})).rejects.toMatchObject({ code: 'LITI_AUTH_REQUIRED' })
 })
 
 it('uses direct model-bound operations with one target read and redacts write-only results', async () => {

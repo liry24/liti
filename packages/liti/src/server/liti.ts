@@ -1,4 +1,7 @@
 import { prepareTranslations } from './translations'
+import { createManagementOperations } from './operations'
+import type { ModelPreparation, ModelPreparationContext } from '../preparation'
+import type { OperationContext } from '../plugins'
 import type { ComarkContent, ContentFile } from 'comark-content'
 import { createMarkdownContent } from '../markdown/content'
 import { projectMarkdownListSummary } from '../markdown/list-summary'
@@ -92,6 +95,8 @@ const mimeMatches = (value: string, accepted: readonly string[]): boolean =>
     accepted.some((entry) => entry === value || (entry.endsWith('/*') && value.startsWith(entry.slice(0, -1))))
 
 export class Liti<Context = unknown> {
+    // shortcut: candidates survive retries only within this runtime; durable exactly-once inference needs an operation store.
+    readonly #publicationPreparation = new Map<string, Promise<Record<string, unknown>>>()
     readonly #assets: AssetManager<Context>
     readonly #storage: LitiStorage
     readonly diagnostics: LitiDiagnostic[] = []
@@ -137,6 +142,36 @@ export class Liti<Context = unknown> {
         for (const [name, model] of Object.entries(options.config.models)) {
             if (model.publishing === false && model.scheduling === true)
                 throw new LitiError('LITI_INVALID_INPUT', `Model "${name}" cannot schedule without publishing.`)
+            if (model.unique !== undefined && !Array.isArray(model.unique))
+                throw new LitiError('LITI_INVALID_INPUT', `Model "${name}" unique constraints must be field tuples.`)
+            for (const fields of model.unique ?? []) {
+                if (
+                    !Array.isArray(fields) ||
+                    !fields.length ||
+                    new Set(fields).size !== fields.length ||
+                    fields.some((key) => {
+                        const field = model.fields[key]
+                        return (
+                            !field ||
+                            field.i18n ||
+                            ![
+                                'text',
+                                'textarea',
+                                'url',
+                                'datetime',
+                                'select',
+                                'number',
+                                'boolean',
+                                'relation',
+                            ].includes(field.kind)
+                        )
+                    })
+                )
+                    throw new LitiError(
+                        'LITI_INVALID_INPUT',
+                        `Model "${name}" unique constraints require distinct, non-translated scalar fields.`,
+                    )
+            }
         }
         if (Object.hasOwn(options.config.authorization?.roles ?? {}, 'admin'))
             throw new LitiError('LITI_INVALID_INPUT', 'The built-in admin role cannot be overridden.')
@@ -438,6 +473,7 @@ export class Liti<Context = unknown> {
         revisionId: string,
         input: { actorId?: string; expectedVersion: number },
         loaded?: EntryRecord,
+        context: OperationContext = {},
     ): Promise<EntryRecord> {
         await this.initialize()
         const entry = await this.#requiredEntry(entryId, loaded)
@@ -454,6 +490,7 @@ export class Liti<Context = unknown> {
                 },
             },
             'restore',
+            context,
         )
     }
 
@@ -478,8 +515,43 @@ export class Liti<Context = unknown> {
         definition: ModelDefinition,
         value: Record<string, unknown>,
         defaults: boolean,
+        preparation?: Omit<ModelPreparationContext, 'data' | 'issues' | 'read' | 'executeAction'>,
     ): Promise<{ assets: IndexedReference[]; data: Record<string, unknown>; relations: IndexedReference[] }> {
-        const data = defaults ? applyFieldDefaults(definition.fields, value) : value
+        let data = defaults ? applyFieldDefaults(definition.fields, value) : structuredClone(value)
+        if (preparation && (definition.prepare || definition.preparePublication)) {
+            const { validate: _validate, ...structureDefinition } = definition
+            const structure = await validateModelData(structureDefinition, data)
+            if (!structure.data) throw new LitiError('LITI_INVALID_INPUT', 'Model validation failed.', structure.issues)
+            data = structure.data
+            await this.#runPreparation(definition.prepare, data, preparation)
+            if (
+                definition.preparePublication &&
+                (preparation.operation === 'publish' || preparation.operation === 'schedule')
+            ) {
+                const key = stableJson([
+                    preparation.model,
+                    preparation.entryId,
+                    preparation.previous?.version,
+                    preparation.operation,
+                    preparation.locale,
+                    preparation.actor,
+                    data,
+                ])
+                let pending = this.#publicationPreparation.get(key)
+                if (!pending) {
+                    const candidate = structuredClone(data)
+                    pending = this.#runPreparation(definition.preparePublication, candidate, preparation).then(
+                        () => candidate,
+                    )
+                    this.#publicationPreparation.set(key, pending)
+                    void pending.catch(() => this.#publicationPreparation.delete(key))
+                    if (this.#publicationPreparation.size > 32)
+                        this.#publicationPreparation.delete(this.#publicationPreparation.keys().next().value!)
+                }
+                data = structuredClone(await pending)
+                preparation.signal?.throwIfAborted()
+            }
+        }
         const validated = await validateModelData(definition, data)
         if (!validated.data) {
             throw new LitiError('LITI_INVALID_INPUT', 'Model validation failed.', validated.issues)
@@ -489,6 +561,48 @@ export class Liti<Context = unknown> {
         return { data: validated.data, ...references }
     }
 
+    async #runPreparation(
+        hook: ModelPreparation | undefined,
+        data: Record<string, unknown>,
+        context: Omit<ModelPreparationContext, 'data' | 'issues' | 'read' | 'executeAction'>,
+        immutable = false,
+    ) {
+        if (!hook) return
+        context.signal?.throwIfAborted()
+        const operations = createManagementOperations<Context, Record<string, Record<string, unknown>>>(
+            () => this,
+            context,
+        )
+        const issues: LitiIssue[] = []
+        const candidate = immutable ? structuredClone(data) : data
+        await hook({
+            ...context,
+            ...(context.previous ? { previous: structuredClone(context.previous) } : {}),
+            data: candidate,
+            issues,
+            read: {
+                current: {
+                    getEntry: operations.getEntry,
+                    listEntries: operations.listEntries,
+                    listAllEntries: operations.listAllEntries,
+                    referencesTo: operations.referencesTo,
+                },
+                published: {
+                    get: (model, id, locale) => this.getPublicEntry(model, id, locale),
+                    list: (model, locale) => this.listPublicEntries(model, locale),
+                },
+            },
+            executeAction: operations.executeAction,
+        })
+        context.signal?.throwIfAborted()
+        if (issues.length) throw new LitiError('LITI_INVALID_INPUT', 'Model preparation failed.', issues)
+        if (immutable && stableJson(candidate) !== stableJson(data))
+            throw new LitiError(
+                'LITI_SCHEMA_MIGRATION_REQUIRED',
+                'Publication validation cannot change stored values; save a new revision.',
+            )
+    }
+
     async #prepareSnapshot(
         definition: ModelDefinition,
         data: Record<string, unknown>,
@@ -496,8 +610,18 @@ export class Liti<Context = unknown> {
         input: TranslationInput = {},
         previous: Translations = {},
         defaults = false,
+        preparation?: Omit<
+            ModelPreparationContext,
+            'data' | 'issues' | 'read' | 'executeAction' | 'locale' | 'defaultLocale'
+        >,
     ) {
-        const original = await this.#prepareData(definition, data, defaults)
+        const prepare = preparation
+            ? (value: Record<string, unknown>, locale: string, withDefaults = false) =>
+                  this.#prepareData(definition, value, withDefaults, { ...preparation, locale, defaultLocale })
+            : undefined
+        const original = prepare
+            ? await prepare(data, defaultLocale, defaults)
+            : await this.#prepareData(definition, data, defaults)
         const translations = await prepareTranslations(
             definition,
             original.data,
@@ -505,11 +629,13 @@ export class Liti<Context = unknown> {
             this.#options.locales?.supported ?? [],
             input,
             previous,
+            prepare && (async (value, locale) => (await prepare(value, locale)).data),
         )
         const assets = original.assets.map((ref) => ({ ...ref, locale: defaultLocale }))
         const relations = original.relations.map((ref) => ({ ...ref, locale: defaultLocale }))
         for (const [locale, override] of Object.entries(translations)) {
-            const prepared = await this.#prepareData(definition, { ...original.data, ...override }, false)
+            const prepared = collectReferences(definition.fields, { ...original.data, ...override })
+            await this.#assertReferences(definition, prepared)
             assets.push(...prepared.assets.map((ref) => ({ ...ref, locale })))
             relations.push(...prepared.relations.map((ref) => ({ ...ref, locale })))
         }
@@ -519,7 +645,10 @@ export class Liti<Context = unknown> {
     async #prepareRevision(definition: ModelDefinition, revision: RevisionRow, defaultLocale: string) {
         const stored = projectStoredFields(definition.fields, revision.data)
         const prepared = await this.#prepareSnapshot(definition, stored, defaultLocale, revision.translations)
-        if (stableJson(prepared.data) !== stableJson(stored)) {
+        if (
+            stableJson(prepared.data) !== stableJson(stored) ||
+            stableJson(prepared.translations) !== stableJson(revision.translations)
+        ) {
             throw new LitiError(
                 'LITI_SCHEMA_MIGRATION_REQUIRED',
                 'Validation transforms changed this revision; save the transformed data before publishing.',
@@ -803,7 +932,35 @@ export class Liti<Context = unknown> {
         }
     }
 
-    async #commit(input: StorageContentCommit): Promise<void> {
+    async #commit(input: StorageContentCommit, context: OperationContext = {}): Promise<void> {
+        const guard = () => {
+            context.signal?.throwIfAborted()
+            context.request?.signal.throwIfAborted()
+            if (context.deadline !== undefined && context.deadline <= Date.now())
+                throw new DOMException('The operation deadline has elapsed.', 'TimeoutError')
+        }
+        guard()
+        const unique: StorageCondition[] = []
+        for (const revision of input.revisions ?? []) {
+            const current =
+                input.create?.currentRevisionId === revision.id ||
+                input.updates?.some(
+                    (update) => update.id === revision.entryId && update.patch.currentRevisionId === revision.id,
+                )
+            if (!current) continue
+            for (const fields of this.#model(revision.model).unique ?? []) {
+                if (fields.some((field) => revision.data[field] == null)) continue
+                const values: Record<string, string | number | boolean> = {}
+                for (const field of fields) {
+                    const value = revision.data[field]
+                    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean')
+                        throw new LitiError('LITI_INVALID_INPUT', `Unique field "${field}" must be scalar.`)
+                    values[field] = value
+                }
+                unique.push({ kind: 'uniqueValues', model: revision.model, entryId: revision.entryId, values })
+            }
+        }
+        if (unique.length) input = { ...input, conditions: [...(input.conditions ?? []), ...unique] }
         if (input.prune !== undefined || !Object.values(this.config.models).some((model) => model.revisions === false))
             return this.#storage.commit(input)
         const ids = new Set([
@@ -817,6 +974,7 @@ export class Liti<Context = unknown> {
                 (await this.#storage.readEntry(id))?.model
             if (model && this.#model(model).revisions === false) prune.push(id)
         }
+        guard()
         await this.#storage.commit({ ...input, ...(prune.length ? { prune } : {}) })
     }
 
@@ -856,59 +1014,68 @@ export class Liti<Context = unknown> {
         }
     }
 
-    async createEntry(modelName: string, input: EntryInput): Promise<EntryRecord> {
+    async createEntry(modelName: string, input: EntryInput, context: OperationContext = {}): Promise<EntryRecord> {
         await this.initialize()
         const definition = this.#model(modelName)
         const locale = this.#locale(definition, input.defaultLocale)
         const id = safeId(input.id ?? this.#id(), 'Entry ID')
-        const prepared = await this.#prepareSnapshot(definition, input.data, locale, input.translations, {}, true)
+        const prepared = await this.#prepareSnapshot(definition, input.data, locale, input.translations, {}, true, {
+            ...context,
+            model: modelName,
+            entryId: id,
+            operation: 'create',
+        })
         const revisionId = this.#id()
         const time = this.#now()
         const published = definition.publishing === false
         const publicGraphChanged = published && definition.public !== false
         if (published) await this.#assertPublishableRelations(definition, prepared.relations, id)
-        await this.#commit({
-            conditions: this.#referenceGuard(definition, prepared, published),
-            create: {
-                id,
-                model: modelName,
-                defaultLocale: locale,
-                sortOrder: input.sortOrder ?? null,
-                version: 1,
-                createdAt: time,
-                updatedAt: time,
-                publishedAt: published ? time : null,
-                currentRevisionId: revisionId,
-                publishedRevisionId: published ? revisionId : null,
-                scheduledRevisionId: null,
-                scheduledAt: null,
-            },
-            revisions: [
-                this.#revisionCandidate({
-                    ...(input.actorId ? { actorId: input.actorId } : {}),
-                    ...prepared,
-                    entryId: id,
+        await this.#commit(
+            {
+                conditions: this.#referenceGuard(definition, prepared, published),
+                create: {
+                    id,
                     model: modelName,
-                    revisionId,
+                    defaultLocale: locale,
+                    sortOrder: input.sortOrder ?? null,
+                    version: 1,
+                    createdAt: time,
+                    updatedAt: time,
+                    publishedAt: published ? time : null,
+                    firstPublishedAt: published ? time : null,
+                    currentRevisionId: revisionId,
+                    publishedRevisionId: published ? revisionId : null,
+                    scheduledRevisionId: null,
+                    scheduledAt: null,
+                },
+                revisions: [
+                    this.#revisionCandidate({
+                        ...(input.actorId ? { actorId: input.actorId } : {}),
+                        ...prepared,
+                        entryId: id,
+                        model: modelName,
+                        revisionId,
 
-                    time,
-                }),
-            ],
-            routes: published
-                ? await this.#routeChanges({
-                      data: prepared.data,
-                      translations: prepared.translations,
-                      definition,
-                      entryId: id,
-                      modelName,
-                      locale,
-                      revisionId,
+                        time,
+                    }),
+                ],
+                routes: published
+                    ? await this.#routeChanges({
+                          data: prepared.data,
+                          translations: prepared.translations,
+                          definition,
+                          entryId: id,
+                          modelName,
+                          locale,
+                          revisionId,
 
-                      time,
-                  })
-                : [],
-            publicGeneration: publicGraphChanged,
-        })
+                          time,
+                      })
+                    : [],
+                publicGeneration: publicGraphChanged,
+            },
+            context,
+        )
         await this.#afterCommit(
             {
                 ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -924,68 +1091,91 @@ export class Liti<Context = unknown> {
         return this.getEntry(id)
     }
 
-    async updateEntry(entryId: string, input: UpdateEntryInput, loaded?: EntryRecord): Promise<EntryRecord> {
+    async updateEntry(
+        entryId: string,
+        input: UpdateEntryInput,
+        loaded?: EntryRecord,
+        context: OperationContext = {},
+    ): Promise<EntryRecord> {
         await this.initialize()
         const entry = await this.#requiredEntry(entryId, loaded)
-        return this.#updateEntry(entry, input, 'update')
+        return this.#updateEntry(entry, input, 'update', context)
     }
 
-    async #updateEntry(entry: EntryRecord, input: UpdateEntryInput, type: 'update' | 'restore'): Promise<EntryRecord> {
+    async #updateEntry(
+        entry: EntryRecord,
+        input: UpdateEntryInput,
+        type: 'update' | 'restore',
+        context: OperationContext,
+    ): Promise<EntryRecord> {
         const entryId = entry.id
         const definition = this.#model(entry.model)
+        if (entry.version !== input.expectedVersion)
+            throw new LitiError('LITI_CONFLICT', 'The entry version changed; reload before saving.')
         const prepared = await this.#prepareSnapshot(
             definition,
             { ...projectStoredFields(definition.fields, entry.data), ...input.data },
             entry.defaultLocale,
             input.translations,
             entry.translations,
+            false,
+            { ...context, model: entry.model, entryId, previous: entry, operation: type },
         )
         const revisionId = this.#id(),
             time = this.#now(),
             published = definition.publishing === false
         const publicGraphChanged = published && definition.public !== false
         if (published) await this.#assertPublishableRelations(definition, prepared.relations, entryId)
-        await this.#commit({
-            conditions: [
-                this.#guard(entryId, input.expectedVersion),
-                ...this.#referenceGuard(definition, prepared, published),
-            ],
-            revisions: [
-                this.#revisionCandidate({
-                    ...(input.actorId ? { actorId: input.actorId } : {}),
-                    ...prepared,
-                    entryId,
-                    model: entry.model,
-                    revisionId,
+        await this.#commit(
+            {
+                conditions: [
+                    this.#guard(entryId, input.expectedVersion),
+                    ...this.#referenceGuard(definition, prepared, published),
+                ],
+                revisions: [
+                    this.#revisionCandidate({
+                        ...(input.actorId ? { actorId: input.actorId } : {}),
+                        ...prepared,
+                        entryId,
+                        model: entry.model,
+                        revisionId,
 
-                    time,
-                }),
-            ],
-            routes: published
-                ? await this.#routeChanges({
-                      data: prepared.data,
-                      translations: prepared.translations,
-                      definition,
-                      entryId,
-                      modelName: entry.model,
-                      locale: entry.defaultLocale,
-                      revisionId,
+                        time,
+                    }),
+                ],
+                routes: published
+                    ? await this.#routeChanges({
+                          data: prepared.data,
+                          translations: prepared.translations,
+                          definition,
+                          entryId,
+                          modelName: entry.model,
+                          locale: entry.defaultLocale,
+                          revisionId,
 
-                      time,
-                  })
-                : [],
-            updates: [
-                {
-                    id: entryId,
-                    patch: {
-                        currentRevisionId: revisionId,
-                        updatedAt: time,
-                        ...(published ? { publishedRevisionId: revisionId, publishedAt: time } : {}),
+                          time,
+                      })
+                    : [],
+                updates: [
+                    {
+                        id: entryId,
+                        patch: {
+                            currentRevisionId: revisionId,
+                            updatedAt: time,
+                            ...(published
+                                ? {
+                                      publishedRevisionId: revisionId,
+                                      publishedAt: time,
+                                      firstPublishedAt: entry.firstPublishedAt ?? time,
+                                  }
+                                : {}),
+                        },
                     },
-                },
-            ],
-            publicGeneration: publicGraphChanged,
-        })
+                ],
+                publicGeneration: publicGraphChanged,
+            },
+            context,
+        )
         await this.#afterCommit(
             {
                 ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -1031,8 +1221,22 @@ export class Liti<Context = unknown> {
         }
     }
 
-    async #publicationCandidate(entry: EntryRecord, input: PublishEntryInput, publishing: boolean) {
+    async #publicationCandidate(
+        entry: EntryRecord,
+        input: PublishEntryInput,
+        publishing: boolean,
+        context: OperationContext = {},
+    ) {
         const definition = this.#model(entry.model)
+        if (entry.version !== input.expectedVersion)
+            throw new LitiError('LITI_CONFLICT', 'The entry version changed; reload before publishing.')
+        const preparation = {
+            ...context,
+            model: entry.model,
+            entryId: entry.id,
+            previous: entry,
+            operation: publishing ? ('publish' as const) : ('schedule' as const),
+        }
         if (input.draft !== undefined && input.revisionId !== undefined)
             throw new LitiError('LITI_INVALID_INPUT', 'draft and revisionId are mutually exclusive.')
         if (
@@ -1052,10 +1256,17 @@ export class Liti<Context = unknown> {
                   entry.defaultLocale,
                   input.draft.translations,
                   entry.translations,
+                  false,
+                  preparation,
               )
-            : publishing
-              ? await this.#prepareRevision(definition, revision!, entry.defaultLocale)
-              : undefined
+            : await this.#prepareRevision(definition, revision!, entry.defaultLocale)
+        for (const locale of [entry.defaultLocale, ...Object.keys(prepared.translations)])
+            await this.#runPreparation(
+                definition.validatePublication,
+                { ...prepared.data, ...prepared.translations[locale] },
+                { ...preparation, locale, defaultLocale: entry.defaultLocale },
+                true,
+            )
         const revisionId = revision?.id ?? this.#id()
         if (publishing) await this.#assertPublishableRelations(definition, prepared!.relations, entry.id)
         const time = this.#now()
@@ -1086,47 +1297,60 @@ export class Liti<Context = unknown> {
         }
     }
 
-    async publishEntry(entryId: string, input: PublishEntryInput, loaded?: EntryRecord): Promise<EntryRecord> {
+    async publishEntry(
+        entryId: string,
+        input: PublishEntryInput,
+        loaded?: EntryRecord,
+        context: OperationContext = {},
+    ): Promise<EntryRecord> {
         await this.initialize()
         const entry = await this.#requiredEntry(entryId, loaded)
         this.#assertFeature(entry.model, 'publishing')
-        return this.#publishEntry(entry, input, true)
+        return this.#publishEntry(entry, input, true, context)
     }
 
-    async #publishEntry(entry: EntryRecord, input: PublishEntryInput, synchronize: boolean): Promise<EntryRecord> {
+    async #publishEntry(
+        entry: EntryRecord,
+        input: PublishEntryInput,
+        synchronize: boolean,
+        context: OperationContext = {},
+    ): Promise<EntryRecord> {
         await this.initialize()
         const entryId = entry.id
-        const candidate = await this.#publicationCandidate(entry, input, true)
+        const candidate = await this.#publicationCandidate(entry, input, true, context)
         const { definition, prepared, revisionId, time, conditions, revisions } = candidate
-        await this.#commit({
-            conditions,
-            revisions,
-            routes: await this.#routeChanges({
-                data: prepared!.data,
-                translations: prepared!.translations,
-                definition,
-                entryId,
-                modelName: entry.model,
-                locale: entry.locale,
-                revisionId,
+        await this.#commit(
+            {
+                conditions,
+                revisions,
+                routes: await this.#routeChanges({
+                    data: prepared!.data,
+                    translations: prepared!.translations,
+                    definition,
+                    entryId,
+                    modelName: entry.model,
+                    locale: entry.locale,
+                    revisionId,
 
-                time,
-            }),
-            publicGeneration: definition.public !== false,
-            updates: [
-                {
-                    id: entryId,
-                    patch: {
-                        ...(input.draft ? { currentRevisionId: revisionId } : {}),
-                        publishedRevisionId: revisionId,
-                        publishedAt: time,
-                        scheduledRevisionId: null,
-                        scheduledAt: null,
-                        updatedAt: time,
+                    time,
+                }),
+                publicGeneration: definition.public !== false,
+                updates: [
+                    {
+                        id: entryId,
+                        patch: {
+                            ...(input.draft ? { currentRevisionId: revisionId, updatedAt: time } : {}),
+                            publishedRevisionId: revisionId,
+                            publishedAt: time,
+                            firstPublishedAt: entry.firstPublishedAt ?? time,
+                            scheduledRevisionId: null,
+                            scheduledAt: null,
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            },
+            context,
+        )
         await this.#afterCommit(
             {
                 ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -1194,7 +1418,6 @@ export class Liti<Context = unknown> {
                         scheduledRevisionId: null,
                         scheduledAt: null,
                         publishedAt: null,
-                        updatedAt: this.#now(),
                     },
                 },
             ],
@@ -1217,6 +1440,7 @@ export class Liti<Context = unknown> {
         entryId: string,
         input: PublishEntryInput & { at: Date | string },
         loaded?: EntryRecord,
+        context: OperationContext = {},
     ): Promise<EntryRecord> {
         await this.initialize()
         const entry = await this.#requiredEntry(entryId, loaded)
@@ -1224,25 +1448,27 @@ export class Liti<Context = unknown> {
         const at = input.at instanceof Date ? input.at : new Date(input.at)
         if (!Number.isFinite(at.getTime()) || at.getTime() <= this.#date().getTime())
             throw new LitiError('LITI_INVALID_INPUT', 'Scheduled publish time must be in the future.')
-        const candidate = await this.#publicationCandidate(entry, input, false)
+        const candidate = await this.#publicationCandidate(entry, input, false, context)
         const { revisionId, time, conditions, revisions } = candidate
         const scheduledData = candidate.prepared?.data ?? (await this.#revision(revisionId, entry.id)).data
         entryPath(entry.model, candidate.definition, { id: entry.id, data: scheduledData }, this.#apiBases())
-        await this.#commit({
-            conditions,
-            revisions,
-            updates: [
-                {
-                    id: entryId,
-                    patch: {
-                        ...(input.draft ? { currentRevisionId: revisionId } : {}),
-                        scheduledRevisionId: revisionId,
-                        scheduledAt: at.toISOString(),
-                        updatedAt: time,
+        await this.#commit(
+            {
+                conditions,
+                revisions,
+                updates: [
+                    {
+                        id: entryId,
+                        patch: {
+                            ...(input.draft ? { currentRevisionId: revisionId, updatedAt: time } : {}),
+                            scheduledRevisionId: revisionId,
+                            scheduledAt: at.toISOString(),
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            },
+            context,
+        )
         await this.#afterCommit({
             ...(input.actorId ? { actorId: input.actorId } : {}),
             entryId,
@@ -1265,7 +1491,7 @@ export class Liti<Context = unknown> {
         this.#assertFeature(entry.model, 'scheduling')
         await this.#commit({
             conditions: [this.#guard(entryId, input.expectedVersion)],
-            updates: [{ id: entryId, patch: { scheduledRevisionId: null, scheduledAt: null, updatedAt: this.#now() } }],
+            updates: [{ id: entryId, patch: { scheduledRevisionId: null, scheduledAt: null } }],
         })
         await this.#afterCommit({
             ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -1278,7 +1504,7 @@ export class Liti<Context = unknown> {
         return this.getEntry(entryId)
     }
 
-    async publishDue(now = this.#date()): Promise<PublishDueResult> {
+    async publishDue(now = this.#date(), context: OperationContext = {}): Promise<PublishDueResult> {
         await this.initialize()
         const due = await this.#storage.scheduledBefore(now.toISOString())
 
@@ -1293,6 +1519,7 @@ export class Liti<Context = unknown> {
                         revisionId: entry.revisionId,
                     },
                     false,
+                    context,
                 )
                 result.published.push(entry.id)
             } catch (error) {
@@ -1342,7 +1569,6 @@ export class Liti<Context = unknown> {
             )
         if (!items.length) return []
         const entries = await Promise.all(items.map(({ id }) => this.#entryRow(id)))
-        const time = this.#now()
         await this.#commit({
             conditions: items.map(({ id, expectedVersion }) => ({
                 kind: 'entryVersion',
@@ -1352,12 +1578,10 @@ export class Liti<Context = unknown> {
             })),
             prune: this.#model(model).revisions === false ? items.map((item) => item.id) : [],
             publicGeneration: Boolean(this.#publicModel(model)) && entries.some((entry) => entry?.publishedRevisionId),
-            updates: items.map((item, index) => ({
+            updates: items.map((item) => ({
                 id: item.id,
                 patch: {
                     sortOrder: item.sortOrder,
-                    updatedAt: time,
-                    ...(entries[index]?.publishedRevisionId ? { publishedAt: time } : {}),
                 },
             })),
         })
@@ -1852,7 +2076,7 @@ export class Liti<Context = unknown> {
             return row &&
                 graph.has(row.id) &&
                 (this.#resolveRouteRule(route.path).sitemap ?? options?.sitemap) !== false
-                ? [{ lastmod: row.publishedAt, loc: decodeURI(route.path) }]
+                ? [{ lastmod: row.updatedAt, loc: decodeURI(route.path) }]
                 : []
         })
     }

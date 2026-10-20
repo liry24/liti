@@ -2,6 +2,7 @@ import { LitiError } from '../errors'
 import { createManagementOperations } from './operations'
 import { projectMarkdownListSummary } from '../markdown/list-summary'
 import type { Liti } from './liti'
+import { handleActionRequest } from './actions-http'
 
 const jsonResponse = (value: unknown, init: ResponseInit = {}): Response => {
     const headers = new Headers(init.headers)
@@ -107,6 +108,8 @@ const handleManagementRequestInner = async <Context>(
             context,
         )
         await api.authorize()
+        if (path[0] === 'actions')
+            return handleActionRequest(request, base, (name, input) => api.executeAction(name, input))
         const json = jsonResponse
         if (method === 'GET' && path.length === 1) {
             if (path[0] === 'models') return json(await api.models())

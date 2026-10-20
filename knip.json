@@ -1,51 +1,69 @@
 {
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "ignoreExportsUsedInFile": true,
+    "ignore": ["packages/*/dist/**", "test/fixtures/**/.nuxt/**", "test/fixtures/**/.void/**"],
     "workspaces": {
         ".": {
             "entry": [
                 "*.config.ts",
+                "scripts/*.mjs",
                 "test/**/*.test.ts",
                 "test/*.mjs",
-                "test/types.ts",
-                "test/fixtures/**/*.{ts,vue}",
-                "test/client-types.ts",
-                "test/config-types.ts",
-                "test/ai-client-types.ts",
-                "test/ai-actions-types.ts",
-                "test/seo-types.ts"
+                "test/*types.ts",
+                "test/fixtures/**/*.{ts,vue}"
             ],
-            "project": ["*.ts", "test/**/*.{ts,mjs,vue}"],
-            "ignoreDependencies": ["@intlify/h3"],
-            "ignore": ["test/fixtures/**/.nuxt/**", "test/fixtures/**/.wrangler/**"]
+            "project": ["*.ts", "scripts/*.{ts,mjs}", "test/**/*.{ts,mjs,vue}"],
+            "ignoreDependencies": ["@litijs/drizzle", "@litijs/sqlite", "@arethetypeswrong/cli", "@intlify/h3"],
+            "ignoreBinaries": ["generate"]
         },
         "packages/liti": {
             "entry": [
-                "src/{index,adapter,ai,client,cli,form,generate,nuxt}.ts!",
-                "src/runtime/*.ts!",
-                "src/server/index.ts!",
-                "src/nuxt/server.ts!",
-                "src/devtools/{index,dock,client/app}.ts!",
-                "src/runtime/tasks/*.ts!",
-                "src/admin-client.ts!",
-                "src/server-api.ts!",
-                "src/public-client.ts!",
-                "src/seo.ts!",
-                "src/model.ts!",
-                "src/schema.ts!"
+                "src/{index,adapter,tooling,client,public-client,admin-client,descriptor,config-resolution,config,seo}.ts!",
+                "src/server/index.ts!"
             ],
-            "project": ["src/**/*.ts!", "*.config.ts"],
-            "ignoreDependencies": [
-                "@nuxtjs/i18n",
-                "@nuxtjs/robots",
-                "@nuxtjs/sitemap",
-                "nuxt-og-image",
-                "nuxt-schema-org",
-                "nuxt-seo-utils"
-            ],
+            "project": ["src/**/*.ts!"],
+            "ignoreDependencies": ["@types/markdown-it", "@babel/parser", "jiti", "nypm", "semver", "yaml"],
             "ignoreIssues": {
                 "package.json": ["optionalPeerDependencies"]
             }
+        },
+        "packages/cli": {
+            "entry": ["src/index.ts!"],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/vue": {
+            "entry": ["src/{index,form,model}.ts!"],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/nuxt": {
+            "entry": [
+                "src/{index,server-api}.ts!",
+                "src/nuxt/server.ts!",
+                "src/runtime/**/*.ts!",
+                "src/devtools/{index,dock,client/app}.ts!"
+            ],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/sqlite": {
+            "entry": ["src/{index,runtime,native,connection,schema,schema-source}.ts!"],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/drizzle": {
+            "entry": ["src/{index,runtime,schema,tooling}.ts!"],
+            "project": ["src/**/*.ts!"],
+            "ignoreDependencies": ["drizzle-kit"]
+        },
+        "packages/void": {
+            "entry": ["src/{index,runtime,session,context,files,auth,nuxt,storage,database,schema,tooling}.ts!"],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/ai": {
+            "entry": ["src/{index,ai-sdk,void}.ts!"],
+            "project": ["src/**/*.ts!"]
+        },
+        "packages/blog": {
+            "entry": ["src/{index,vue}.ts!"],
+            "project": ["src/**/*.ts!"]
         }
     }
 }

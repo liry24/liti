@@ -32,8 +32,8 @@ const translationColumns =
 const entryColumns = `e.id, e.model, e.default_locale AS defaultLocale, e.current_revision_id AS currentRevisionId,
     e.published_revision_id AS publishedRevisionId, e.scheduled_revision_id AS scheduledRevisionId, e.scheduled_at AS scheduledAt,
     e.sort_order AS sortOrder, e.version, e.created_at AS createdAt, e.updated_at AS updatedAt, e.published_at AS publishedAt,
-    r.id AS revisionId, r.data, ${translationColumns}`
-const publishedColumns = `e.id, e.model, e.default_locale AS defaultLocale, e.published_at AS publishedAt, r.id AS revisionId, r.data, ${translationColumns}`
+    e.first_published_at AS firstPublishedAt, r.id AS revisionId, r.data, ${translationColumns}`
+const publishedColumns = `e.id, e.model, e.default_locale AS defaultLocale, e.published_at AS publishedAt, e.first_published_at AS firstPublishedAt, r.created_at AS updatedAt, r.id AS revisionId, r.data, ${translationColumns}`
 const assetColumns = `id, storage, key, content_type AS contentType, size, checksum, metadata, state,
     operation_token AS operationToken, lease_expires_at AS leaseExpiresAt, created_at AS createdAt, updated_at AS updatedAt`
 type StoredEntry = Omit<EntryRecord, 'data' | 'translations'> & { data: string; translations: string }
@@ -69,6 +69,7 @@ const patchColumns = {
     scheduledRevisionId: 'scheduled_revision_id',
     scheduledAt: 'scheduled_at',
     publishedAt: 'published_at',
+    firstPublishedAt: 'first_published_at',
     sortOrder: 'sort_order',
     updatedAt: 'updated_at',
 } as const
@@ -136,6 +137,14 @@ export const sqliteStorage = (
         }
         for (const value of values) {
             switch (value.kind) {
+                case 'uniqueValues':
+                    // shortcut: uniqueness scans current revisions; add a keyed index when write profiling warrants it.
+                    clauses.push(`NOT EXISTS (SELECT 1 FROM liti_entries e JOIN ${source} r ON r.id=e.current_revision_id
+                        WHERE e.model=? AND e.id<>? AND NOT EXISTS (
+                            SELECT 1 FROM json_each(?) candidate WHERE NOT EXISTS (
+                                SELECT 1 FROM json_each(r.data) stored WHERE stored.key=candidate.key AND stored.value IS candidate.value)))`)
+                    params.push(value.model, value.entryId, JSON.stringify(value.values))
+                    break
                 case 'entryVersion':
                     break
                 case 'publicGeneration':
@@ -497,7 +506,7 @@ export const sqliteStorage = (
                 const value = input.create
                 statements.push(
                     gated(
-                        'INSERT INTO liti_entries(id,model,default_locale,current_revision_id,published_revision_id,scheduled_revision_id,scheduled_at,sort_order,version,created_at,updated_at,published_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?',
+                        'INSERT INTO liti_entries(id,model,default_locale,current_revision_id,published_revision_id,scheduled_revision_id,scheduled_at,sort_order,version,created_at,updated_at,published_at,first_published_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?',
                         [
                             value.id,
                             value.model,
@@ -511,6 +520,7 @@ export const sqliteStorage = (
                             value.createdAt,
                             value.updatedAt,
                             value.publishedAt,
+                            value.firstPublishedAt,
                         ],
                         true,
                     ),

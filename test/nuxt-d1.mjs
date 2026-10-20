@@ -251,7 +251,11 @@ try {
     if (JSON.stringify(await request('/api/content/posts')) !== '[]')
         throw new Error('The explicit migration did not produce an empty public model.')
     const manual = await request('/api/__seed', { method: 'POST' })
-    if (!manual.scheduledAt || JSON.stringify(await request('/api/content/posts')) !== '[]')
+    if (
+        !manual.scheduledAt ||
+        manual.firstPublishedAt !== null ||
+        JSON.stringify(await request('/api/content/posts')) !== '[]'
+    )
         throw new Error('The scheduled D1 revision became public before its task ran.')
     await new Promise((resolveWait) => setTimeout(resolveWait, 600))
     const task = await request('/api/__task', { method: 'POST' })
@@ -259,6 +263,9 @@ try {
         throw new Error(`The manual D1 publication task failed: ${JSON.stringify(task)}`)
     const published = await request('/api/content/posts')
     if (published[0]?.data?.title !== 'D1 manual runtime') throw new Error('The D1 public entry was not published.')
+    const publishedMeta = published[0].data['_liti']
+    if (!publishedMeta.firstPublishedAt || publishedMeta.firstPublishedAt !== publishedMeta.publishedAt)
+        throw new Error('Native D1 publication did not atomically record its first publication date.')
     const repeat = await request('/api/__task', { method: 'POST' })
     if (repeat.published?.length || repeat.failed?.length)
         throw new Error('Repeated task execution was not idempotent.')

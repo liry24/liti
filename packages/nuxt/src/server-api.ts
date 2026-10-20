@@ -1,7 +1,9 @@
+import type { RegisteredLitiSchema, ActionMetadata } from '../../liti/src/query'
+import type { ActionResult } from '../../liti/src/plugins'
+type Actions = RegisteredLitiSchema['actions']
 import type { RequestEvent } from 'nuxt/server'
 import { litiModels, type createAdminClient } from '../../liti/src/admin-client'
 import type {
-    LitiNamedAiActions,
     LitiFormModels,
     LitiPublicModels,
     LitiPublicSummaryModels,
@@ -106,13 +108,20 @@ export const useAdmin = (event?: RequestEvent, platformContext?: object): Server
     }
     const task = async (kind: 'publishDue' | 'collectAssets' | 'syncAssets' | 'rebuildSearch', now?: Date) => {
         const admin = await instance()
+        const actor = event
+            ? await admin.authorizeRequest(event.req, event)
+            : { id: `liti:task:${kind}`, roles: ['admin'] }
         if (event) {
-            const actor = await admin.authorizeRequest(event.req, event)
             if (kind === 'publishDue') admin.assertPermission(actor, 'system', 'publishDue')
             else if (kind === 'rebuildSearch') admin.assertPermission(actor, 'system', 'rebuildSearch')
             else admin.assertPermission(actor, 'asset', 'gc')
         }
-        if (kind === 'publishDue') return admin.publishDue(now)
+        if (kind === 'publishDue')
+            return admin.publishDue(now, {
+                actor,
+                ...(event ? { request: event.req, signal: event.req.signal } : {}),
+                ...(platformContext ? { platformContext } : {}),
+            })
         if (kind === 'collectAssets') return admin.runAssetGC()
         if (kind === 'rebuildSearch') return admin.rebuildSearch()
         return admin.syncAssetCopies()
@@ -240,14 +249,17 @@ export const useAdmin = (event?: RequestEvent, platformContext?: object): Server
             download: (id: string) => raw.downloadAsset(id),
             remove: (id: string) => raw.deleteAsset(id),
         },
-        ai: {
-            run: async <Name extends Extract<keyof LitiNamedAiActions, string>>(
+        actions: {
+            run: async <Name extends Extract<keyof Actions, string>>(
                 name: Name,
-                input: LitiNamedAiActions[Name]['input'],
-            ): Promise<LitiNamedAiActions[Name]['data']> => {
+                input: Actions[Name]['input'],
+            ): Promise<ActionResult<Actions[Name]['output'], ActionMetadata<Actions[Name]>>> => {
                 if (!event) throw new LitiError('LITI_AUTH_REQUIRED', 'AI actions require a request event.')
-                if (!runtime.runAiAction) throw new LitiError('LITI_AI_UNAVAILABLE', 'AI actions are unavailable.')
-                return (await runtime.runAiAction(event, name, { input })) as LitiNamedAiActions[Name]['data']
+                if (!runtime.executeAction) throw new LitiError('LITI_AI_UNAVAILABLE', 'AI actions are unavailable.')
+                return (await runtime.executeAction(event, name, input)) as ActionResult<
+                    Actions[Name]['output'],
+                    ActionMetadata<Actions[Name]>
+                >
             },
         },
         content: {

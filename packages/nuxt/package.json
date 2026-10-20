@@ -11,6 +11,10 @@
         "@nuxt/schema": "^4.6.2",
         "@standard-schema/spec": "^1.1.0",
         "devframe": "1.2.6",
-        "nypm": "^0.6.10"
+        "h3": "^1.15.11",
+        "jiti": "^2.7.0",
+        "nitropack": "2.13.5",
+        "nuxt": "4.6.2",
+        "vue": "3.6.0-rc.12"
     }
 }

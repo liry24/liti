@@ -20,6 +20,15 @@ export default defineEventHandler((event) =>
             await admin.createEntry('links', {
                 data: { slug: 'external', destination: 'https://example.com/destination', title: 'External' },
             })
+            const article = await admin.createEntry('articles', {
+                data: {
+                    title: 'Article',
+                    content: 'Article body.',
+                    slug: 'manual',
+                    authoredAt: '2026-01-01T00:00:00Z',
+                },
+            })
+            await admin.publishEntry(article.id, { expectedVersion: article.version })
         }
         return { seeded: true }
     }),

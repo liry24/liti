@@ -5,7 +5,7 @@ import { resolvePresentation, type Localized, type PresentationContext } from '.
 const isObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const seoJsonValue = (value: unknown, parents = new Set<object>()): PublicEntrySeoValue | undefined => {
+export const seoJsonValue = (value: unknown, parents = new Set<object>()): PublicEntrySeoValue | undefined => {
     if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
     if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
     if (typeof value !== 'object' || parents.has(value) || parents.size > 32) return undefined
@@ -24,7 +24,15 @@ const seoJsonValue = (value: unknown, parents = new Set<object>()): PublicEntryS
 export const serializeLitiSeo = (value: unknown): PublicEntrySeo => {
     if (!isObject(value)) return {}
     const result: PublicEntrySeo = {}
-    for (const key of ['title', 'titleTemplate', 'description', 'canonical', 'robots'] as const)
+    for (const key of [
+        'title',
+        'titleTemplate',
+        'description',
+        'canonical',
+        'robots',
+        'articlePublishedTime',
+        'articleModifiedTime',
+    ] as const)
         if (typeof value[key] === 'string') result[key] = value[key]
     if (value.titleTemplate === null) result.titleTemplate = null
     if (value.type === 'article' || value.type === 'website') result.type = value.type

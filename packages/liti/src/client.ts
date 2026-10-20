@@ -1,5 +1,7 @@
 import type { LitiDescriptor } from './descriptor'
 import type { LitiIssue } from './errors'
+import type { ActionResult } from './plugins'
+import type { LitiSchema, ActionMetadata } from './query'
 import type {
     AssetRecord,
     EntryInput,
@@ -26,9 +28,6 @@ type ModelMetas = LitiClientRegistry extends { modelMeta: infer Meta }
 export type LitiModelMeta<Name extends string = string> = Name extends keyof ModelMetas
     ? ModelMetas[Name]
     : ModelMetas[keyof ModelMetas]
-export type LitiNamedAiActions = LitiClientRegistry extends { namedAiActions: infer Actions }
-    ? Actions
-    : Record<string, { input: Record<string, unknown>; data: unknown }>
 
 export type LitiPublicModels = LitiClientRegistry extends { publicModels: infer Models }
     ? Models
@@ -369,23 +368,34 @@ export const createPublicClient = <
     } as LitiClient<Models, SummaryModels>
 }
 
-export interface LitiManagementClient<Models = LitiManagementModels> {
+export interface LitiManagementClient<
+    Models = LitiManagementModels,
+    Actions extends LitiSchema['actions'] = LitiSchema['actions'],
+> {
     assetUrl(this: void, id: string): string
     models(options?: LitiRequestOptions & { uiLocale?: string }): Promise<LitiDescriptor>
     listEntries<Name extends ModelName<Models>>(
+        this: void,
         model: Name,
         options?: ManagementListOptions,
     ): Promise<LitiEntryPage<Models[Name]>>
-    listEntries(model?: undefined, options?: ManagementListOptions): Promise<LitiEntryPage<ManagementData<Models>>>
+    listEntries(
+        this: void,
+        model?: undefined,
+        options?: ManagementListOptions,
+    ): Promise<LitiEntryPage<ManagementData<Models>>>
     listAllEntries<Name extends ModelName<Models>>(
+        this: void,
         model: Name,
         options?: Omit<ManagementListOptions, 'offset'>,
     ): Promise<LitiEntry<Models[Name]>[]>
     listAllEntries(
+        this: void,
         model?: undefined,
         options?: Omit<ManagementListOptions, 'offset'>,
     ): Promise<LitiEntry<ManagementData<Models>>[]>
     getEntry<Data extends ManagementData<Models> = ManagementData<Models>>(
+        this: void,
         id: string,
         options?: LitiRequestOptions,
     ): Promise<LitiEntry<Data>>
@@ -439,12 +449,13 @@ export interface LitiManagementClient<Models = LitiManagementModels> {
         options?: LitiRequestOptions,
     ): Promise<LitiEntryMutation<Data>>
     pruneRevisions(id: string, retain: number): Promise<{ deleted: string[] }>
-    referencesTo(id: string, options: LitiReferencesOptions): Promise<IncomingReference[]>
-    runAiAction<Name extends Extract<keyof LitiNamedAiActions, string>>(
+    referencesTo(this: void, id: string, options: LitiReferencesOptions): Promise<IncomingReference[]>
+    executeAction<Name extends Extract<keyof Actions, string>>(
+        this: void,
         name: Name,
-        input: { input: LitiNamedAiActions[Name]['input'] },
+        input: Actions[Name]['input'],
         options?: LitiRequestOptions,
-    ): Promise<LitiNamedAiActions[Name]['data']>
+    ): Promise<ActionResult<Actions[Name]['output'], ActionMetadata<Actions[Name]>>>
     uploadAsset(file: File): Promise<AssetRecord>
     uploadAsset(body: Blob, options: LitiAssetUploadOptions): Promise<AssetRecord>
     getAsset(id: string): Promise<AssetRecord>
@@ -459,9 +470,10 @@ export interface LitiManagementClient<Models = LitiManagementModels> {
 /** Uses the existing authenticated, same-origin management HTTP API. */
 export const createLitiManagementClient = <
     Models extends { [Name in keyof Models]: Record<string, unknown> } = LitiManagementModels,
+    Actions extends LitiSchema['actions'] = LitiSchema['actions'],
 >(
     options: LitiManagementClientOptions = {},
-): LitiManagementClient<Models> => {
+): LitiManagementClient<Models, Actions> => {
     const { base, json, mutate, response } = transport(options, '/api/liti', options.credentials ?? 'same-origin')
     const entryPath = (id: string): string => `/entries/${encodeURIComponent(id)}`
     const assetPath = (id: string): string => `/assets/${encodeURIComponent(id)}`
@@ -572,8 +584,8 @@ export const createLitiManagementClient = <
             ),
         pruneRevisions: (id, retain) => mutate(`${entryPath(id)}/revisions/prune`, 'POST', { retain }),
         referencesTo: (id, requestOptions) => get(`${entryPath(id)}/references`, { ...requestOptions }),
-        runAiAction: (name, input, requestOptions) =>
-            mutate('/ai/actions/' + encodeURIComponent(name), 'POST', input, requestOptions),
+        executeAction: (name, input, requestOptions) =>
+            mutate('/actions/' + encodeURIComponent(name), 'POST', { input }, requestOptions),
         uploadAsset: async (body, uploadOptions) => {
             const filename = uploadOptions?.filename ?? ('name' in body ? String(body.name) : undefined)
             if (!filename) throw new TypeError('A filename is required to upload an asset.')
@@ -612,5 +624,5 @@ export const createLitiManagementClient = <
         runAssetGC: () => mutate('/tasks/asset-gc', 'POST', {}),
         inspect: () => get('/diagnostics'),
         routeSnapshot: () => get('/routes'),
-    } as LitiManagementClient<Models>
+    } as LitiManagementClient<Models, Actions>
 }

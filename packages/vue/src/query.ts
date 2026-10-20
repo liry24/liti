@@ -29,6 +29,16 @@ export interface QuerySource<Execution = void> {
     clear: () => void
 }
 
+export const queryTotal = (source: QuerySource) =>
+    computed(() => {
+        const value = source.data.value
+        return Array.isArray(value)
+            ? value.length
+            : value && typeof value === 'object' && 'total' in value && typeof value.total === 'number'
+              ? value.total
+              : 0
+    })
+
 /** A caller's projection never changes the shared raw resource or another caller's DTO shape. */
 export const projectQuery = <Execution>(
     source: QuerySource<Execution>,
@@ -109,12 +119,12 @@ export const projectQuery = <Execution>(
         projectionError.value ? 'error' : projecting.value ? 'pending' : source.status.value,
     )
     const error = computed(() => projectionError.value ?? source.error.value)
-    const refresh = async (options?: Execution) => {
-        await source.refresh(options)
+    const refresh = async (execution?: Execution) => {
+        await source.refresh(execution)
         await pending
     }
-    const execute = async (options?: Execution) => {
-        await source.execute(options)
+    const execute = async (execution?: Execution) => {
+        await source.execute(execution)
         await pending
     }
     return {

@@ -1,0 +1,71 @@
+{
+    "name": "@litijs/blog",
+    "version": "0.0.3",
+    "description": "Article models and editorial workflows for liti",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/liti.git",
+        "directory": "packages/blog"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./vue": {
+            "types": "./dist/vue.d.ts",
+            "import": "./dist/vue.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "vp pack",
+        "prepack": "bun run build",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "comark": "^0.7.0"
+    },
+    "devDependencies": {
+        "liti": "workspace:*",
+        "vue": "3.6.0-rc.12"
+    },
+    "peerDependencies": {
+        "@litijs/ai": "^0.0.3",
+        "liti": "^0.0.3",
+        "vue": "^3.5.44 || ^3.6.0-rc.2"
+    },
+    "peerDependenciesMeta": {
+        "@litijs/ai": {
+            "optional": true
+        },
+        "vue": {
+            "optional": true
+        }
+    },
+    "liti": {
+        "id": "blog",
+        "apiVersion": 1,
+        "kind": "plugin",
+        "liti": "^0.0.3 || ^0.1.0",
+        "factory": "blog",
+        "config": "@litijs/blog",
+        "options": {
+            "models": {
+                "posts": {}
+            }
+        },
+        "vue": "@litijs/blog/vue"
+    }
+}

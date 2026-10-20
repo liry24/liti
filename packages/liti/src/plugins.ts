@@ -6,6 +6,9 @@ import { LitiError } from './errors'
 
 /** Host data is supplied at execution time, never captured while importing configuration. */
 export interface OperationContext {
+    requestId?: string
+    /** Absolute time in milliseconds after which the operation must stop. */
+    deadline?: number
     actor?: LitiActor | null
     request?: Request
     signal?: AbortSignal
@@ -99,12 +102,25 @@ export interface LitiPluginManifest {
     liti: string
     factory: string
     config: string
+    /** JSON-only initial factory options used by the CLI without executing the plugin. */
+    options?: Record<string, unknown>
+    vue?: string
 }
 
-export interface ActionDefinition<Input = unknown, Output = unknown> {
-    input: StandardSchemaV1<unknown, Input>
+export interface ActionResult<Output = unknown, Metadata = unknown> {
+    data: Output
+    metadata?: Metadata
+}
+
+export interface ActionDefinition<Input = unknown, Output = unknown, Metadata = unknown, RawInput = Input> {
+    /** Versioned semantic I/O contract required by a consuming plugin. */
+    contract?: string
+    input: StandardSchemaV1<RawInput, Input>
     output: StandardSchemaV1<unknown, Output>
-    execute(input: Input, context: OperationContext): Output | Promise<Output>
+    execute(
+        input: Input,
+        context: OperationContext,
+    ): ActionResult<Output, Metadata> | Promise<ActionResult<Output, Metadata>>
 }
 
 export interface LitiPlugin<
@@ -115,10 +131,16 @@ export interface LitiPlugin<
     apiVersion: 1
     models?: Models
     actions?: Actions
+    /** Module with a default Vue form-extension registry; loaded only by that bridge. */
+    vue?: string
     requires?: {
-        actions?: readonly string[]
+        actions?: readonly (string | { name: string; contract: string })[]
         plugins?: readonly string[]
     }
+    validate?: (registry: {
+        models: Record<string, ModelDefinition>
+        actions: Record<string, ActionDefinition>
+    }) => void
 }
 
 export const defineLitiPlugin = <const Plugin extends LitiPlugin>(plugin: Plugin): Plugin => plugin
@@ -211,8 +233,13 @@ export const resolvePlugins = (
     for (const plugin of plugins) {
         for (const id of plugin.requires?.plugins ?? [])
             if (!ids.has(id)) invalid(`Plugin "${plugin.id}" requires plugin "${id}".`)
-        for (const action of plugin.requires?.actions ?? [])
-            if (!Object.hasOwn(actions, action)) invalid(`Plugin "${plugin.id}" requires action "${action}".`)
+        for (const requirement of plugin.requires?.actions ?? []) {
+            const name = typeof requirement === 'string' ? requirement : requirement.name
+            if (!Object.hasOwn(actions, name)) invalid(`Plugin "${plugin.id}" requires action "${name}".`)
+            if (typeof requirement !== 'string' && actions[name]!.contract !== requirement.contract)
+                invalid(`Action "${name}" must implement "${requirement.contract}" for plugin "${plugin.id}".`)
+        }
+        plugin.validate?.({ models: allModels, actions })
     }
     return { models: allModels, actions }
 }

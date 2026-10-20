@@ -12,23 +12,22 @@ import type { AsyncData, AsyncDataOptions, KeysOf, PickFrom } from '#app'
 import type { NuxtApp, NuxtError } from '#app'
 import type { LitiPublicModels, LitiPublicSummaryModels } from '../../../liti/src/client'
 import type { LitiIssue } from '../../../liti/src/index'
-import type {
-    LitiEntry,
-    LitiEntryPage,
-    LitiFormModels,
-    LitiManagementModels,
-    LitiMutation,
-} from '../../../liti/src/client'
+import type { LitiEntry, LitiFormModels, LitiManagementModels, LitiMutation } from '../../../liti/src/client'
 import { presentLitiData } from '../../../liti/src/client'
-import { createLitiModel, litiModelError, litiModelContext } from '../../../vue/src/model'
-import type { LitiModelActions, LitiModelError, LitiSessionDraft } from '../../../vue/src/model'
+import { createLitiModel, litiModelError } from '../../../vue/src/model'
+// oxlint-disable-next-line no-unused-vars -- declaration emit must name the resource's unique symbol property
+import type { litiModelContext } from '../../../vue/src/model'
+// oxlint-disable-next-line no-unused-vars -- inferred native form declarations must use the owning schema package
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { LitiFailure, LitiModelActions, LitiModelError, LitiSessionDraft } from '../../../vue/src/model'
 import type { ModelDescriptor, LitiDescriptor } from '../../../liti/src/descriptor'
 import { clearNuxtData, refreshNuxtData, useNuxtApp } from '#app'
 import { defineUseFetchAddon } from '#app/composables/addons'
 import { hashKey } from '#app'
 import type { UseFetchOptions } from '#app'
 import type { AsyncDataMiddleware } from '#app'
-import type { LitiNamedAiActions } from '../../../liti/src/client'
+import type { ActionResult } from '../../../liti/src/plugins'
+type Actions = RegisteredLitiSchema['actions']
 import {
     computed,
     getCurrentInstance,
@@ -45,14 +44,16 @@ import {
 import type { EntryPrepareContext } from '../../../vue/src/model'
 import { useEntryForm, type UseEntryFormOptions } from '../../../vue/src/form'
 import { normalizeLitiQuery } from '../../../liti/src/query'
-import type { LitiQueryModel, LitiQueryResult, RegisteredLitiSchema } from '../../../liti/src/query'
+import type { LitiQueryModel, LitiQueryResult, RegisteredLitiSchema, ActionMetadata } from '../../../liti/src/query'
 import {
     projectQuery,
+    queryTotal,
     type ReactiveLitiQueryOptions,
     type ReactiveQuerySelection,
     type QuerySource,
 } from '../../../vue/src/query'
 import { litiModelCatalog } from '../../../liti/src/admin-client'
+import type { LitiFormExtensionRegistry, LitiFormExtensions } from '../../../vue/src/extensions'
 
 declare module '#app' {
     interface RuntimeNuxtHooks {
@@ -104,7 +105,8 @@ export interface UseLitiQuery {
                 default?: () => NoInfer<DataT>
                 authScope?: MaybeRefOrGetter<string>
             },
-    ): AsyncData<PickFrom<DataT, PickKeys>, LitiModelError | undefined> &
+    ): AsyncData<PickFrom<DataT, PickKeys>, NuxtError<LitiFailure> | undefined> &
+        (Mode extends 'many' ? { total: Readonly<Ref<number>> } : {}) &
         (View extends 'current' ? { remove(entry?: LitiEntry<FormData<Name>>): Promise<unknown> } : {})
     <
         Mode extends 'many' | 'one' = 'many',
@@ -132,28 +134,25 @@ export interface UseLitiQuery {
                 default?: () => NoInfer<DataT>
                 authScope?: MaybeRefOrGetter<string>
             },
-    ): AsyncData<PickFrom<DataT, PickKeys>, LitiModelError | undefined> &
+    ): AsyncData<PickFrom<DataT, PickKeys>, NuxtError<LitiFailure> | undefined> &
+        (Mode extends 'many' ? { total: Readonly<Ref<number>> } : {}) &
         (View extends 'current' ? { remove(entry?: LitiEntry<FormData<Name>>): Promise<unknown> } : {})
 }
-
-type LitiAsyncDataError<ErrorData> = ErrorData extends Error | NuxtError ? ErrorData : NuxtError<ErrorData>
 
 export interface LitiLocaleOptions {
     locale?: MaybeRefOrGetter<string | undefined>
 }
 
-export type LitiBatchRequest = {
-    [Name in PublicModelName]:
-        | {
-              list: Name
-              markdown?: 'full' | 'summary'
-              page?: MaybeRefOrGetter<{ limit: number; offset: number }>
-              entry?: never
-              id?: never
-          }
-        | { entry: Name; id: MaybeRefOrGetter<string>; path?: never; list?: never; markdown?: never }
-        | { entry: Name; path: MaybeRefOrGetter<string>; id?: never; list?: never; markdown?: never }
-}[PublicModelName]
+export type LitiBatchRequest<Name extends string = PublicModelName> =
+    | {
+          list: Name
+          markdown?: 'full' | 'summary'
+          page?: MaybeRefOrGetter<{ limit: number; offset: number }>
+          entry?: never
+          id?: never
+      }
+    | { entry: Name; id: MaybeRefOrGetter<string>; path?: never; list?: never; markdown?: never }
+    | { entry: Name; path: MaybeRefOrGetter<string>; id?: never; list?: never; markdown?: never }
 
 export interface LitiBatchItemError {
     code: string
@@ -191,7 +190,7 @@ export type LitiBatchResult<Requests extends Record<string, LitiBatchRequest>> =
 type LitiResolvedBatchRequest = {
     name: string
     operation: 'list' | 'entry'
-    model: PublicModelName
+    model: string
     selector: string | null
     byPath?: boolean
     markdown?: 'summary'
@@ -226,10 +225,10 @@ export type LitiFormOptions<Data extends Record<string, unknown>> = LitiModelOpt
         instance?: MaybeRefOrGetter<string | undefined>
     }
 
-type Handled<Actions> = {
-    [Key in keyof Actions]: Actions[Key] extends (...args: infer Args) => Promise<infer Result>
+type Handled<Methods> = {
+    [Key in keyof Methods]: Methods[Key] extends (...args: infer Args) => Promise<infer Result>
         ? (...args: Args) => Promise<Result | undefined>
-        : Actions[Key]
+        : Methods[Key]
 }
 
 type LitiModelResource<Name extends string, Result> = Omit<
@@ -257,14 +256,15 @@ type SingleResource<Name extends string> = Omit<
 type ValidModel<Name extends string> = Name &
     (Name extends ManagementModelName ? unknown : string extends Name ? unknown : never)
 
-type AiActionName = Extract<keyof LitiNamedAiActions, string>
+type AiActionName = Extract<keyof Actions, string>
 
 export type UseAiOptions<Name extends AiActionName> = Pick<
-    UseFetchOptions<LitiNamedAiActions[Name]['data']>,
-    'immediate' | 'server' | 'lazy' | 'timeout' | 'dedupe' | 'deep'
+    UseFetchOptions<Actions[Name]['output']>,
+    'immediate' | 'lazy' | 'timeout' | 'dedupe' | 'deep'
 > & {
-    input: MaybeRefOrGetter<LitiNamedAiActions[Name]['input']>
+    input: MaybeRefOrGetter<Actions[Name]['input']>
     authScope?: MaybeRefOrGetter<string>
+    locale?: MaybeRefOrGetter<string | undefined>
 }
 
 export const litiAiFetchOptions: {
@@ -331,11 +331,13 @@ export const createLitiComposables = (
         i18n?: boolean
         defaultLocale?: string
         auth?: boolean
-        aiActions?: boolean
+        actions?: boolean
+        editors?: Record<string, string[]>
     },
     litiAsyncData: UseAsyncData,
     litiAiFetch: UseFetch,
     getAuth?: () => { user: Ref<{ id?: string; role?: string | null } | null>; session: Ref<{ id?: string } | null> },
+    extensions: LitiFormExtensionRegistry = {},
 ) => {
     const litiLocalFetches = new WeakMap<ReturnType<typeof useNuxtApp>, NonNullable<LitiClientOptions['fetch']>>()
 
@@ -408,7 +410,19 @@ export const createLitiComposables = (
                 key.value = value
             },
         )
-        return litiAsyncData<Data>(key, handler, { dedupe: 'defer', ...options })
+        return litiAsyncData<Data>(
+            key,
+            async (app, context) => {
+                try {
+                    return await handler(app, context)
+                } catch (cause) {
+                    context.signal.throwIfAborted()
+                    if (cause instanceof Error && cause.name === 'AbortError') throw cause
+                    throw litiModelError(cause)
+                }
+            },
+            { dedupe: 'defer', ...options },
+        )
     }
 
     const useLitiLocale = (provided?: LitiLocaleOptions['locale']) => {
@@ -441,7 +455,9 @@ export const createLitiComposables = (
             { scope: scope ?? 'anonymous' },
         ])
 
-    const litiSnapshotBatchRequests = (requests: Record<string, LitiBatchRequest>): LitiResolvedBatchRequest[] =>
+    const litiSnapshotBatchRequests = (
+        requests: Record<string, LitiBatchRequest<string>>,
+    ): LitiResolvedBatchRequest[] =>
         Object.keys(requests)
             .sort()
             .map((name) => {
@@ -501,7 +517,10 @@ export const createLitiComposables = (
               }
 
     const litiResolveBatch = async (
-        client: LitiClient,
+        client: LitiClient<
+            Record<string, import('../../../liti/src/client').PublicEntry>,
+            Record<string, import('../../../liti/src/client').PublicEntry>
+        >,
         requests: readonly LitiResolvedBatchRequest[],
         locale: string | undefined,
         signal: AbortSignal,
@@ -952,6 +971,7 @@ export const createLitiComposables = (
         )
         const handle = {
             ...projection.handle,
+            ...(!one ? { total: queryTotal(source as unknown as QuerySource) } : {}),
             status: computed(() => (resolved.value.waiting ? 'idle' : projection.handle.status.value)),
             ...(current ? { remove: (source as ReturnType<typeof useAdminResource>).remove } : {}),
         }
@@ -978,7 +998,13 @@ export const createLitiComposables = (
             },
             true,
         ) as unknown as Promise<SingleResource<Name>> & SingleResource<Name>
-        const editor = useEntryForm(resource, options)
+        const editor = useEntryForm(
+            resource,
+            options,
+            Object.fromEntries(
+                Object.entries(extensions).filter(([name]) => configuration.editors?.[model]?.includes(name)),
+            ),
+        )
         const result = {
             ...editor,
             meta: resource.meta,
@@ -993,7 +1019,7 @@ export const createLitiComposables = (
         return Object.assign(
             resource.then(() => result),
             result,
-        )
+        ) as typeof result & LitiFormExtensions<Name> & Promise<typeof result & LitiFormExtensions<Name>>
     }
 
     function useAdminResource(
@@ -1076,51 +1102,45 @@ export const createLitiComposables = (
                 const requestedKey = key.value
                 const requestedId = id.value
                 const requestedQuery = query.value
-                try {
-                    if (single && requestedId === null && !form) return null
-                    const models = await litiReadModels(modelsSource, auth, signal)
-                    const modelDescriptor = litiModelDescriptor(models, model)
-                    const present = (entry: LitiEntry) => {
-                        if (entry.model !== model)
-                            throw new LitiClientError(
-                                'LITI_INVALID_RESPONSE',
-                                'Entry does not belong to the requested model and locale.',
-                                502,
-                            )
-                        return { ...entry, data: presentLitiData(modelDescriptor, entry.data, client.assetUrl) }
-                    }
-                    const result = single
-                        ? requestedId === null
-                            ? null
-                            : await client
-                                  .getEntry(requestedId, { signal })
-                                  .then(present)
-                                  .catch((error: unknown) => {
-                                      if (error instanceof LitiClientError && error.code === 'LITI_ENTRY_NOT_FOUND')
-                                          return null
-                                      throw error
-                                  })
-                        : options.all
-                          ? await client
-                                .listAllEntries(model, { ...requestedQuery, limit: 100, signal })
-                                .then((items) => ({
-                                    items: items.map(present),
-                                    total: items.length,
-                                    limit: items.length,
-                                    offset: 0,
-                                }))
-                          : await client
-                                .listEntries(model, { ...requestedQuery, signal })
-                                .then((responsePage) => ({ ...responsePage, items: responsePage.items.map(present) }))
-                    signal.throwIfAborted()
-                    if (requestedKey === key.value) {
-                        retained = result
-                        retainedKey = requestedKey
-                    }
-                    return result
-                } catch (error) {
-                    throw litiModelError(error)
+                if (single && requestedId === null && !form) return null
+                const models = await litiReadModels(modelsSource, auth, signal)
+                const modelDescriptor = litiModelDescriptor(models, model)
+                const present = (entry: LitiEntry) => {
+                    if (entry.model !== model)
+                        throw new LitiClientError(
+                            'LITI_INVALID_RESPONSE',
+                            'Entry does not belong to the requested model and locale.',
+                            502,
+                        )
+                    return { ...entry, data: presentLitiData(modelDescriptor, entry.data, client.assetUrl) }
                 }
+                const result = single
+                    ? requestedId === null
+                        ? null
+                        : await client
+                              .getEntry(requestedId, { signal })
+                              .then(present)
+                              .catch((error: unknown) => {
+                                  if (error instanceof LitiClientError && error.code === 'LITI_ENTRY_NOT_FOUND')
+                                      return null
+                                  throw error
+                              })
+                    : options.all
+                      ? await client.listAllEntries(model, { ...requestedQuery, limit: 100, signal }).then((items) => ({
+                            items: items.map(present),
+                            total: items.length,
+                            limit: items.length,
+                            offset: 0,
+                        }))
+                      : await client
+                            .listEntries(model, { ...requestedQuery, signal })
+                            .then((responsePage) => ({ ...responsePage, items: responsePage.items.map(present) }))
+                signal.throwIfAborted()
+                if (requestedKey === key.value) {
+                    retained = result
+                    retainedKey = requestedKey
+                }
+                return result
             },
             {
                 immediate: options.immediate,
@@ -1194,10 +1214,16 @@ export const createLitiComposables = (
                 drafts: useState<Record<string, LitiSessionDraft>>('liti:form-drafts', () => Object.create(null)).value,
             },
         )
+        const nativeClear = source.clear
         const actions = {
             ...core,
             page,
             refresh,
+            clear: () => {
+                retained = undefined
+                retainedKey = undefined
+                nativeClear()
+            },
             ...(single
                 ? {
                       publish: (value?: Record<string, unknown>) => core.publish(undefined, value),
@@ -1234,25 +1260,36 @@ export const createLitiComposables = (
     function useAi<Name extends AiActionName>(
         name: Name,
         options: UseAiOptions<Name>,
-    ): AsyncData<LitiNamedAiActions[Name]['data'] | undefined, NuxtError | undefined> {
-        const { input, authScope, ...nativeOptions } = options
+    ): AsyncData<Actions[Name]['output'] | undefined, NuxtError | undefined> & {
+        metadata: Readonly<Ref<ActionMetadata<Actions[Name]> | undefined>>
+    } {
+        const { input, authScope, locale: language, ...nativeOptions } = options
         const scope = useLitiAuthScope(authScope)
+        const locale = useLitiLocale(language)
         const body = computed(() => ({ input: JSON.parse(JSON.stringify(toValue(input))) }))
-        const path = configuration.managementBase.replace(/\/$/u, '') + '/ai/actions/' + encodeURIComponent(name)
+        const path = configuration.managementBase.replace(/\/$/u, '') + '/actions/' + encodeURIComponent(name)
         const connection = litiManagementClientOptions()
-        const key = computed(() => 'liti-ai:' + hashKey([connection.origin, path, scope.value, body.value]))
-        // Clear the previous identity before Nuxt's key watcher can carry private data forward.
-        let previousScope = scope.value
-        watch(
-            key,
-            (_next, previous) => {
-                const authChanged = previousScope !== scope.value
-                previousScope = scope.value
-                if (authChanged) clearNuxtData(previous)
-            },
-            { flush: 'sync' },
+        const key = computed(
+            () => 'liti-ai:' + hashKey([connection.origin, path, scope.value, locale.value, body.value]),
         )
-        return litiAiFetch<LitiNamedAiActions[Name]['data']>(path, { ...nativeOptions, key, body })
+        // A changed input or scope invalidates an in-flight proposal before Nuxt reuses its cache.
+        watch(key, (_next, previous) => clearNuxtData(previous), { flush: 'sync' })
+        const source = litiAiFetch<ActionResult<Actions[Name]['output'], ActionMetadata<Actions[Name]>>>(path, {
+            immediate: false,
+            ...nativeOptions,
+            server: false,
+            key,
+            body,
+        })
+        const projections = {
+            data: computed(() => source.data.value?.data),
+            metadata: computed(() => source.data.value?.metadata),
+        }
+        return Object.assign(
+            source.then((value) => ({ ...value, ...projections })),
+            source,
+            projections,
+        )
     }
     return {
         litiResolveBatch,
@@ -1267,7 +1304,10 @@ export const createLitiComposables = (
         useLitiAuthScope,
         litiManagementKey,
         createNuxtLitiManagementClient,
-        useLitiModels,
+        useLitiModels: useLitiModels as () => AsyncData<
+            ReturnType<typeof litiModelCatalog>,
+            NuxtError<LitiFailure> | undefined
+        >,
         useModelDescriptor,
         useManagedSource: useAdminResource,
         useLitiQuery: useLitiQuery as unknown as UseLitiQuery,

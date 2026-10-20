@@ -24,6 +24,7 @@ import type { LitiIssue } from '../../liti/src/errors'
 import { isRecord, validateBuiltinValue } from '../../liti/src/validation-builtin'
 import { litiModelContext, litiSnapshot, type LitiModel } from './model'
 import { createFieldAccessor } from './native-field'
+import type { LitiFormExtensionRegistry } from './extensions'
 
 export type { LitiAsset } from '../../liti/src/management-assets'
 export type { LitiSessionDraft } from './model'
@@ -109,9 +110,10 @@ const descriptorSchema = <Data extends Record<string, unknown>>(
 })
 
 /** Native TanStack form, with only model-aware fields, uploads and draft operations added. */
-export const useEntryForm = <Data extends Record<string, unknown>>(
+export const useEntryForm = <Data extends Record<string, unknown>, Extensions extends LitiFormExtensionRegistry = {}>(
     resource: Pick<LitiModel<Data>, 'data' | 'status' | 'error' | 'refresh' | typeof litiModelContext>,
     options: UseEntryFormOptions<Data> = {},
+    factories: Extensions = {} as Extensions,
 ) => {
     if (resource.data.value && 'items' in resource.data.value)
         throw new TypeError('[liti] Forms require an entry resource. Use useLitiForm(model) for a new entry.')
@@ -251,6 +253,7 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
                         resource.error.value ??
                         new LitiClientError('LITI_INVALID_INPUT', 'Load the entry before submitting.', 400)
                     )
+                for (const extension of Object.values(extensions)) await extension.beforeSubmit?.(selectedIntent.kind)
                 await options.onBeforeSubmit?.({
                     operation: selectedIntent.kind,
                     ...(toValue(context.locale) ? { locale: toValue(context.locale)! } : {}),
@@ -476,7 +479,25 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
         if (!definition || !['image', 'images', 'file'].includes(definition.kind)) throw invalid()
         return { definition, rows, value }
     }
+    const extensions = Object.fromEntries(
+        Object.entries(factories).map(([name, factory]) => [
+            name,
+            factory({
+                model: context.model,
+                descriptor: context.descriptor,
+                identity: computed(draftKey),
+                values,
+                entry: computed(currentEntry),
+                busy: computed(() => operation.value !== null),
+                signal: lifetime.signal,
+                setField: setFieldValue,
+                executeAction: context.client.executeAction,
+                report: context.report,
+            }),
+        ]),
+    )
     const result = {
+        ...Object.fromEntries(Object.entries(extensions).map(([name, extension]) => [name, extension.namespace])),
         form,
         values: readonly(values) as Readonly<Ref<DeepReadonly<Data>>>,
         field: createFieldAccessor<Data>(form),
@@ -487,14 +508,21 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
         },
         state: computed(() => {
             const ready = Boolean(context.descriptor.value && (!context.id.value || currentEntry() || entryId.value))
-            const busy = operation.value !== null
+            const busy =
+                operation.value !== null || Object.values(extensions).some((extension) => extension.state.value.busy)
             const conflict = resource.error.value?.data?.code === 'LITI_CONFLICT'
             const available = ready && !busy && !conflict
-            const can = {
+            const can: Record<string, boolean> = {
                 save: available,
                 publish: available && descriptor().publishing,
                 schedule: available && descriptor().scheduling,
                 remove: !busy && Boolean(currentEntry()),
+            }
+            const reasons: Record<string, string> = {}
+            for (const extension of Object.values(extensions)) {
+                for (const [action, enabled] of Object.entries(extension.state.value.can ?? {}))
+                    can[action] = (can[action] ?? (ready && !conflict)) && enabled
+                Object.assign(reasons, extension.state.value.blocked)
             }
             return {
                 ready,
@@ -511,7 +539,8 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
                         .filter(([, value]) => !value)
                         .map(([key]) => [
                             key,
-                            !ready ? 'not-ready' : busy ? 'busy' : conflict ? 'conflict' : 'unavailable',
+                            reasons[key] ??
+                                (!ready ? 'not-ready' : busy ? 'busy' : conflict ? 'conflict' : 'unavailable'),
                         ]),
                 ),
             }
@@ -668,7 +697,7 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
         const stop = watch(
             () =>
                 options.beforeUnload !== false &&
-                (result.draft.isDirty.value || operation.value !== null || toValue(options.beforeUnload) === true),
+                (result.draft.isDirty.value || result.state.value.busy || toValue(options.beforeUnload) === true),
             (active) => window[active ? 'addEventListener' : 'removeEventListener']('beforeunload', handler),
             { immediate: true, flush: 'sync' },
         )
@@ -684,5 +713,5 @@ export const useEntryForm = <Data extends Record<string, unknown>>(
         })
         onScopeDispose(() => cleanup?.())
     }
-    return result
+    return result as typeof result & { [Name in keyof Extensions]: ReturnType<Extensions[Name]>['namespace'] }
 }

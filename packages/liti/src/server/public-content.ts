@@ -4,7 +4,7 @@ import type { ModelDefinition } from '../config'
 import type { AnyField, AssetInput, FieldRecord } from '../fields'
 import { entryDescription, cleanText } from '../markdown/document'
 import { resolveMarkdownSource } from '../markdown/assets'
-import { serializeLitiSeo } from '../seo'
+import { serializeLitiSeo, seoJsonValue } from '../seo'
 import { LitiError } from '../errors'
 import { resolveTranslation } from '../i18n'
 import { entryPath, modelRouteOptions, routeRedirect } from './routes'
@@ -201,6 +201,8 @@ export class PublicProjector<Context> {
                 model: row.model,
                 path,
                 publishedAt: row.publishedAt,
+                firstPublishedAt: row.firstPublishedAt,
+                updatedAt: row.updatedAt,
                 revisionId: row.revisionId,
             }
         }
@@ -213,6 +215,8 @@ export class PublicProjector<Context> {
             model: row.model,
             path,
             publishedAt: row.publishedAt,
+            firstPublishedAt: row.firstPublishedAt,
+            updatedAt: row.updatedAt,
             revisionId: row.revisionId,
         }
         if (this.options.locales?.supported?.length && path) {
@@ -241,6 +245,10 @@ export class PublicProjector<Context> {
             )
         }
         entry.seo = this.#entrySeo(definition, entry)
+        if (definition.publicMeta) {
+            const meta = seoJsonValue(definition.publicMeta(structuredClone(entry)))
+            if (isObject(meta)) entry.meta = meta as NonNullable<PublicEntry['meta']>
+        }
         return entry
     }
 }

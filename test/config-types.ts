@@ -37,22 +37,18 @@ void missingSummary
 const noPrivatePost: PrivatePublicPost = undefined
 void noPrivatePost
 
-// Application-owned adapters and SDK models replace as opaque values, including inferred types.
-declare const originalModel: import('ai/test').MockLanguageModelV4 & { oldMarker: true }
-declare const productionModel: import('ai/test').MockLanguageModelV4 & { replacement: true }
+// Environment plugin arrays replace complete declarations, including their inferred type.
 const opaqueEnvironment = defineLitiConfig({
-    models: {},
-    ai: { model: originalModel },
-    $production: { ai: { model: productionModel } },
+    plugins: [{ id: 'original', apiVersion: 1, models: { oldMarker: { fields: { value: text() } } } }],
+    $production: {
+        plugins: [{ id: 'production', apiVersion: 1, models: { replacement: { fields: { value: text() } } } }],
+    },
 })
 declare const resolvedOpaque: ResolvedLitiConfig<typeof opaqueEnvironment, readonly ['production']>
-const replacedModel: true = resolvedOpaque.ai.model.replacement
-// @ts-expect-error Replaced SDK model does not retain the old instance's keys.
-void resolvedOpaque.ai.model.oldMarker
-void replacedModel
-
-// @ts-expect-error An environment replaces the whole SDK model, never a partial provider descriptor.
-defineLitiConfig({ models: {}, $production: { ai: { model: { specificationVersion: 'v4' } } } })
+const replacedPlugin: 'text' = resolvedOpaque.plugins[0].models.replacement.fields.value.kind
+// @ts-expect-error The replacement plugin does not retain the previous plugin's keys.
+void resolvedOpaque.plugins[0].models.oldMarker
+void replacedPlugin
 
 const seoImageEnvironment = defineLitiConfig({
     models: {},

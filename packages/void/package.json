@@ -20,7 +20,8 @@
         },
         "./schema": {
             "types": "./dist/schema.d.ts",
-            "import": "./dist/schema.js"
+            "import": "./dist/schema.js",
+            "require": "./dist/schema.js"
         },
         "./tooling": {
             "types": "./dist/tooling.d.ts",
@@ -103,5 +104,16 @@
         "nuxt-files-sdk": {
             "optional": true
         }
+    },
+    "liti": {
+        "id": "void",
+        "apiVersion": 1,
+        "kind": "adapter",
+        "liti": "^0.0.3 || ^0.1.0",
+        "factory": "voidAdapter",
+        "config": "@litijs/void",
+        "managedPeers": [
+            "void"
+        ]
     }
 }

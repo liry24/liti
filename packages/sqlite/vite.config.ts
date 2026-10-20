@@ -2,6 +2,7 @@ import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
     pack: {
+        copy: [{ from: '../../LICENSE', to: '.' }],
         entry: {
             index: 'src/index.ts',
             runtime: 'src/runtime.ts',

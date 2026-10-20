@@ -270,6 +270,8 @@ describe('internal Markdown asset contracts', () => {
             model: 'posts',
             path: '/posts/post',
             publishedAt: '2026-01-01',
+            firstPublishedAt: '2026-01-01',
+            updatedAt: '2026-01-01',
             revisionId: 'revision',
             data: { slug: 'post', body, sections: [{ body }] },
         }

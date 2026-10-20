@@ -1,0 +1,69 @@
+{
+    "name": "@litijs/ai",
+    "version": "0.0.3",
+    "description": "Capability-based AI actions for liti",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/liti.git",
+        "directory": "packages/ai"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./ai-sdk": {
+            "types": "./dist/ai-sdk.d.ts",
+            "import": "./dist/ai-sdk.js"
+        },
+        "./void": {
+            "types": "./dist/void.d.ts",
+            "import": "./dist/void.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "vp pack",
+        "prepack": "bun run build",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@standard-schema/spec": "^1.1.0"
+    },
+    "devDependencies": {
+        "ai": "7.0.145",
+        "liti": "workspace:*",
+        "void": "1.1.12"
+    },
+    "peerDependencies": {
+        "ai": "7.0.145",
+        "liti": "^0.0.3",
+        "void": "1.1.12"
+    },
+    "peerDependenciesMeta": {
+        "ai": {
+            "optional": true
+        },
+        "void": {
+            "optional": true
+        }
+    },
+    "liti": {
+        "id": "ai",
+        "apiVersion": 1,
+        "kind": "plugin",
+        "liti": "^0.0.3 || ^0.1.0",
+        "factory": "ai",
+        "config": "@litijs/ai"
+    }
+}

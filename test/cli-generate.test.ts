@@ -48,7 +48,7 @@ export default {
             const preview = await readFile(resolve(path, 'schema-preview.ts'), 'utf8')
             expect(preview).toContain('liti_content_previews')
             expect(preview).toContain('text("field_title").notNull()')
-            run('production', ['--env', 'preview', '--prerender', '--out', 'schema-prerender.ts'])
+            run('production', ['--env', 'preview', '--env', 'prerender', '--out', 'schema-prerender.ts'])
             expect(await readFile(resolve(path, 'schema-prerender.ts'), 'utf8')).toContain('liti_content_prerenders')
             run('production', ['--out', 'explicit/schema.ts'])
             expect(await readFile(resolve(path, 'explicit/schema.ts'), 'utf8')).toContain(
@@ -118,14 +118,16 @@ adapter: { database: {
             expect(await readdir(path)).toEqual(before)
             expect(run()).toContain('migrations generated')
             expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\n')
+            execFileSync('bun', [cli, 'generate', '--cwd', path], { encoding: 'utf8', stdio: 'pipe' })
+            expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\nsuccess\n')
             expect(await readFile(resolve(path, 'liti.generated.ts'), 'utf8')).toContain("declare module 'liti/client'")
             await writeFile(resolve(path, 'liti.config.ts'), configSource(['fail']))
             expect(() => run()).toThrow('migration generation failed (7)')
             expect(await readFile(resolve(path, 'schema.ts'), 'utf8')).toBe('// generated\n')
-            expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\nfail\n')
+            expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\nsuccess\nfail\n')
             await writeFile(resolve(path, 'liti.config.ts'), configSource(['never'], '2.0.0'))
             expect(() => run()).toThrow('the project resolves 1.0.0')
-            expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\nfail\n')
+            expect(await readFile(resolve(path, 'calls.txt'), 'utf8')).toBe('success\nsuccess\nfail\n')
             expect(run(['--schema-only'])).toContain('Schema-only generation completed')
         } finally {
             await rm(path, { recursive: true, force: true })
@@ -135,7 +137,13 @@ adapter: { database: {
     it('requires explicit schema-only mode when the database has no migration tooling', async () => {
         const path = await mkdtemp(resolve('.tmp/cli-no-tooling-'))
         try {
-            await writeFile(resolve(path, 'liti.config.ts'), 'export default { models: {} }')
+            await writeFile(
+                resolve(path, 'liti.config.ts'),
+                `export default {
+                models: { posts: { fields: {} } },
+                adapter: { database: { id: 'custom', role: 'database', connect() { throw new Error('must never connect') } } }
+            }`,
+            )
             const run = (args: string[] = []) =>
                 execFileSync(process.execPath, [jiti, cli, 'generate', ...args], {
                     cwd: path,
@@ -145,6 +153,37 @@ adapter: { database: {
             expect(() => run()).toThrow('has no migration tooling')
             expect(await readdir(path)).toEqual(['liti.config.ts'])
             expect(run(['--schema-only'])).toContain('Schema-only generation completed')
+        } finally {
+            await rm(path, { recursive: true, force: true })
+        }
+    })
+
+    it('does not evaluate config in dry runs and treats empty/AI-only configs as database-free', async () => {
+        const path = await mkdtemp(resolve('.tmp/cli-empty-'))
+        try {
+            const run = (args: string[] = []) =>
+                execFileSync(process.execPath, [jiti, cli, 'generate', '--cwd', path, ...args], {
+                    encoding: 'utf8',
+                    stdio: 'pipe',
+                })
+            await writeFile(resolve(path, 'liti.config.ts'), 'throw new Error("config evaluated"); export default {}')
+            const planned = JSON.parse(run(['--dry-run', '--json']))
+            expect(planned.schema).toBe('unevaluated')
+            expect(await readdir(path)).toEqual(['liti.config.ts'])
+            await writeFile(resolve(path, 'liti.config.ts'), 'export default { models: {} }')
+            expect(run()).toContain('Database generation is not applicable')
+            await writeFile(
+                resolve(path, 'liti.config.ts'),
+                `export default { models: {}, plugins: [{
+                id: 'actions', apiVersion: 1, actions: { check: {
+                    input: { '~standard': { version: 1, vendor: 'test', validate(value) { return { value } } } },
+                    output: { '~standard': { version: 1, vendor: 'test', validate(value) { return { value } } } },
+                    execute() { throw new Error('never infer during generation') }
+                } }
+            }] }`,
+            )
+            expect(run()).toContain('Database generation is not applicable')
+            expect(await readdir(path)).not.toContain('migrations')
         } finally {
             await rm(path, { recursive: true, force: true })
         }

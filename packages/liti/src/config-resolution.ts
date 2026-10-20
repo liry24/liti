@@ -19,12 +19,7 @@ const mergeDomainValues = (override: unknown, base: unknown, path: string[] = []
             (path[0] === 'models' || path[0] === 'routeRules') &&
             path[2] === 'seo' &&
             path[3] === 'image')
-    const aiOpaque =
-        path[0] === 'ai' &&
-        ((path.length === 2 && (path[1] === 'model' || path[1] === 'decisionModel')) ||
-            (path[1] === 'actions' && path.length === 4 && (path[3] === 'model' || path[3] === 'output')) ||
-            (path[1] === 'actions' && path.length === 5 && path[3] === 'props'))
-    if (aiOpaque || seoImage) return override
+    if (seoImage) return override
     if (!isRecord(override) || !isRecord(base)) return override
     const result: Record<string, unknown> = { ...base }
     for (const [key, value] of Object.entries(override))
@@ -44,6 +39,8 @@ export const resolveLitiConfig = <const Config extends LitiConfigInput, const En
         resolved = mergeDomainValues(isRecord(direct) ? direct : {}, resolved) as Record<string, unknown>
         resolved = mergeDomainValues(isRecord(named) ? named : {}, resolved) as Record<string, unknown>
     }
+    if (Object.hasOwn(resolved, 'ai'))
+        throw new LitiError('LITI_INVALID_INPUT', 'Configure AI through an @litijs/ai plugin.')
     if (Object.hasOwn(resolved, 'adapters'))
         throw new LitiError('LITI_INVALID_INPUT', 'Use the singular adapter role object.')
     validateAdapter(resolved.adapter as LitiConfigInput['adapter'])

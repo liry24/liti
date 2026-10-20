@@ -45,6 +45,7 @@ export const baseSchema: Record<string, SqliteTable> = {
             created_at: text('created_at', true),
             updated_at: text('updated_at', true),
             published_at: text('published_at'),
+            first_published_at: text('first_published_at'),
         },
         indexes: [
             { name: 'liti_entries_model', columns: ['model'] },

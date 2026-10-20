@@ -6,48 +6,6 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
-const scenarios = [
-    {
-        name: 'Core',
-        entry: 'dist/index.js',
-        target: 'node',
-    },
-    {
-        name: 'Client',
-        entry: 'dist/client.js',
-        target: 'browser',
-    },
-    {
-        name: 'Forms',
-        entry: 'dist/form.js',
-        target: 'browser',
-    },
-    {
-        name: 'Nuxt module',
-        entry: 'dist/nuxt.js',
-        target: 'node',
-    },
-    {
-        name: 'Server',
-        entry: 'dist/server.js',
-        target: 'node',
-    },
-    {
-        name: 'Adapter',
-        entry: 'dist/adapter.js',
-        target: 'node',
-    },
-    {
-        name: 'AI',
-        entry: 'dist/ai.js',
-        target: 'node',
-    },
-    {
-        name: 'SEO',
-        entry: 'dist/seo.js',
-        target: 'node',
-    },
-]
 const cliArguments = process.argv.slice(2)
 const output = option('--output')
 
@@ -56,11 +14,19 @@ if (cliArguments[0] === '--compare') {
     const head = await readReport(required(cliArguments[2], 'head report'))
     await emit(compare(base, head), output)
 } else {
-    const packageRoot = resolve(required(option('--package-root'), '--package-root'))
-    await emit(JSON.stringify(await measure(packageRoot), null, 2) + '\n', output)
+    const workspace = resolve(required(option('--workspace-root'), '--workspace-root'))
+    const results = []
+    for (const entry of await readdir(join(workspace, 'packages'), { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const packageRoot = join(workspace, 'packages', entry.name)
+        const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+        if (!manifest.private) results.push(...(await measure(packageRoot, manifest)))
+    }
+    if (!results.length) throw new Error('No public packages found')
+    await emit(JSON.stringify({ version: 1, results }, null, 2) + '\n', output)
 }
 
-async function measure(packageRoot) {
+async function measure(packageRoot, manifest) {
     const root = await mkdtemp(join(tmpdir(), 'package-bundles-'))
     try {
         const packed = await run(
@@ -90,31 +56,30 @@ async function measure(packageRoot) {
             ),
         ]
         const assets = files.filter((file) => file.name.startsWith('dist/devtools/client/'))
-        if (!assets.length) throw new Error('Packed DevTools client output is missing')
-        results.push(
-            size(
-                'DevTools client',
-                assets.map((file) => file.bytes),
-            ),
-        )
-        for (const scenario of scenarios) {
+        if (assets.length)
+            results.push(
+                size(
+                    'DevTools client',
+                    assets.map((file) => file.bytes),
+                ),
+            )
+        for (const [name, exported] of Object.entries(manifest.exports)) {
+            const entry = typeof exported === 'string' ? exported : (exported.import ?? exported.default)
+            if (name.startsWith('./internal/') || !entry || !/\.(mjs|js)$/.test(entry)) continue
             // Measure the archive's files, with the same head-owned bundler/options for both revisions.
             const built = await Bun.build({
-                entrypoints: [join(directory, scenario.entry)],
-                target: scenario.target,
+                entrypoints: [join(directory, entry)],
+                target: ['./client', './vue', './form'].includes(name) ? 'browser' : 'node',
                 packages: 'external',
                 external: ['#*'],
                 minify: true,
             })
             if (!built.success) throw new AggregateError(built.logs, 'Packed entry bundle failed')
             results.push(
-                size(
-                    scenario.name,
-                    await Promise.all(built.outputs.map(async (file) => Buffer.from(await file.arrayBuffer()))),
-                ),
+                size(name, await Promise.all(built.outputs.map(async (file) => Buffer.from(await file.arrayBuffer())))),
             )
         }
-        return { version: 1, results }
+        return results.map((item) => ({ ...item, name: manifest.name + ': ' + item.name }))
     } finally {
         await rm(root, { force: true, recursive: true })
     }

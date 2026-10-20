@@ -1,3 +1,6 @@
+import type { RegisteredLitiSchema, ActionMetadata } from './query'
+import type { ActionResult } from './plugins'
+type Actions = RegisteredLitiSchema['actions']
 import { prepareAdminEntry } from './entry-preparation'
 import {
     LitiClientError,
@@ -5,7 +8,6 @@ import {
     type LitiEntry,
     type LitiManagementClient,
     type LitiManagementModels,
-    type LitiNamedAiActions,
     type LitiReferencesOptions,
     type LitiCreateEntryInput,
 } from './client'
@@ -226,12 +228,13 @@ export const createAdminClient = <Models extends Shape<Models> = LitiManagementM
             download: (id: string) => client.downloadAsset(id),
             remove: (id: string) => client.deleteAsset(id),
         },
-        ai: {
-            run: <Name extends Extract<keyof LitiNamedAiActions, string>>(
+        actions: {
+            run: <Name extends Extract<keyof Actions, string>>(
                 name: Name,
-                input: LitiNamedAiActions[Name]['input'],
+                input: Actions[Name]['input'],
                 options?: { signal?: AbortSignal },
-            ): Promise<LitiNamedAiActions[Name]['data']> => client.runAiAction(name, { input }, options),
+            ): Promise<ActionResult<Actions[Name]['output'], ActionMetadata<Actions[Name]>>> =>
+                (client as LitiManagementClient<Models, Actions>).executeAction(name, input, options),
         },
     }
 }

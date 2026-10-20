@@ -205,7 +205,7 @@ describe('liti clients', () => {
         await client.models()
         await client.inspect()
         await client.routeSnapshot()
-        await client.runAiAction('suggest/title', { input: { instruction: 'Shorten' } })
+        await client.executeAction('suggest/title', { instruction: 'Shorten' })
         await client.publishDue()
         await client.runAssetGC()
         expect(urls).toEqual([
@@ -215,7 +215,7 @@ describe('liti clients', () => {
             '/api/liti/models',
             '/api/liti/diagnostics',
             '/api/liti/routes',
-            '/api/liti/ai/actions/suggest%2Ftitle',
+            '/api/liti/actions/suggest%2Ftitle',
             '/api/liti/tasks/publish-due',
             '/api/liti/tasks/asset-gc',
         ])

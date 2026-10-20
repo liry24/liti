@@ -27,7 +27,12 @@
             "@litijs/drizzle/schema": ["../packages/drizzle/src/schema.ts"],
             "@litijs/drizzle/tooling": ["../packages/drizzle/src/tooling.ts"],
             "@litijs/drizzle/runtime": ["../packages/drizzle/src/runtime.ts"],
-            "liti/nuxt/server": ["../packages/nuxt/src/server-api.ts"]
+            "liti/nuxt/server": ["../packages/nuxt/src/server-api.ts"],
+            "@litijs/ai": ["../packages/ai/src/index.ts"],
+            "@litijs/ai/ai-sdk": ["../packages/ai/src/ai-sdk.ts"],
+            "@litijs/ai/void": ["../packages/ai/src/void.ts"],
+            "@litijs/blog": ["../packages/blog/src/index.ts"],
+            "@litijs/blog/vue": ["../packages/blog/src/vue.ts"]
         }
     },
     "exclude": ["**/.data/**", "**/.nuxt/**", "**/.output/**", "**/node_modules/**"],

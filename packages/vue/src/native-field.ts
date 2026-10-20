@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle -- the pinned TanStack bridge shares its native field and reset lifecycle */
 import { getCurrentInstance, getCurrentScope, onMounted, onScopeDispose, shallowRef } from 'vue'
 import type { DeepKeys, DeepValue } from '@tanstack/vue-form'
 
@@ -57,18 +58,18 @@ export const createFieldAccessor = <Data>(form: object): LitiFieldAccessor<Data>
             })
         const handle: LitiField<DeepValue<Data, Name>> = {
             get value() {
-                changed.value
+                void changed.value
                 return field.value as DeepValue<Data, Name>
             },
             set value(value) {
                 field.handleChange(value)
             },
             get errors() {
-                changed.value
+                void changed.value
                 return field.errors
             },
             get error() {
-                changed.value
+                void changed.value
                 const error = field.errors[0]
                 return typeof error === 'string'
                     ? error

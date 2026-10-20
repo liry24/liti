@@ -26,12 +26,13 @@ it('replaces the complete database bundle and its generation owner', async () =>
         package: 'drizzle-kit',
         bin: 'drizzle-kit',
         version: '1.0.0-rc.4',
-        args: ['generate', '--config=.liti/drizzle.config.json'],
+        args: ['generate', '--config=.liti/drizzle.config.mjs'],
         peers: { 'drizzle-orm': '1.0.0-rc.4' },
     })
     expect(plan.files[0]?.source).toContain('@litijs/drizzle/schema')
     expect(plan.files[0]?.source).not.toContain('@litijs/void')
     expect(plan.files[0]?.path).toBe('liti-db/liti.ts')
+    expect(plan.files.find((file) => file.path.endsWith('.mjs'))?.source).toMatch(/^export default /u)
 })
 
 it('keeps native runtime independent of optional migration tooling', async () => {

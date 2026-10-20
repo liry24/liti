@@ -16,23 +16,26 @@ import {
     type Ref,
 } from 'vue'
 import type { LitiClient } from '../../liti/src/public-client'
+// oxlint-disable-next-line no-unused-vars -- declaration emit must name the resource's unique symbol property
+import type { litiModelContext } from './model'
 import type { LitiBrowserBridge, LitiDescriptor } from '../../liti/src/descriptor'
-import type { LitiEntry, LitiEntryPage, LitiManagementClient } from '../../liti/src/client'
+import type { LitiManagementClient } from '../../liti/src/client'
 import { LitiClientError } from '../../liti/src/client'
 import { litiModelCatalog } from '../../liti/src/admin-client'
 import { normalizeLitiQuery, type LitiQueryOptions, type LitiSchema } from '../../liti/src/query'
 import {
     createLitiModel,
-    litiModelContext,
     litiModelError,
     litiSnapshot,
     type LitiModelData,
     type LitiModelError,
     type LitiSessionDraft,
 } from './model'
-import { projectQuery, type ReactiveLitiQueryOptions } from './query'
+import { projectQuery, queryTotal, type ReactiveLitiQueryOptions } from './query'
 import { useEntryForm, type UseEntryFormOptions } from './form'
 import type { EntryPrepareContext } from '../../liti/src/entry-preparation'
+import type { ActionResult } from '../../liti/src/plugins'
+import type { LitiFormExtensionRegistry } from './extensions'
 
 export interface LitiVueOptions<Schema extends LitiSchema = LitiSchema> {
     client: LitiClient<Schema>
@@ -40,6 +43,7 @@ export interface LitiVueOptions<Schema extends LitiSchema = LitiSchema> {
     authScope?: MaybeRefOrGetter<string>
     locale?: MaybeRefOrGetter<string | undefined>
     prepare?: (context: EntryPrepareContext) => void | Promise<void>
+    extensions?: LitiFormExtensionRegistry
 }
 
 interface CachedResource {
@@ -275,7 +279,9 @@ const createRuntime = (options: LitiVueOptions) => {
                     string,
                     LitiQueryOptions,
                 ]
-                return options.client.query(requestedModel, { ...request, signal } as LitiQueryOptions)
+                return request.mode !== 'one' && request.page
+                    ? options.client.queryPage(requestedModel, { ...request, page: request.page, signal })
+                    : options.client.query(requestedModel, { ...request, signal } as LitiQueryOptions)
             },
             undefined,
             immediate,
@@ -309,7 +315,8 @@ const createRuntime = (options: LitiVueOptions) => {
                     : (data as LitiModelData<Record<string, unknown>>)
             },
             set: (value) => {
-                source.handle.data.value = value && 'items' in value ? value.items : value
+                source.handle.data.value =
+                    Array.isArray(source.handle.data.value) && value && 'items' in value ? value.items : value
             },
         })
         const descriptor = computed(() => (models.handle.data.value as LitiDescriptor | undefined)?.models[model])
@@ -366,6 +373,84 @@ const createRuntime = (options: LitiVueOptions) => {
     }
 
     return {
+        action(
+            name: string,
+            input: MaybeRefOrGetter<unknown>,
+            settings: { immediate?: boolean; timeout?: number } = {},
+        ) {
+            const language = locale()
+            const identity = computed(() => litiSnapshot([name, scope.value, language.value, toValue(input)]))
+            const result = shallowRef<ActionResult>()
+            const status = shallowRef<'idle' | 'pending' | 'success' | 'error'>('idle')
+            const error = shallowRef<LitiModelError>()
+            let controller: AbortController | undefined
+            let pending: Promise<void> | undefined
+            const clear = () => {
+                controller?.abort()
+                controller = undefined
+                pending = undefined
+                result.value = undefined
+                status.value = 'idle'
+                error.value = undefined
+            }
+            watch(identity, clear, { flush: 'sync' })
+            if (getCurrentScope()) onScopeDispose(clear)
+            const execute = (execution: { signal?: AbortSignal; dedupe?: 'cancel' | 'defer' } = {}): Promise<void> => {
+                if (pending && execution.dedupe !== 'cancel') return pending
+                controller?.abort()
+                const own = (controller = new AbortController())
+                const started = identity.value
+                const signal = AbortSignal.any([
+                    own.signal,
+                    ...[
+                        execution.signal,
+                        settings.timeout === undefined ? undefined : AbortSignal.timeout(settings.timeout),
+                    ].filter((value): value is AbortSignal => !!value),
+                ])
+                status.value = 'pending'
+                error.value = undefined
+                pending = (async () => {
+                    try {
+                        signal.throwIfAborted()
+                        const output = await options.client.executeAction(name, JSON.parse(started)[3], { signal })
+                        signal.throwIfAborted()
+                        if (controller === own && identity.value === started) {
+                            result.value = output
+                            status.value = 'success'
+                        }
+                    } catch (cause) {
+                        if (controller === own && identity.value === started) {
+                            if (own.signal.aborted || (signal.aborted && signal.reason?.name === 'AbortError'))
+                                status.value = 'idle'
+                            else {
+                                error.value = litiModelError(cause)
+                                status.value = 'error'
+                            }
+                        }
+                        throw cause
+                    } finally {
+                        if (controller === own) pending = undefined
+                    }
+                })()
+                return pending
+            }
+            const handle = {
+                data: computed(() => result.value?.data),
+                metadata: computed(() => result.value?.metadata),
+                status: readonly(status),
+                error: readonly(error),
+                pending: computed(() => status.value === 'pending'),
+                execute,
+                refresh: execute,
+                clear,
+            }
+            const ready =
+                settings.immediate && typeof window !== 'undefined' ? execute().catch(() => {}) : Promise.resolve()
+            return Object.assign(
+                ready.then(() => handle),
+                handle,
+            )
+        },
         models() {
             const source = describe()
             const projection = projectQuery(source.handle, {}, {}, (value) => litiModelCatalog(value as LitiDescriptor))
@@ -389,16 +474,28 @@ const createRuntime = (options: LitiVueOptions) => {
         ) {
             const { transform, default: initial, pick, immediate, ...queryInput } = input
             const source = query(model, queryInput, immediate !== false)
-            const projection = projectQuery(source.handle, input.mode === 'one' ? null : [], {
-                ...(transform ? { transform } : {}),
-                ...(initial ? { default: initial } : {}),
-                ...(pick ? { pick } : {}),
-            })
+            const projection = projectQuery(
+                source.handle,
+                input.mode === 'one' ? null : [],
+                {
+                    ...(transform ? { transform } : {}),
+                    ...(initial ? { default: initial } : {}),
+                    ...(pick ? { pick } : {}),
+                },
+                (value) =>
+                    input.mode !== 'one' && value && typeof value === 'object' && 'items' in value
+                        ? value.items
+                        : value,
+            )
             const operations =
                 input.view === 'current'
                     ? modelResource(model, source, input.mode === 'one' ? { id: input.id } : {}).actions
                     : undefined
-            const handle = { ...projection.handle, ...(operations ? { remove: operations.remove } : {}) }
+            const handle = {
+                ...projection.handle,
+                ...(input.mode !== 'one' ? { total: queryTotal(source.handle) } : {}),
+                ...(operations ? { remove: operations.remove } : {}),
+            }
             return Object.assign(
                 source.ready().then(async () => {
                     await projection.ready()
@@ -418,7 +515,15 @@ const createRuntime = (options: LitiVueOptions) => {
                 () => (id.value ? undefined : instance()),
             )
             const { resource: modelState, models } = modelResource(model, source, input, id, instance)
-            const form = useEntryForm(modelState, input)
+            const form = useEntryForm(
+                modelState,
+                input,
+                Object.fromEntries(
+                    Object.entries(options.extensions ?? {}).filter(([name]) =>
+                        Object.hasOwn(options.bridge.descriptor.models[model]?.editor ?? {}, name),
+                    ),
+                ),
+            )
             const handle = { ...modelState, ...form }
             return Object.assign(
                 Promise.all([source.ready(), models.ready()]).then(() => handle),

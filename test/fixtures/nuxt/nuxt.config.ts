@@ -13,12 +13,17 @@ export default defineNuxtConfig({
         ],
         strategy: 'prefix_except_default',
     },
-    llms: {
-        domain: 'http://127.0.0.1',
-        full: { description: 'All published content', title: 'Full site content' },
-        title: 'Site content',
-    },
-    modules: [liti],
+    modules: [
+        [
+            'nuxt-llms',
+            {
+                domain: 'http://127.0.0.1',
+                full: { description: 'All published content', title: 'Full site content' },
+                title: 'Site content',
+            },
+        ],
+        liti,
+    ],
     liti: {
         auth: true,
         i18n: true,

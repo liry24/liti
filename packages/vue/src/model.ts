@@ -2,7 +2,6 @@ import { prepareAdminEntry } from '../../liti/src/entry-preparation'
 import type { EntryFeatures, EntryPrepareContext } from '../../liti/src/entry-preparation'
 export type { EntryFeatures, EntryPrepareContext } from '../../liti/src/entry-preparation'
 import { resolveTranslation, type TranslationInput } from '../../liti/src/i18n'
-import { createError, type H3Error } from 'h3'
 import {
     computed,
     getCurrentScope,
@@ -28,21 +27,22 @@ export interface LitiFailure {
     receipt?: { id: string; model: string; version: number; deleted?: boolean }
     effects?: { assets: 'pending' }
 }
-export type LitiModelError = H3Error<LitiFailure>
+export interface LitiModelError extends Error {
+    statusCode: number
+    data: LitiFailure
+}
 export const litiModelError = (cause: unknown, committed = false): LitiModelError => {
     const payload = cause as {
         data?: { error?: { code?: string; message?: string; issues?: LitiFailure['issues'] } }
         statusCode?: number
     }
     if (payload?.data?.error?.code && payload.data.error.message) {
-        return createError<LitiFailure>({
-            message: payload.data.error.message,
+        return Object.assign(new Error(payload.data.error.message, { cause }), {
             statusCode: payload.statusCode ?? 500,
             data: {
                 code: payload.data.error.code,
                 ...(payload.data.error.issues ? { issues: payload.data.error.issues } : {}),
             },
-            cause,
         })
     }
     const structured = cause instanceof LitiClientError || cause instanceof LitiError
@@ -53,15 +53,13 @@ export const litiModelError = (cause: unknown, committed = false): LitiModelErro
               ...(cause.committed ? { committed: true, receipt: cause.receipt, effects: cause.effects } : {}),
           }
         : ((cause as LitiModelError)?.data ?? { code: 'LITI_REQUEST_FAILED' })
-    return createError<LitiFailure>({
-        message: cause instanceof Error ? cause.message : 'liti request failed.',
+    return Object.assign(new Error(cause instanceof Error ? cause.message : 'liti request failed.', { cause }), {
         statusCode: structured ? cause.status : ((cause as LitiModelError)?.statusCode ?? 500),
         data: {
             ...failure,
             code: typeof failure.code === 'string' ? failure.code : 'LITI_REQUEST_FAILED',
             ...(committed ? { committed: true } : {}),
         },
-        cause,
     })
 }
 export type LitiModelData<Data> = LitiEntry<Data> | LitiEntryPage<Data> | null | undefined
@@ -419,7 +417,7 @@ export const createLitiModel = <Data extends Record<string, unknown>>(
         { immediate: true, flush: 'sync' },
     )
     const actions = {
-        meta: readonly(meta),
+        meta: readonly(meta) as Readonly<ModelMeta>,
         data: state.data,
         status: state.status,
         error: state.error,

@@ -59,5 +59,17 @@
         "drizzle-kit": {
             "optional": true
         }
+    },
+    "liti": {
+        "id": "drizzle",
+        "apiVersion": 1,
+        "kind": "adapter",
+        "liti": "^0.0.3 || ^0.1.0",
+        "factory": "drizzle",
+        "config": "@litijs/drizzle",
+        "managedPeers": [
+            "drizzle-orm",
+            "drizzle-kit"
+        ]
     }
 }

@@ -28,8 +28,12 @@ const config = defineLitiConfig({
     },
 })
 
-declare module '../packages/liti/src/client' {
+declare module '../packages/liti/src/public-client' {
     interface LitiClientRegistry {
+        actions: {
+            prepare: { input: { text?: string }; output: { text: string } }
+            proofread: { input: { content: string }; output: { content: string } }
+        }
         managementModels: InferLitiModels<typeof config>
         publicModels: InferLitiPublicModels<typeof config>
     }

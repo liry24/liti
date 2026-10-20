@@ -3,6 +3,7 @@ import { createLiti } from '../packages/liti/src/server'
 import { defineLitiConfig, text } from '../packages/liti/src'
 import { createMemoryDatabase } from './memory-storage'
 import type { DatabaseAdapter, OperationContext } from '../packages/liti/src/plugins'
+import { z } from 'zod'
 
 const bootstrap = { projectRoot: process.cwd() }
 const database = (): DatabaseAdapter => ({
@@ -17,6 +18,51 @@ const config = () =>
         authorization: { roles: { writer: { models: { posts: ['create', 'update', 'publish'] } } } },
         models: { posts: { fields: { title: text({ required: true }) } } },
     })
+
+it('uses the same action ACL and validation for trusted service and HTTP calls', async () => {
+    const execute = vi.fn((input: { text: string }, context: OperationContext) => ({
+        data: input.text.toUpperCase(),
+        metadata: { actor: context.actor!.id, platform: context.platformContext },
+    }))
+    const api = await createLiti(
+        defineLitiConfig({
+            adapter: { database: database() },
+            authorization: { roles: { writer: { actions: ['upper'] } } },
+            plugins: [
+                {
+                    id: 'actions',
+                    apiVersion: 1,
+                    actions: { upper: { input: z.object({ text: z.string() }), output: z.string(), execute } },
+                },
+            ],
+        }),
+        { ...bootstrap, authenticate: () => actor },
+    )
+    try {
+        const platform = { binding: 'synthetic' }
+        const service = await api.service({ actor, platformContext: platform })
+        expect(await service.executeAction('upper', { text: 'trusted' })).toEqual({
+            data: 'TRUSTED',
+            metadata: { actor: 'writer', platform },
+        })
+        const response = await api.fetch(
+            new Request('https://example.test/api/liti/actions/upper', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ input: { text: 'http' } }),
+            }),
+            platform,
+        )
+        expect(await response.json()).toEqual({ data: 'HTTP', metadata: { actor: 'writer', platform } })
+        const denied = await api.service({ actor: { id: 'other', roles: [] } })
+        await expect(denied.executeAction('upper', { text: 'forbidden' })).rejects.toMatchObject({
+            code: 'LITI_FORBIDDEN',
+        })
+        expect(execute).toHaveBeenCalledTimes(2)
+    } finally {
+        await api.close()
+    }
+})
 
 it('shares ACL, actor identity and write-only receipts between service and HTTP', async () => {
     const events: string[] = []

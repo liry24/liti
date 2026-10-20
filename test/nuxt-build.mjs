@@ -201,7 +201,7 @@ try {
     const adminModels = await fetch(`http://127.0.0.1:${port}/api/liti/models`, {
         headers: { cookie, 'x-liti-test-role': 'admin' },
     })
-    if (!adminModels.ok || Object.keys((await adminModels.json()).models).length !== 3) {
+    if (!adminModels.ok || Object.keys((await adminModels.json()).models).length !== 4) {
         throw new Error('Nuxt admin role integration failed.')
     }
     for (const [locale, label, title] of [
@@ -230,11 +230,11 @@ try {
             return Object.keys((await parallelResponse.json()).models).length
         }),
     )
-    if (String(parallel) !== '3,0,1,0')
+    if (String(parallel) !== '4,0,1,0')
         throw new Error('Native authorization contexts leaked between concurrent requests.')
     const formHeaders = { cookie, 'x-liti-test-role': 'editor' }
     const aiRequest = (name, headers = {}, props = { content: 'Input' }) =>
-        fetch(`http://127.0.0.1:${port}/api/liti/ai/actions/${name}`, {
+        fetch(`http://127.0.0.1:${port}/api/liti/actions/${name}`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...headers },
             body: JSON.stringify({ input: props }),
@@ -255,19 +255,34 @@ try {
     if (
         !aiResponse.ok ||
         aiResponse.headers.get('cache-control') !== 'private, no-store' ||
-        (await aiResponse.json()).content !== 'Corrected'
+        (await aiResponse.json()).data.content !== 'Corrected'
     )
         throw new Error('Authenticated named AI execution failed.')
     const aiHtml = await fetch(`http://127.0.0.1:${port}/ai-probe`, { headers: formHeaders }).then((value) =>
         value.text(),
     )
-    if (!aiHtml.includes('id="ai-content">Corrected') || !aiHtml.includes('id="ai-status">success'))
-        throw new Error('Native awaited AI SSR did not forward its session or output.')
+    if (aiHtml.includes('id="ai-content">Corrected') || !aiHtml.includes('id="ai-status">idle'))
+        throw new Error('SSR unexpectedly executed an AI action.')
+    const blogHtml = await fetch(`http://127.0.0.1:${port}/blog-probe`, {
+        headers: { cookie, 'x-liti-test-role': 'admin' },
+    }).then((value) => value.text())
+    if (
+        !blogHtml.includes('id="blog-stable">true') ||
+        !blogHtml.includes('id="blog-status">idle') ||
+        !blogHtml.includes('id="blog-availability">available')
+    )
+        throw new Error('The blog form namespace was not stable and available during SSR.')
+    const articles = await fetch(`http://127.0.0.1:${port}/api/content/articles`).then((value) => value.json())
+    if (
+        articles[0]?.data?._liti?.meta?.blog?.date !== '2026-01-01T00:00:00Z' ||
+        articles[0]?.data?._liti?.seo?.articlePublishedTime !== '2026-01-01T00:00:00Z'
+    )
+        throw new Error('Blog dates and SEO did not share the public content projection.')
     const countAfter = await fetch(`http://127.0.0.1:${port}/api/__ai-count`).then((value) => value.json())
-    if (countAfter.count !== 2) throw new Error('SSR inference ran more than once.')
+    if (countAfter.count !== 1) throw new Error('SSR executed inference.')
     const serverAi = await fetch(`http://127.0.0.1:${port}/api/__ai-action`, { method: 'POST', headers: formHeaders })
-    if (!serverAi.ok || (await serverAi.json()).content !== 'Corrected')
-        throw new Error('Typed server runAiAction failed.')
+    if (!serverAi.ok || (await serverAi.json()).data.content !== 'Corrected')
+        throw new Error('Typed server action failed.')
     const formEntries = await fetch(`http://127.0.0.1:${port}/api/liti/entries?model=posts&locale=en`, {
         headers: formHeaders,
     }).then((entriesResponse) => entriesResponse.json())

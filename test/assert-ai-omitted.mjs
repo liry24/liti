@@ -17,9 +17,9 @@ export async function assertAiOmitted(fixture) {
     }
     const runtime = await readFile(join(fixture, '.nuxt/liti/runtime.mjs'), 'utf8')
     const client = await readFile(join(fixture, '.nuxt/liti/client.ts'), 'utf8')
-    if (runtime.includes('liti/internal/ai') || runtime.includes('runAiAction:') || client.includes('useAi'))
+    if (runtime.includes('@litijs/ai') || runtime.includes('executeAction:') || client.includes('useAi'))
         throw new Error('Unused AI capability was generated.')
     const handlers = await readFile(join(fixture, '.nuxt/nitro.json'), 'utf8').catch(() => '')
-    if (handlers.includes('ai-action-handler')) throw new Error('Unused AI handler was registered.')
+    if (handlers.includes('action-handler')) throw new Error('Unused AI handler was registered.')
     console.log(`Verified unused AI omission across ${bytes} bytes of actual output: ${fixture}`)
 }

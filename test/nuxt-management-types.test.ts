@@ -16,16 +16,16 @@ it('infers high-level form, management list, field and successful save types fro
     await writeFile(
         join(directory, 'config.ts'),
         `import { array, defineLitiConfig, file, image, images, markdown, object, text } from 'liti'
-import { Output } from 'ai'
+import { ai, createTextAction } from '@litijs/ai'
 import { z } from 'zod'
 export default defineLitiConfig({ models: {
   posts: { fields: { title: text({ required: true }), copy: markdown({ required: true }), image: image(), gallery: images(), sections: array(object({ attachment: file() })) } },
   authors: { fields: { name: text({ required: true }) } },
-}, ai: { actions: {
-  publication: { type: 'text-generation', input: z.object({ mode: z.enum(['automatic', 'manual']) }), prompt: ({ mode }) => mode, output: Output.object({ schema: z.object({ data: z.object({ title: z.string().optional(), copy: z.string().optional() }), slug: z.string().optional() }) }) },
-  correct: { type: 'text-generation', input: z.object({ content: z.string(), fields: z.array(z.enum(['copy'])) }), prompt: ({ content }) => content, output: Output.object({ schema: z.object({ data: z.object({ copy: z.string() }) }) }) },
-  plain: { type: 'text-generation', input: z.object({}), prompt: () => 'Plain' },
-} } })
+}, plugins: [ai({ actions: {
+  publication: createTextAction({ input: z.object({ mode: z.enum(['automatic', 'manual']) }), prompt: ({ mode }) => mode, output: z.object({ data: z.object({ title: z.string().optional(), copy: z.string().optional() }), slug: z.string().optional() }) }),
+  correct: createTextAction({ input: z.object({ content: z.string(), fields: z.array(z.enum(['copy'])) }), prompt: ({ content }) => content, output: z.object({ data: z.object({ copy: z.string() }) }) }),
+  plain: createTextAction({ input: z.object({}), prompt: () => 'Plain' }),
+} })] })
 `,
     )
     await writeFile(
@@ -96,6 +96,7 @@ void [title, copy, assetUrl, first, size, projectedTitles, one, name]
             compilerOptions: {
                 paths: {
                     liti: [resolve('packages/liti/src/index.ts')],
+                    '@litijs/ai': [resolve('packages/ai/src/index.ts')],
                     'liti/client': [resolve('packages/liti/src/public-client.ts')],
                     'liti/internal/*': [resolve('packages/liti/src/*')],
                     'liti/internal/runtime/*': [resolve('packages/nuxt/src/runtime/*')],

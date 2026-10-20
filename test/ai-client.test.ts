@@ -18,10 +18,8 @@ describe('native named AI management client', () => {
                 return Response.json(proposal)
             },
         })
-        expect(await client.runAiAction('correct/title', { input: { content: 'Manual' } }, { signal })).toEqual(
-            proposal,
-        )
-        expect(calls).toEqual([{ url: '/manage/ai/actions/correct%2Ftitle', body: { input: { content: 'Manual' } } }])
+        expect(await client.executeAction('correct/title', { content: 'Manual' }, { signal })).toEqual(proposal)
+        expect(calls).toEqual([{ url: '/manage/actions/correct%2Ftitle', body: { input: { content: 'Manual' } } }])
         expect(onMutation).not.toHaveBeenCalled()
         expect(client).not.toHaveProperty('generateMetadata')
         expect(client).not.toHaveProperty('proofreadDraft')
@@ -32,7 +30,7 @@ describe('native named AI management client', () => {
             Response.json({ error: { code: 'LITI_AI_UNAVAILABLE', message: 'Unavailable' } }, { status: 503 }),
         )
         const client = createLitiManagementClient({ fetch: request })
-        await expect(client.runAiAction('metadata', { input: {} })).rejects.toMatchObject({
+        await expect(client.executeAction('metadata', {})).rejects.toMatchObject({
             code: 'LITI_AI_UNAVAILABLE',
             status: 503,
         })

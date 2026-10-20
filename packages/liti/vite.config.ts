@@ -1,21 +1,65 @@
 import { defineConfig } from 'vite-plus'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import { moduleMeta } from '../nuxt/src/meta.ts'
+import { bundledLicenses } from '../../scripts/bundled-licenses.ts'
 
 const manifest: { version: string } = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'))
+const bridgeDependencies = [
+    /^@tanstack\//u,
+    'vue-demi',
+    '@nuxt/devtools-kit',
+    '@nuxt/kit',
+    'devframe',
+    'h3',
+    'nostics',
+    'tinyexec',
+    'crossws',
+    'srvx',
+    'pathe',
+    'ufo',
+    'cookie-es',
+    'iron-webcrypto',
+    'radix3',
+    'defu',
+    'destr',
+    'uncrypto',
+    /^node-mock-http(?:\/|$)/u,
+]
+const formRequire = createRequire(new URL('../vue/package.json', import.meta.url))
+const formOwner = createRequire(formRequire.resolve('@tanstack/vue-form/package.json'))
+const formAliases = Object.fromEntries(
+    ['@tanstack/vue-form', '@tanstack/vue-store'].map((name) => [
+        name,
+        resolve(dirname(formOwner.resolve(`${name}/package.json`)), 'dist/index.js'),
+    ]),
+)
 
 export default defineConfig({
     pack: [
         {
             clean: true,
+            alias: formAliases,
             copy: [
+                { from: '../../LICENSE', to: '.' },
                 { from: '../../README.md', to: '.' },
                 { from: '../nuxt/src/devtools/client/index.html', to: 'dist/devtools/client' },
             ],
             deps: {
-                dts: { neverBundle: true },
+                dts: {
+                    neverBundle: true,
+                    alwaysBundle: [
+                        ...bridgeDependencies.filter((name) => name !== 'h3'),
+                        'comark-content',
+                        'unstorage',
+                        'hookable',
+                    ],
+                },
                 neverBundle: true,
+                alwaysBundle: bridgeDependencies,
                 onlyImport: [
+                    /^node:/u,
                     /^@litijs\/void(?:\/|$)/u,
                     '@noble/hashes',
                     'liti/adapter',
@@ -61,7 +105,6 @@ export default defineConfig({
             entry: {
                 adapter: 'src/adapter.ts',
                 tooling: 'src/tooling.ts',
-                ai: 'src/ai.ts',
                 client: 'src/client.ts',
                 'public-client': 'src/public-client.ts',
                 'admin-client': 'src/admin-client.ts',
@@ -93,15 +136,24 @@ export default defineConfig({
                 server: 'src/server/index.ts',
                 seo: 'src/seo.ts',
                 'runtime/management-handler': '../nuxt/src/runtime/management-handler.ts',
-                'runtime/ai-action-handler': '../nuxt/src/runtime/ai-action-handler.ts',
+                'runtime/action-handler': '../nuxt/src/runtime/action-handler.ts',
                 'runtime/public-handler': '../nuxt/src/runtime/public-handler.ts',
             },
             exports: false,
             format: ['esm'],
             platform: 'neutral',
             sourcemap: false,
-            unbundle: true,
+            unbundle: false,
+            treeshake: { moduleSideEffects: (id) => !id.startsWith('unstorage/drivers/') },
             plugins: [
+                bundledLicenses(),
+                {
+                    name: 'public-host-modules',
+                    resolveId(id) {
+                        if (id === '@nuxt/kit') return { id: 'nuxt/kit', external: true }
+                        if (id === 'vue-demi') return { id: 'vue', external: true }
+                    },
+                },
                 {
                     name: 'nuxt-module-metadata',
                     generateBundle() {
@@ -131,6 +183,7 @@ export default defineConfig({
             dts: false,
             clean: false,
             minify: true,
+            plugins: [bundledLicenses()],
             sourcemap: false,
             deps: {
                 alwaysBundle: [/^(?:birpc|devframe|nostics|p-map|ufo)(?:\/|$)/u],

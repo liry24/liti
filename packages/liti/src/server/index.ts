@@ -1,5 +1,7 @@
 export { createRuntime, Liti } from './liti'
 export { createLiti, type LitiBootstrap } from './bootstrap'
+export { executeAction } from './actions'
+export { handleActionRequest } from './actions-http'
 export type { OperationContext } from '../plugins'
 export { handleManagementRequest, handlePublicRequest } from './http'
 export { assertLitiSchema } from './schema'

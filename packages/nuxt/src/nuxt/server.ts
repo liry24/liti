@@ -14,7 +14,7 @@ export interface LitiRuntime {
     tasks?: LitiTaskOptions
     getLiti: (event?: RequestEvent, platformContext?: object) => Liti<RequestEvent> | Promise<Liti<RequestEvent>>
     initializeRequest?: (event: RequestEvent) => void | Promise<void>
-    runAiAction?: (event: RequestEvent, name: string, input: unknown) => Promise<unknown>
+    executeAction?: (event: RequestEvent, name: string, input: unknown) => Promise<unknown>
     presentation?: (
         event: RequestEvent,
         path: string,

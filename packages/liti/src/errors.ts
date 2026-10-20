@@ -4,6 +4,8 @@ export interface LitiIssue {
 }
 
 export type LitiErrorCode =
+    | 'LITI_ACTION_FAILED'
+    | 'LITI_ACTION_OUTPUT_INVALID'
     | 'LITI_AI_FAILED'
     | 'LITI_AI_OUTPUT_INVALID'
     | 'LITI_AI_UNAVAILABLE'
@@ -26,6 +28,8 @@ export type LitiErrorCode =
     | 'LITI_STORAGE_UNAVAILABLE'
 
 const statuses: Record<LitiErrorCode, number> = {
+    LITI_ACTION_FAILED: 502,
+    LITI_ACTION_OUTPUT_INVALID: 502,
     LITI_AI_FAILED: 502,
     LITI_AI_OUTPUT_INVALID: 502,
     LITI_AI_UNAVAILABLE: 503,

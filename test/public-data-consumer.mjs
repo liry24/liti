@@ -4,9 +4,11 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
-import { consumerDependencies } from './consumer-dependencies.mjs'
+import { consumerDependencies, stableVue } from './consumer-dependencies.mjs'
 import { stopProcess as stop } from './stop-process.ts'
+import { verifyNuxtDeclarations } from './nuxt-declarations.mjs'
 const wait = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+import { installDependencies } from 'nypm'
 const listen = (server) =>
     new Promise((resolve, reject) => {
         server.once('error', reject)
@@ -314,19 +316,19 @@ export const verifyPublicDataConsumer = async (tarball, { browser = true } = {})
                 type: 'module',
                 dependencies: {
                     liti: `file:${resolvePath(tarball)}`,
-                    ...consumerDependencies(['nuxt', 'typescript', 'vue', '@types/node', 'comark']),
+                    ...consumerDependencies(['nuxt', 'typescript', '@types/node']),
+                    vue: stableVue,
                 },
-                overrides: { vue: '$vue' },
             }),
         )
         console.log('Public data consumer: isolated packed installation')
-        run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'])
+        await installDependencies({ cwd: directory, packageManager: 'npm', silent: true })
         await put(
             'nuxt.config.ts',
             `import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
   devtools: false, ...{ files: false }, modules: ['liti/nuxt'],
-  liti: { auth: false, ai: false, server: { enabled: false }, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, client: { basePath: '/content', origin: ${JSON.stringify(backendOrigin)} } },
+  liti: { auth: false, server: { enabled: false }, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, client: { basePath: '/content', origin: ${JSON.stringify(backendOrigin)} } },
 })`,
         )
         await put(
@@ -370,7 +372,7 @@ const batch = {
     catalog: { data: catalog.data.value, error: catalog.error.value },
     featured: { data: featured.data.value, error: featured.error.value },
     failed: { data: failed.data.value, error: failed.error.value
-      ? { status: failed.error.value.statusCode, message: failed.error.value.message } : null },
+      ? { status: failed.error.value.statusCode, message: failed.error.value.message, code: failed.error.value.data?.code } : null },
     count: catalog.data.value.length,
   })),
   status: computed(() => [catalog, featured, failed].some((query) => query.status.value === 'pending') ? 'pending'
@@ -418,7 +420,7 @@ onMounted(async () => {
     check(entry.data.value?.data.title === 'ssr:ja', 'SSR entry must hydrate.')
     check(transformed.data.value[0] === 'list:transformed', 'SSR transform must hydrate.')
     check(batch.data.value.featured.data?.data.slug === 'batch-first' && batch.data.value.catalog.data.length === 1 && batch.data.value.count === 1, 'One batch state must hydrate named success data and native transform.')
-    check(batch.data.value.failed.error?.status === 500 && batch.data.value.failed.data === null && !batch.error.value, 'Batch item failure must retain successes without a whole-state error.')
+    check(batch.data.value.failed.error?.status === 500 && batch.data.value.failed.error.code === 'LITI_TEST_ERROR' && batch.data.value.failed.data === null && !batch.error.value, 'Query failure must hydrate its status and error code while other queries retain successes.')
     check(!JSON.stringify(batch.data.value).includes('stack') && !JSON.stringify(batch.data.value).includes('cause'), 'Batch error DTO must not serialize stacks/causes.')
     slug.value = 'slow'
     await nextTick()
@@ -467,7 +469,7 @@ onMounted(async () => {
     await batch.refresh()
     const afterBatchRefresh = await getCounts()
     for (const key of ['list:batch-en', 'batch-fast:batch-en', 'error:batch-en']) check(afterBatchRefresh[key] === (beforeBatchRefresh[key] ?? 0) + 1, 'Native batch refresh must refresh every named request: ' + key)
-    check(batch.data.value.failed.error?.status === 500 && batch.data.value.catalog.error === null, 'Refreshed batch must retain named partial-success semantics.')
+    check(batch.data.value.failed.error?.status === 500 && batch.data.value.catalog.error === undefined, 'Refreshed queries must retain independent success and error states.')
     batch.clear()
     check(batch.data.value.count === 0 && batch.data.value.catalog.data.length === 0 && batch.status.value === 'idle', 'Batch clear must use the native default.')
     await batch.execute()
@@ -505,7 +507,9 @@ void [title, nodes, titles, featuredTitle, count]`,
         )
         console.log('Public data consumer: real Nuxt macro build and generated app types')
         run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
+        run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'prepare'])
         run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', '.nuxt/tsconfig.app.json'])
+        await verifyNuxtDeclarations(directory)
         const portServer = createServer()
         const origin = await listen(portServer)
         await close(portServer)

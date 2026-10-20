@@ -8,10 +8,26 @@ import {
 } from './client'
 import { presentAdminValue } from './management-assets'
 import { normalizeLitiQuery } from './query'
-import type { LitiSchema, RegisteredLitiSchema, LitiQueryModel, LitiQueryOptions, LitiQueryResult } from './query'
+import type {
+    LitiSchema,
+    RegisteredLitiSchema,
+    LitiQueryModel,
+    LitiQueryOptions,
+    LitiQueryResult,
+    LitiQueryPageOptions,
+    LitiQueryPage,
+} from './query'
 export { LitiClientError } from './client'
 export { normalizeLitiQuery } from './query'
-export type { LitiSchema, RegisteredLitiSchema, LitiQueryModel, LitiQueryOptions, LitiQueryResult } from './query'
+export type {
+    LitiSchema,
+    RegisteredLitiSchema,
+    LitiQueryModel,
+    LitiQueryOptions,
+    LitiQueryResult,
+    LitiQueryPageOptions,
+    LitiQueryPage,
+} from './query'
 export type { LitiDescriptor, ModelDescriptor, FieldDescriptor } from './descriptor'
 
 /** Generated declarations register model and action types through this public entry. */
@@ -23,7 +39,8 @@ export interface LitiClientOptions extends Omit<LitiManagementClientOptions, 'ba
 }
 
 export interface LitiClient<Schema extends LitiSchema = RegisteredLitiSchema> extends LitiManagementClient<
-    Schema['managementModels']
+    Schema['managementModels'],
+    Schema['actions']
 > {
     query<
         const Options extends LitiQueryOptions = {},
@@ -32,25 +49,34 @@ export interface LitiClient<Schema extends LitiSchema = RegisteredLitiSchema> ex
         model: Name,
         options?: Options,
     ): Promise<LitiQueryResult<Schema, Name, Options>>
+    queryPage<
+        const Options extends LitiQueryPageOptions,
+        Name extends LitiQueryModel<Schema, Options> = LitiQueryModel<Schema, Options>,
+    >(
+        model: Name,
+        options: Options,
+    ): Promise<LitiQueryPage<Schema, Name, Options>>
 }
 
 export const createLitiClient = <Schema extends LitiSchema = RegisteredLitiSchema>(
-    options: LitiClientOptions = {},
+    connection: LitiClientOptions = {},
 ): LitiClient<Schema> => {
-    const base = (options.baseURL ?? '/api/liti').replace(/\/$/u, '')
+    const base = (connection.baseURL ?? '/api/liti').replace(/\/$/u, '')
     const management = createLitiManagementClient<Record<string, Record<string, unknown>>>({
-        ...options,
+        ...connection,
         basePath: base,
     })
     const content = createPublicClient<
         Record<string, import('./client').PublicEntry>,
         Record<string, import('./client').PublicEntry>
     >({
-        ...options,
-        basePath: options.publicBaseURL ?? `${base}/content`,
+        ...connection,
+        basePath: connection.publicBaseURL ?? `${base}/content`,
     })
-    const query = async (model: string, input: LitiQueryOptions = {}): Promise<unknown> => {
+    const query = async (model: string, input: LitiQueryOptions = {}, keepPage = false): Promise<unknown> => {
         const options = normalizeLitiQuery(input)
+        if (keepPage && (options.mode !== 'many' || !options.page))
+            throw new LitiClientError('LITI_INVALID_INPUT', 'A page query requires a many query and pagination.', 400)
         options.signal?.throwIfAborted()
         if (options.waiting) return null
         const request = {
@@ -78,18 +104,22 @@ export const createLitiClient = <Schema extends LitiSchema = RegisteredLitiSchem
                 }
             }
             const list = { ...request, ...('q' in options && options.q !== undefined ? { q: options.q } : {}) }
-            return options.page
-                ? (await management.listEntries(model, { ...list, ...options.page })).items.map(present)
-                : (await management.listAllEntries(model, list)).map(present)
+            if (options.page) {
+                const page = await management.listEntries(model, { ...list, ...options.page })
+                const items = page.items.map(present)
+                return keepPage ? { ...page, items } : items
+            }
+            return (await management.listAllEntries(model, list)).map(present)
         }
         const projection = { ...request, ...(options.markdown ? { markdown: options.markdown } : {}) }
         if (options.mode === 'many') {
-            if (options.page)
-                return (
+            if (options.page) {
+                const page =
                     options.markdown === 'summary'
                         ? await content.page(model, options.page, { ...request, markdown: 'summary' })
                         : await content.page(model, options.page, request)
-                ).items
+                return keepPage ? page : page.items
+            }
             return options.markdown === 'summary'
                 ? content.list(model, { ...request, markdown: 'summary' })
                 : content.list(model, request)
@@ -102,7 +132,7 @@ export const createLitiClient = <Schema extends LitiSchema = RegisteredLitiSchem
         return content.get(model, options.id!, projection)
     }
     // The schema constrains names and DTO shapes; the transport receives the same checked options.
-    return { ...management, query } as LitiClient<Schema>
+    return { ...management, query, queryPage: (model, options) => query(model, options, true) } as LitiClient<Schema>
 }
 export type Entry<Name extends string = string> = LitiEntry<
     Name extends keyof LitiFormModels ? LitiFormModels[Name] : Record<string, unknown>

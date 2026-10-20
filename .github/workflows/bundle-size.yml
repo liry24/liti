@@ -45,10 +45,10 @@ jobs:
             - run: bun run build
               working-directory: head
             - name: Measure base
-              run: bun scripts/measure-bundles.mjs --package-root ../base/packages/liti --output bundle-base.json
+              run: bun scripts/measure-bundles.mjs --workspace-root ../base --output bundle-base.json
               working-directory: head
             - name: Measure pull request
-              run: bun scripts/measure-bundles.mjs --package-root packages/liti --output bundle-head.json
+              run: bun scripts/measure-bundles.mjs --workspace-root . --output bundle-head.json
               working-directory: head
             - name: Compare
               run: bun scripts/measure-bundles.mjs --compare bundle-base.json bundle-head.json --output bundle-comment.md

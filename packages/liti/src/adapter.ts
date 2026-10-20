@@ -17,6 +17,8 @@ export type {
     RuntimeAdapter,
     AuthAdapter,
     OperationContext,
+    ActionDefinition,
+    ActionResult,
 } from './plugins'
 export type { AssetRecord, EntryRecord, RevisionRecord, LitiActor } from './server/types'
 export type { Translations } from './i18n'

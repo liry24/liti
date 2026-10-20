@@ -3,13 +3,14 @@ import { z } from 'zod'
 import { defineLitiConfig, defineLitiPlugin, resolveLitiConfig, text } from '../packages/liti/src'
 import type { DatabaseAdapter, LitiAdapter } from '../packages/liti/src'
 
-const database = (id: string): DatabaseAdapter => ({
-    id,
-    role: 'database',
-    connect: vi.fn(() => {
-        throw new Error('Configuration must not connect.')
-    }),
-})
+const database = (id: string) =>
+    ({
+        id,
+        role: 'database' as const,
+        connect: vi.fn(() => {
+            throw new Error('Configuration must not connect.')
+        }),
+    }) satisfies DatabaseAdapter
 
 describe('liti declarations', () => {
     it('normalizes an empty configuration without connecting to a host', () => {
@@ -21,7 +22,7 @@ describe('liti declarations', () => {
     it('collects plugin contributions before validating references, preserving schema identity', () => {
         const input = z.object({ title: z.string() })
         const output = z.object({ slug: z.string() })
-        const execute = vi.fn(({ title }: z.infer<typeof input>) => ({ slug: title }))
+        const execute = vi.fn(({ title }: z.infer<typeof input>) => ({ data: { slug: title } }))
         const article = defineLitiPlugin({
             id: 'article',
             apiVersion: 1,
@@ -56,7 +57,7 @@ describe('liti declarations', () => {
         expect(() => resolveLitiConfig(defineLitiConfig({ models: plugin.models, plugins: [plugin] }), [])).toThrow(
             'Duplicate model',
         )
-        const action = { input: z.string(), output: z.string(), execute: (value: string) => value }
+        const action = { input: z.string(), output: z.string(), execute: (value: string) => ({ data: value }) }
         expect(() =>
             resolveLitiConfig(
                 defineLitiConfig({

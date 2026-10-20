@@ -44,6 +44,7 @@ export const modelEntry = (
     revisionId: 'revision',
     publishedRevisionId: null,
     publishedAt: null,
+    firstPublishedAt: null,
     scheduledAt: null,
     scheduledRevisionId: null,
     sortOrder: null,

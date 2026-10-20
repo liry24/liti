@@ -13,8 +13,11 @@ export default defineEventHandler((event) =>
         const users = await db.all(sql`SELECT id FROM user`)
         return {
             users: users.length,
-            sameAdapterInFreshContext: withLitiContext({ ...event.context }, () => useVoidDatabase(schema) === adapter),
-            alternateAdapterIsolated: withLitiContext(alternate, () => useVoidDatabase(schema) !== adapter),
+            sameAdapterInFreshContext: await withLitiContext(
+                { ...event.context },
+                () => useVoidDatabase(schema) === adapter,
+            ),
+            alternateAdapterIsolated: await withLitiContext(alternate, () => useVoidDatabase(schema) !== adapter),
             restoredOriginalBinding: useVoidDatabase(schema) === adapter,
         }
     }),

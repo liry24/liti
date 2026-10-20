@@ -107,6 +107,12 @@ export function createMemoryDatabase() {
         [...state.revisions.values()].some((revision) => revision.assets.some((ref) => ref.id === id))
     const condition = (value: StorageCondition) => {
         switch (value.kind) {
+            case 'uniqueValues':
+                return !entries({ models: [value.model] }).some(
+                    (entry) =>
+                        entry.id !== value.entryId &&
+                        Object.entries(value.values).every(([key, expected]) => entry.data[key] === expected),
+                )
             case 'publicGeneration':
                 return state.generation === value.generation
             case 'entryVersion': {
@@ -214,6 +220,8 @@ export function createMemoryDatabase() {
                                           ),
                                       ),
                             publishedAt: entry.publishedAt!,
+                            firstPublishedAt: entry.firstPublishedAt,
+                            updatedAt: revision.createdAt,
                             revisionId: revision.id,
                             data: { ...revision.data },
                         }),

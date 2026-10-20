@@ -23,7 +23,7 @@ export function drizzleKit(options: DrizzleToolingOptions = {}): DatabaseTooling
             const source =
                 emitDrizzleSchema(config, { builders: '@litijs/drizzle/schema', sql: '@litijs/drizzle/schema' }) +
                 `\nexport const litiSchemaOwner = ${JSON.stringify(`@litijs/drizzle:${drizzleVersion}`)}\n`
-            const configPath = '.liti/drizzle.config.json'
+            const configPath = '.liti/drizzle.config.mjs'
             return {
                 files: [
                     { path: generated, source },
@@ -41,11 +41,13 @@ export function drizzleKit(options: DrizzleToolingOptions = {}): DatabaseTooling
                               {
                                   path: configPath,
                                   source:
+                                      'export default ' +
                                       JSON.stringify(
                                           { dialect: 'sqlite', schema: entry, out, breakpoints: true },
                                           null,
                                           2,
-                                      ) + '\n',
+                                      ) +
+                                      '\n',
                               },
                           ]
                         : []),

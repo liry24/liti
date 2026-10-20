@@ -14,6 +14,8 @@ import type { LitiManagementClient, LitiManagementModels, ManagementListOptions 
 import { LitiError } from '../errors'
 import { projectStoredFields } from '../stored-data'
 import type { OperationContext } from '../plugins'
+import type { ActionDefinition } from '../plugins'
+import { executeAction } from './actions'
 
 /** Shared authorization, validation and redaction for HTTP and direct server calls. */
 export const createManagementOperations = <
@@ -21,7 +23,7 @@ export const createManagementOperations = <
     Models extends { [Name in keyof Models]: Record<string, unknown> } = LitiManagementModels,
 >(
     resolve: () => Liti<Context> | Promise<Liti<Context>>,
-    operation?: Request | OperationContext,
+    requestContext?: Request | OperationContext,
     context?: Context,
     managementBase = '/api/liti',
     expectedModel?: string,
@@ -31,8 +33,8 @@ export const createManagementOperations = <
 } => {
     let authorization: Promise<{ admin: Liti<Context>; actor: LitiActor }> | undefined
     const authorize = () => {
-        const request = operation instanceof Request ? operation : undefined
-        const trusted = operation instanceof Request ? undefined : operation
+        const request = requestContext instanceof Request ? requestContext : undefined
+        const trusted = requestContext instanceof Request ? undefined : requestContext
         ;(request?.signal ?? trusted?.signal)?.throwIfAborted()
         return (authorization ??= (async () => {
             const admin = await resolve()
@@ -42,6 +44,16 @@ export const createManagementOperations = <
             return { admin, actor }
         })())
     }
+    const operationContext = (actor: LitiActor): OperationContext => ({
+        ...(requestContext instanceof Request
+            ? {
+                  request: requestContext,
+                  signal: requestContext.signal,
+                  ...(context && typeof context === 'object' ? { platformContext: context } : {}),
+              }
+            : requestContext),
+        actor,
+    })
     const projectResult = (admin: Liti<Context>, actor: LitiActor, entry: EntryRecord): EntryMutationResult =>
         admin.can(actor, 'model', 'readDraft', entry.model)
             ? {
@@ -141,7 +153,11 @@ export const createManagementOperations = <
             const { admin, actor: current } = await authorize()
             admin.assertPermission(current, 'model', 'create', model)
             try {
-                return projectResult(admin, current, await admin.createEntry(model, { ...input, actorId: current.id }))
+                return projectResult(
+                    admin,
+                    current,
+                    await admin.createEntry(model, { ...input, actorId: current.id }, operationContext(current)),
+                )
             } catch (cause) {
                 if (cause instanceof LitiError && !admin.can(current, 'model', 'readDraft', model)) {
                     const error = new LitiError(
@@ -162,7 +178,7 @@ export const createManagementOperations = <
         },
         updateEntry: (id: string, input: Omit<UpdateEntryInput, 'actorId'>) =>
             write(id, 'update', input, (admin, current, entry) =>
-                admin.updateEntry(id, { ...input, actorId: current.id }, entry),
+                admin.updateEntry(id, { ...input, actorId: current.id }, entry, operationContext(current)),
             ),
         deleteEntry: (id: string, input: { expectedVersion: number }) =>
             entryOperation(
@@ -174,7 +190,12 @@ export const createManagementOperations = <
         publishEntry: (id: string, input: Omit<PublishEntryInput, 'actorId'>) =>
             write(id, 'publish', input, (admin, current, entry) => {
                 if (input.draft) admin.assertPermission(current, 'model', 'update', entry.model)
-                return admin.publishEntry(id, { ...input, actorId: current.id } as PublishEntryInput, entry)
+                return admin.publishEntry(
+                    id,
+                    { ...input, actorId: current.id } as PublishEntryInput,
+                    entry,
+                    operationContext(current),
+                )
             }),
         unpublishEntry: (id: string, input: { expectedVersion: number }) =>
             write(id, 'publish', input, (admin, current, entry) =>
@@ -183,7 +204,7 @@ export const createManagementOperations = <
         schedulePublish: (id: string, input: PublishEntryInput & { at: string }) =>
             write(id, 'schedule', input, (admin, current, entry) => {
                 if (input.draft) admin.assertPermission(current, 'model', 'update', entry.model)
-                return admin.schedulePublish(id, { ...input, actorId: current.id }, entry)
+                return admin.schedulePublish(id, { ...input, actorId: current.id }, entry, operationContext(current))
             }),
         cancelScheduledPublish: (id: string, input: { expectedVersion: number }) =>
             write(id, 'schedule', input, (admin, actor, entry) =>
@@ -218,7 +239,13 @@ export const createManagementOperations = <
             ),
         restoreRevision: (id: string, revision: string, input: { expectedVersion: number }) =>
             write(id, 'restore', input, (admin, current, entry) =>
-                admin.restoreRevision(id, revision, { ...input, actorId: current.id }, entry),
+                admin.restoreRevision(
+                    id,
+                    revision,
+                    { ...input, actorId: current.id },
+                    entry,
+                    operationContext(current),
+                ),
             ),
         pruneRevisions: (id: string, retain: number) =>
             entryOperation(id, 'prune', (admin, _actor, entry) => admin.pruneRevisions(id, retain, entry)),
@@ -269,7 +296,7 @@ export const createManagementOperations = <
         publishDue: async () => {
             const { admin, actor: current } = await authorize()
             admin.assertPermission(current, 'system', 'publishDue')
-            const result = await admin.publishDue()
+            const result = await admin.publishDue(undefined, operationContext(current))
             return {
                 ...result,
                 failed: await Promise.all(
@@ -287,8 +314,18 @@ export const createManagementOperations = <
             admin.assertPermission(current, 'asset', 'gc')
             return admin.runAssetGC()
         },
-        runAiAction: async () => {
-            throw new LitiError('LITI_AI_UNAVAILABLE', 'Use the event-bound AI action runtime.')
+        executeAction: async (name: string, input: unknown, options?: { signal?: AbortSignal }) => {
+            const { admin, actor } = await authorize()
+            const trusted = requestContext instanceof Request ? { request: requestContext } : requestContext
+            return executeAction(
+                {
+                    ...admin.config,
+                    actions: (admin.config as { actions?: Record<string, ActionDefinition> }).actions ?? {},
+                },
+                name,
+                input,
+                { ...trusted, actor, ...(options?.signal ? { signal: options.signal } : {}) },
+            )
         },
         listAllEntries: async (model?: string, options: ManagementListOptions = {}) => {
             const items: EntryRecord[] = []

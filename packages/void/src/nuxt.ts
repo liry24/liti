@@ -5,6 +5,7 @@ import { voidPlugin } from 'void'
 import { createJiti } from 'jiti'
 import type { LitiConfig } from 'liti/adapter'
 import { resolveLitiConfig } from 'liti'
+// oxlint-disable-next-line import/no-empty-named-blocks -- load liti's hook augmentation without a runtime import
 import type {} from 'liti/nuxt'
 import { setupNuxtAuth } from './nuxt-auth'
 import { resolveVoidFilesSource, allowGeneratedFilesConfig } from './nuxt-files'
@@ -88,12 +89,12 @@ export default defineNuxtModule<Options>({
             })
             if (nuxt.options.dev) nuxt.options.watch.push(selected.path)
             nuxt.hook('nitro:config', (native) => {
-                const config = native as NitroConfig
-                config.esbuild ??= {}
-                config.esbuild.options ??= {}
-                config.esbuild.options.exclude = allowGeneratedFilesConfig(
-                    config.esbuild.options.exclude,
-                    resolve(config.buildDir ?? nuxt.options.buildDir, 'nuxt-files-sdk'),
+                const nativeConfig = native as NitroConfig
+                nativeConfig.esbuild ??= {}
+                nativeConfig.esbuild.options ??= {}
+                nativeConfig.esbuild.options.exclude = allowGeneratedFilesConfig(
+                    nativeConfig.esbuild.options.exclude,
+                    resolve(nativeConfig.buildDir ?? nuxt.options.buildDir, 'nuxt-files-sdk'),
                 )
             })
         }

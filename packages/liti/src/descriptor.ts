@@ -1,6 +1,7 @@
 import type { ModelDefinition, LitiConfig } from './config'
 import type { AnyField, FieldRecord } from './fields'
 import { resolvePresentation, type PresentationContext, type ModelMeta } from './presentation'
+import { seoJsonValue } from './seo'
 
 export interface FieldDescriptor {
     i18n?: boolean
@@ -36,6 +37,7 @@ export interface ModelDescriptor {
     route: ModelDefinition['route']
     serverValidation: boolean
     sortable: boolean
+    editor?: Record<string, import('./server/types').PublicEntrySeoValue>
 }
 
 export interface LitiDescriptor {
@@ -105,6 +107,9 @@ export const createLitiDescriptor = (config: LitiConfig, context?: PresentationC
                     return { ...meta, label: meta.label ?? name, plural: meta.plural ?? meta.label ?? name }
                 })(),
                 ...(definition.displayFields ? { displayFields: definition.displayFields } : {}),
+                ...(definition.editor
+                    ? { editor: seoJsonValue(definition.editor) as NonNullable<ModelDescriptor['editor']> }
+                    : {}),
                 public: definition.public ?? true,
                 publishing: definition.publishing ?? true,
                 scheduling: definition.scheduling ?? definition.publishing !== false,

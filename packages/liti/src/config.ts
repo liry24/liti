@@ -1,10 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { MarkdownDocument, MergePluginMeta, Node, ParserOptions } from 'comark'
 import type summary from 'comark/plugins/summary'
-import type { LitiAIModel } from './ai'
 import type { LitiTaskOptions } from './tasks'
 import type { Localized, ModelMeta, PresentationContext } from './presentation'
-import type { ActionDefinition, LitiAdapter, LitiPlugin, PluginActions, PluginModels } from './plugins'
+import type { LitiAdapter, LitiPlugin, PluginActions, PluginModels } from './plugins'
 
 import type {
     AnyField,
@@ -16,11 +15,11 @@ import type {
     PublicAsset,
     RelationField,
 } from './fields'
-import type { PublicEntry, PublicEntrySeo } from './server/types'
+import type { PublicEntry, PublicEntrySeo, PublicEntrySeoValue } from './server/types'
 import type { LitiRouteRules } from './seo'
 import type { LitiAsset } from './management-assets'
 import { LitiError } from './errors'
-import type { LitiAiActionsFromInput, LitiAiInput, LitiDecisionModel, LitiNamedAiAction } from './ai/actions'
+import type { ModelPreparation } from './preparation'
 
 export type LitiSeoOptions = Localized<PublicEntrySeo>
 
@@ -69,7 +68,19 @@ export interface ModelOptions<Fields extends FieldRecord = FieldRecord> {
     route?: boolean | ModelRouteOptions | string
     seo?: ModelSeoOptions<Fields>
     sortable?: boolean
+    /** Unique non-null scalar tuples among current entries, checked atomically at commit. */
+    unique?: readonly (readonly Extract<keyof Fields, string>[])[]
     validate?: StandardSchemaV1<unknown, InferFields<Fields>>
+    /** Runs once per locale while preparing a new revision; never during a public read. */
+    prepare?: ModelPreparation<InferFields<Fields>>
+    /** Only a publish/schedule request with a draft may generate new publication values. */
+    preparePublication?: ModelPreparation<InferFields<Fields>>
+    /** Checks a publication candidate without changing its immutable values. */
+    validatePublication?: ModelPreparation<InferFields<Fields>>
+    /** Pure, JSON-only metadata shared by every public projection. */
+    publicMeta?: (entry: PublicEntry) => Record<string, PublicEntrySeoValue>
+    /** Serializable options for the selected form extensions. */
+    editor?: Record<string, PublicEntrySeoValue>
 }
 
 export type ModelDefinition<Fields extends FieldRecord = FieldRecord> = ModelOptions<Fields>
@@ -93,15 +104,6 @@ export interface LitiLifecycleEvent {
     type: 'create' | 'delete' | 'publish' | 'restore' | 'schedule' | 'cancelSchedule' | 'sort' | 'unpublish' | 'update'
 }
 
-export interface LitiAIConfig {
-    /** Application-owned SDK model or request/task resolver. Never exposed to the client. */
-    model?: LitiAIModel
-    /** Shared native decision model; a language model is not a decision model. */
-    decisionModel?: LitiDecisionModel
-    /** Server-only, entry-independent application actions. */
-    actions?: Record<string, LitiNamedAiAction>
-}
-
 export type LitiModelAction =
     | 'create'
     | 'delete'
@@ -117,8 +119,8 @@ export type LitiAssetAction = 'delete' | 'gc' | 'read' | 'upload'
 export type LitiSystemAction = 'diagnostics' | 'publishDue' | 'rebuildSearch'
 
 export interface LitiRoleDefinition {
-    /** Names of permitted ai.actions; '*' explicitly permits every configured action. */
-    ai?: readonly string[]
+    /** Names of permitted registered actions; '*' permits every configured action. */
+    actions?: readonly string[]
     assets?: readonly LitiAssetAction[]
     models?: Readonly<Record<string, readonly LitiModelAction[]>>
     system?: readonly LitiSystemAction[]
@@ -131,7 +133,6 @@ export interface LitiAuthorization {
 export interface LitiConfig<Models extends Record<string, ModelDefinition> = Record<string, ModelDefinition>> {
     adapter?: LitiAdapter
     plugins?: readonly LitiPlugin[]
-    ai?: LitiAIConfig
     assets?: {
         maxUploadSize?: number
         operationLeaseSeconds?: number
@@ -164,11 +165,6 @@ export interface LitiConfig<Models extends Record<string, ModelDefinition> = Rec
 
 type OpaqueConfigPath =
     | readonly ['adapter', PropertyKey]
-    | readonly ['ai', 'model']
-    | readonly ['ai', 'decisionModel']
-    | readonly ['ai', 'actions', PropertyKey, 'model']
-    | readonly ['ai', 'actions', PropertyKey, 'output']
-    | readonly ['ai', 'actions', PropertyKey, 'input']
     | readonly ['seo', 'image']
     | readonly ['models', PropertyKey, 'seo', 'image']
     | readonly ['routeRules', PropertyKey, 'seo', 'image']
@@ -198,15 +194,10 @@ type ConfigModels<Fields extends Record<string, FieldRecord>> = {
     [Name in keyof Fields]: ModelOptions<Fields[Name]>
 }
 
-export const defineLitiConfig = <
-    const Fields extends Record<string, FieldRecord>,
-    const ActionInput extends Record<string, LitiAiInput>,
-    const Config extends object,
->(
+export const defineLitiConfig = <const Fields extends Record<string, FieldRecord>, const Config extends object>(
     config: Config &
-        Omit<LitiConfigInput, 'models' | 'ai'> & {
+        Omit<LitiConfigInput, 'models'> & {
             models?: ConfigModels<Fields>
-            ai?: Omit<LitiAIConfig, 'actions'> & { actions?: LitiAiActionsFromInput<ActionInput> }
         },
 ): Config & { models: Config extends { models: unknown } ? ConfigModels<Fields> : {} } => {
     if (Object.hasOwn(config.authorization?.roles ?? {}, 'admin'))
@@ -263,7 +254,7 @@ export type ResolvedLitiConfig<Config extends LitiConfigInput, Environments exte
     ResolveEnvironments<Config, Environments> extends infer Resolved extends LitiConfig
         ? Resolved & {
               models: Resolved['models'] & PluginModels<Resolved>
-              actions: PluginActions<Resolved> & Record<string, ActionDefinition>
+              actions: PluginActions<Resolved>
           }
         : never
 
@@ -360,5 +351,10 @@ export type InferPublicModelData<
 export type InferLitiPublicModels<Config extends LitiConfig, ParseMarkdown extends boolean | 'summary' = true> = {
     [Name in keyof Config['models'] as Config['models'][Name] extends { public: false } ? never : Name]: PublicEntry<
         InferPublicModelData<Config['models'][Name], Config['models'], ParseMarkdown>
-    >
+    > &
+        (Config['models'][Name] extends { publicMeta: (...args: never[]) => infer Meta } ? { meta: Meta } : {})
+}
+
+export type InferLitiModelExtensions<Config extends LitiConfig> = {
+    [Name in keyof Config['models']]: Config['models'][Name] extends { editor: infer Editor } ? Editor : {}
 }

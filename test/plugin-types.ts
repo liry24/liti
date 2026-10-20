@@ -13,7 +13,7 @@ const config = resolveLitiConfig(
                     slug: {
                         input: z.object({ title: z.string() }),
                         output: z.object({ slug: z.string() }),
-                        execute: ({ title }: { title: string }) => ({ slug: title }),
+                        execute: ({ title }: { title: string }) => ({ data: { slug: title } }),
                     },
                 },
             }),

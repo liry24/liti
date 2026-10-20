@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { generateCombinedSchema } from '@litijs/void/tooling'
+import { resolveLitiConfig } from 'liti'
 
 export async function generateFixtureSQL(config, directory, plugins = []) {
     await mkdir(directory, { recursive: true })
     const schema = resolve(directory, 'schema.ts').replaceAll('\\', '/')
-    const source = await generateCombinedSchema(config, {
+    const source = await generateCombinedSchema(resolveLitiConfig(config, []), {
         emailAndPassword: { enabled: true },
         plugins,
     })

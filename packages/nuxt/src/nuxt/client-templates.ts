@@ -7,28 +7,36 @@ export interface LitiClientTemplateOptions {
     i18n?: boolean
     origin?: string
     auth?: boolean
-    aiActions?: boolean
+    actions?: boolean
+    vue?: string[]
+    editors?: Record<string, string[]>
 }
 
 /** Generated code contains connection settings, native factory macros and exports only. */
-export const litiNuxtClientTemplate = (options: LitiClientTemplateOptions): string => `
+export const litiNuxtClientTemplate = (options: LitiClientTemplateOptions): string => {
+    const { vue: _vue, ...runtime } = options
+    return `
 import { createUseAsyncData } from '#app/composables/asyncData'
 import { createUseFetch } from '#app/composables/fetch'
 import { createLitiComposables, litiAiFetchOptions } from 'liti/internal/runtime/composables'
 ${options.auth ? "import { useUserSession } from '#imports'" : ''}
+${(options.vue ?? []).map((module, index) => `import extension${index} from ${JSON.stringify(module)}`).join('\n')}
 export const litiAsyncData = createUseAsyncData()
 export const litiAiFetch = createUseFetch(litiAiFetchOptions)
-const composables = createLitiComposables(${JSON.stringify(options)}, litiAsyncData, litiAiFetch${options.auth ? ', useUserSession' : ''})
-export const { useLitiQuery, ${options.aiActions ? 'useAi, ' : ''}litiPublicClientOptions, litiManagementClientOptions, useLitiRoute, litiAttachAsyncData, useLitiAuthScope, litiManagementKey, createNuxtLitiManagementClient, useLitiModels, litiReadModels, useLitiForm } = composables
+const composables = createLitiComposables(${JSON.stringify(runtime)}, litiAsyncData, litiAiFetch, ${options.auth ? 'useUserSession' : 'undefined'}, Object.assign({}, ${(options.vue ?? []).map((_, index) => `extension${index}`).join(', ')}))
+export const { useLitiQuery, ${options.actions ? 'useAi, ' : ''}litiPublicClientOptions, litiManagementClientOptions, useLitiRoute, litiAttachAsyncData, useLitiAuthScope, litiManagementKey, createNuxtLitiManagementClient, useLitiModels, litiReadModels, useLitiForm } = composables
 export type { UseAiOptions, LitiModelOptions, LitiFormOptions, LitiLocaleOptions, LitiBatchRequest, LitiBatchResult } from 'liti/internal/runtime/composables'
 `
+}
 
 /** A config path is used only by TypeScript; the app never loads its runtime code. */
 export const litiNuxtModelTypes = (
     configPath: string,
     environments: readonly string[] = [],
+    vue: readonly string[] = [],
 ): string => `import 'liti/client'
-import type { InferLitiModels, InferLitiMeta, InferLitiFormModels, InferLitiNamedAiActions, InferLitiPublicModels, ResolvedLitiConfig } from 'liti'
+${vue.map((module) => `import type {} from ${JSON.stringify(module)}`).join('\n')}
+import type { InferLitiModels, InferLitiMeta, InferLitiFormModels, InferLitiActions, InferLitiPublicModels, InferLitiModelExtensions, ResolvedLitiConfig } from 'liti'
 import type { EntryPrepareContext } from 'liti'
 
 declare module '#app' {
@@ -44,7 +52,8 @@ declare module 'liti/client' {
     managementModels: InferLitiModels<LitiDomainConfig>
     formModels: InferLitiFormModels<LitiDomainConfig>
     modelMeta: InferLitiMeta<LitiDomainConfig>
-    namedAiActions: InferLitiNamedAiActions<LitiDomainConfig>
+    modelExtensions: InferLitiModelExtensions<LitiDomainConfig>
+    actions: InferLitiActions<LitiDomainConfig>
     publicModels: InferLitiPublicModels<LitiDomainConfig>
     publicSummaryModels: InferLitiPublicModels<LitiDomainConfig, 'summary'>
   }

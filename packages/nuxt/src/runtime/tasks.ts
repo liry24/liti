@@ -20,7 +20,10 @@ export const runLitiTask = async (name: LitiTaskName, runtime: LitiTaskRuntime, 
         const admin = await runtime.getLiti(undefined, platformContext)
         switch (name) {
             case 'publishDue':
-                return admin.publishDue()
+                return admin.publishDue(undefined, {
+                    actor: { id: 'liti:task:publishDue', roles: ['admin'] },
+                    ...(platformContext ? { platformContext } : {}),
+                })
             case 'assetGC':
                 return admin.runAssetGC()
             case 'rebuildSearch':

@@ -16,7 +16,8 @@ import {
     type PublicEntry,
 } from '../packages/liti/src/client'
 import { normalizeLitiQuery } from '../packages/liti/src/query'
-import { projectQuery } from '../packages/vue/src/query'
+import { projectQuery, queryTotal } from '../packages/vue/src/query'
+import { litiModelError } from '../packages/vue/src/model'
 import { litiNuxtClientTemplate } from '../packages/nuxt/src/nuxt/client-templates'
 
 type State<Data> = PromiseLike<unknown> & {
@@ -142,8 +143,10 @@ it.each(['completed', 'during', 'transition'] as const)(
                 'clearNuxtData',
                 'normalizeLitiQuery',
                 'projectQuery',
+                'queryTotal',
                 'ref',
                 'useRequestURL',
+                'litiModelError',
                 `${generated}; return { entry: (model, slug, options) => useLitiQuery(model, { ...options, mode: 'one', id: slug }), list: useLitiQuery }`,
             ) as (...dependencies: unknown[]) => Helpers
             const helpers = initialize(
@@ -163,8 +166,10 @@ it.each(['completed', 'during', 'transition'] as const)(
                 nativeRuntime.clearNuxtData,
                 normalizeLitiQuery,
                 projectQuery,
+                queryTotal,
                 Vue.ref,
                 () => new URL(origin),
+                litiModelError,
             )
             const slug = Vue.ref('ssr')
             const locale = Vue.ref('ja')

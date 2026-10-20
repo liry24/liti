@@ -20,6 +20,12 @@ async function contracts() {
     const explicit = await client.query('posts', { mode: 'many' })
     const title: string = implicit[0]!.data.title
     const same: typeof implicit = explicit
+    const page = await client.queryPage('posts', { page: { limit: 20, offset: 0 } })
+    const pageTitle: string = page.items[0]!.data.title
+    // @ts-expect-error Page queries require pagination.
+    await client.queryPage('posts', {})
+    // @ts-expect-error One queries cannot request page metadata.
+    await client.queryPage('posts', { mode: 'one', id: 'post', pageSize: 20 })
     const one = await client.query('posts', { mode: 'one', id: 'post' })
     const current = await client.query('posts', { mode: 'one', view: 'current', id: 'post' })
     const source: string | undefined = current?.data.body
@@ -40,8 +46,11 @@ async function contracts() {
 
     const many = query('posts')
     const listTitle: string = many.data.value[0]!.data.title
+    const total: number = many.total.value
     const single = query('posts', { mode: 'one', id: ref<string | undefined>() })
     const singleTitle: string | undefined = single.data.value?.data.title
+    // @ts-expect-error A single entry has no collection total.
+    void single.total
     const transformed = query('posts', {
         transform: (entries) => entries.map((entry) => entry.data.title),
         default: () => [],
@@ -49,17 +58,17 @@ async function contracts() {
     const titles: string[] = transformed.data.value
     const selected = query('posts', { mode: 'one', id: 'id', pick: ['data'] })
     // @ts-expect-error pick removes identity.
-    selected.data.value?.id
+    void selected.data.value?.id
     // @ts-expect-error Published queries have no mutation methods.
     many.remove()
     const managed = query('posts', { view: 'current' })
     await managed.remove(managed.data.value[0])
     // @ts-expect-error Wrong default shape must not widen the inferred DTO.
-    query('posts', { default: () => 42 })
+    void query('posts', { default: () => 42 })
     // @ts-expect-error A one query must have a selector.
-    query('posts', { mode: 'one' })
+    void query('posts', { mode: 'one' })
     // @ts-expect-error Multiple selectors are rejected.
-    query('posts', { mode: 'one', id: 'id', path: '/path' })
+    void query('posts', { mode: 'one', id: 'id', path: '/path' })
     const vue = vueQuery('posts')
     const vueTitle: string = vue.data.value[0]!.data.title
     const vueTransformed = vueQuery('posts', { transform: (rows) => rows.map((row) => row.data.title) })
@@ -67,12 +76,12 @@ async function contracts() {
     // @ts-expect-error Published Vue queries have no mutations.
     vue.remove()
     // @ts-expect-error Plain Vue also requires a selector.
-    vueQuery('posts', { mode: 'one' })
+    void vueQuery('posts', { mode: 'one' })
     // @ts-expect-error Selector presence does not infer one mode.
-    vueQuery('posts', { id: 'one' })
+    void vueQuery('posts', { id: 'one' })
     // @ts-expect-error Wrong defaults cannot widen the query result.
-    vueQuery('posts', { default: () => 42 })
+    void vueQuery('posts', { default: () => 42 })
     void [vueTitle, vueTitles]
-    void [schemaCheck, title, same, source, nodes, listTitle, singleTitle, titles]
+    void [schemaCheck, title, same, source, nodes, listTitle, singleTitle, titles, pageTitle, total, vue.total.value]
 }
 void contracts

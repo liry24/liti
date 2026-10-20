@@ -157,7 +157,9 @@ describe('v0.1 publication contract', () => {
         expect(await admin.publicGeneration()).toBe(generation)
         now += 1_000
         const sorted = await admin.setSortOrder(draft.id, 2, edited.version)
-        expect(sorted.publishedAt).toBe('2026-01-01T00:00:02.000Z')
+        expect(sorted.publishedAt).toBe(published.publishedAt)
+        expect(sorted.firstPublishedAt).toBe(published.firstPublishedAt)
+        expect(sorted.updatedAt).toBe(edited.updatedAt)
         expect(await admin.publicGeneration()).toBe(generation + 1)
         expect(await admin.getPublicEntry('posts', draft.id)).toMatchObject({ data: { title: 'One' } })
     })

@@ -1,32 +1,35 @@
 import { voidAdapter } from '@litijs/void'
 import { boolean, defineLitiConfig, markdown, text, url } from 'liti'
-import { Output } from 'ai'
+import { ai, createTextAction } from '@litijs/ai'
+import { aiSdk } from '@litijs/ai/ai-sdk'
+import { blog, createProofreader } from '@litijs/blog'
 import { z } from 'zod'
 import { aiModel } from './server/ai-model.ts'
 
 export default defineLitiConfig({
     adapter: voidAdapter(),
     assets: { maxUploadSize: 123 },
-    ai: {
-        actions: {
-            proofread: {
-                type: 'text-generation',
-                model: aiModel,
-                input: z.object({ content: z.string() }).strict(),
-                prompt: ({ content }) => 'LITI_SERVER_ONLY_AI_SENTINEL:' + content,
-                output: Output.object({ schema: z.object({ content: z.string() }) }),
+    plugins: [
+        blog({ models: { articles: { proofreading: 'editorial', slug: { mode: 'manual' } } } }),
+        ai({
+            provider: aiSdk({ text: aiModel }),
+            actions: {
+                editorial: createProofreader(),
+                proofread: createTextAction({
+                    input: z.object({ content: z.string() }).strict(),
+                    prompt: ({ content }) => 'LITI_SERVER_ONLY_AI_SENTINEL:' + content,
+                    output: z.object({ content: z.string() }),
+                }),
+                plain: createTextAction({
+                    input: z.object({ content: z.string() }).strict(),
+                    prompt: ({ content }) => content,
+                }),
             },
-            plain: {
-                type: 'text-generation',
-                model: aiModel,
-                input: z.object({ content: z.string() }).strict(),
-                prompt: ({ content }) => content,
-            },
-        },
-    },
+        }),
+    ],
     authorization: {
         roles: {
-            editor: { ai: ['proofread'], models: { posts: ['create', 'publish', 'readDraft', 'update'] } },
+            editor: { actions: ['proofread'], models: { posts: ['create', 'publish', 'readDraft', 'update'] } },
         },
     },
     tasks: { publishDue: true, syncAssets: true },

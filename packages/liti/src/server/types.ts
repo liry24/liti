@@ -71,6 +71,7 @@ export interface EntryRecord {
     id: string
     locale: string
     model: string
+    firstPublishedAt: string | null
     publishedAt: string | null
     publishedRevisionId: string | null
     revisionId: string
@@ -124,6 +125,8 @@ export interface PublicEntrySeoImage {
 }
 
 export interface PublicEntrySeo {
+    articlePublishedTime?: string
+    articleModifiedTime?: string
     alternates?: Array<{ locale: string; path: string }>
     canonical?: string
     description?: string
@@ -145,9 +148,12 @@ export interface PublicEntry<Data = Record<string, unknown>> {
     locale: string
     model: string
     path: string | null
+    firstPublishedAt: string | null
+    updatedAt: string
     publishedAt: string
     revisionId: string
     seo?: PublicEntrySeo
+    meta?: Record<string, PublicEntrySeoValue>
 }
 
 export interface AssetRecord {
