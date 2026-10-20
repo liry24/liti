@@ -187,7 +187,6 @@
         "@nuxt/devtools-kit": "4.0.0-beta.5",
         "@nuxt/kit": "^4.6.2",
         "@nuxt/schema": "^4.6.2",
-        "@standard-schema/spec": "^1.1.0",
         "devframe": "1.2.6",
         "h3": "^1.15.11",
         "jiti": "^2.7.0",

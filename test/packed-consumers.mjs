@@ -14,7 +14,7 @@ import { assertAiOmitted } from './assert-ai-omitted.mjs'
 import { consumerDependencies, stableVue } from './consumer-dependencies.mjs'
 import { archiveDependencies, archiveOverrides, consumerPackages } from './consumer-packages.mjs'
 
-import { installDependencies } from 'nypm'
+import { addDependency, installDependencies } from 'nypm'
 const packageManager = process.env.LITI_PACKAGE_MANAGER || 'bun'
 if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown LITI_PACKAGE_MANAGER.')
 const integrations = !process.env.LITI_PACKAGE_MANAGER || packageManager === 'pnpm'
@@ -145,6 +145,8 @@ try {
                     'typescript',
                     '@types/node',
                 ]),
+                // Vite 8's optional peer must not resolve to Drizzle Kit's older esbuild.
+                esbuild: '^0.28.0',
                 vue: stableVue,
                 ...(!integrations ? renderers : {}),
             },
@@ -422,10 +424,15 @@ void invalidImpersonatedBy
         if ((await readFile(join(temporary, 'package.json'), 'utf8')) !== manifestBefore)
             throw new Error('Build mutated dependencies.')
         // Noninteractive builds require application-owned renderer dependencies.
-        const consumer = JSON.parse(await readFile(join(temporary, 'package.json'), 'utf8'))
-        Object.assign(consumer.dependencies, renderers)
-        await writeFile(join(temporary, 'package.json'), JSON.stringify(consumer))
-        await install()
+        await addDependency(
+            Object.entries(renderers).map(([name, version]) => `${name}@${version}`),
+            {
+                cwd: temporary,
+                packageManager,
+                corepack: false,
+                silent: true,
+            },
+        )
         setupNuxt(true)
         setupNuxt(false)
         const nativeConfigPath = join(temporary, 'server/nuxt.config.ts')
