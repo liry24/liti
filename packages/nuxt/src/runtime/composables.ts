@@ -1021,7 +1021,7 @@ export const createLitiComposables = (
         return Object.assign(
             resource.then(() => result),
             result,
-        ) as FormResource<Name> & Promise<FormResource<Name>>
+        ) as unknown as FormResource<Name> & Promise<FormResource<Name>>
     }
 
     function useAdminResource(

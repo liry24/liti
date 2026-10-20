@@ -442,6 +442,7 @@ void invalidImpersonatedBy
             setupNuxt(false)
         }
         await writeFile(nativeConfigPath, nativeConfig)
+        const consumer = JSON.parse(await readFile(join(temporary, 'package.json'), 'utf8'))
         if (!consumer.dependencies['nuxt-og-image'])
             throw new Error('Consumer must install its enabled OG module peer.')
         const takumiPath = join(temporary, 'server/app/components/OgImage/Default.takumi.vue')
