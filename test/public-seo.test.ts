@@ -1,14 +1,15 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createFilesStorage } from '../packages/void/src/storage'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import type { DatabaseSync } from 'node:sqlite'
 import { Files } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
-import { defineSiteAdminConfig, image, images, markdown, text, textarea } from '../packages/site-admin/src'
-import type { PublicEntry, PublicEntrySeo } from '../packages/site-admin/src/server'
-import { createSiteAdmin, handlePublicRequest } from '../packages/site-admin/src/server'
-import { createSiteAdminClient } from '../packages/site-admin/src/client'
+import { defineLitiConfig, image, images, markdown, text, textarea } from '../packages/liti/src'
+import type { PublicEntry, PublicEntrySeo } from '../packages/liti/src/server'
+import { createRuntime, handlePublicRequest } from '../packages/liti/src/server'
+import { createPublicClient } from '../packages/liti/src/client'
 import { createMigratedTestAdmin, migrateTestDatabase, testAdapter } from './migrate'
 
 const databases: Database[] = []
@@ -28,7 +29,7 @@ describe('public entry SEO payload', () => {
     it('retains the complete model list after sequential detail parsing and publication', async () => {
         const plugin = vi.fn()
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 markdown: { plugins: [{ name: 'detail-list-count', post: plugin }] },
                 models: {
                     posts: {
@@ -40,7 +41,7 @@ describe('public entry SEO payload', () => {
             }),
             database: database(),
         })
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             origin: 'https://example.test',
             fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
         })
@@ -72,7 +73,7 @@ describe('public entry SEO payload', () => {
         async (order) => {
             const plugin = vi.fn()
             const admin = await createMigratedTestAdmin({
-                config: defineSiteAdminConfig({
+                config: defineLitiConfig({
                     markdown: { plugins: [{ name: 'route-seo-count', post: plugin }] },
                     models: {
                         posts: {
@@ -99,8 +100,16 @@ describe('public entry SEO payload', () => {
                 entry: { seo: { title: 'Post', canonical: '/posts/hello', description: 'Intro summary .' } },
             })
             expect((await (await admin.content('posts')).list())[0]?.data).toMatchObject({
-                _siteAdmin: { seo: { description: 'Intro summary .' } },
+                _liti: { seo: { description: 'Intro summary .' } },
             })
+            expect(plugin).toHaveBeenCalledTimes(1)
+            const summary = await handlePublicRequest(
+                admin,
+                new Request('https://example.test/api/content/_route?path=/posts/hello&markdown=summary'),
+            )
+            const projected = await summary.json()
+            expect(projected.entry.data.body.nodes).toEqual(projected.entry.data.body.meta.summary)
+            expect(JSON.stringify(projected.entry.data.body)).not.toContain('Full body')
             expect(plugin).toHaveBeenCalledTimes(1)
         },
     )
@@ -117,7 +126,7 @@ describe('public entry SEO payload', () => {
                 twitterCard: 'summary' as const,
             }
         })
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             assets: { storage: 'content' },
             seo: { titleTemplate: '%s | Global', description: 'Global default' },
             models: {
@@ -139,7 +148,7 @@ describe('public entry SEO payload', () => {
         const admin = await createMigratedTestAdmin({
             config,
             database: database(),
-            getFiles: async () => new Files({ adapter: memory() }),
+            getStorage: createFilesStorage(async () => new Files({ adapter: memory() })),
             site: { url: 'https://example.com' },
         })
         const asset = await admin.uploadAsset({ body: png, filename: 'cover.png' })
@@ -159,7 +168,7 @@ describe('public entry SEO payload', () => {
             expectedVersion: published.version,
         })
         const requests: string[] = []
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             origin: 'https://example.com',
             fetch: (input, init) => {
                 requests.push(String(input))
@@ -183,7 +192,7 @@ describe('public entry SEO payload', () => {
         const listed = await client.list('posts')
         expect(listed[0]?.seo).toEqual(fetched?.seo)
         expect(resolver).toHaveBeenCalledTimes(1)
-        const serialized = JSON.stringify(createSiteAdminDescriptor(config))
+        const serialized = JSON.stringify(createLitiDescriptor(config))
         expect(serialized).not.toContain('Model description')
         expect(serialized).not.toContain('Global default')
         expect(serialized).not.toContain('Resolver mutation')
@@ -192,7 +201,7 @@ describe('public entry SEO payload', () => {
     it('preserves configured values when derived values are absent, including explicit image false/component', async () => {
         const component = { component: 'PostOg', props: { title: 'Public OG', nested: { ok: true } } }
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 assets: { storage: 'content' },
                 seo: { title: 'Global', titleTemplate: '%s | Global' },
                 models: {
@@ -215,7 +224,7 @@ describe('public entry SEO payload', () => {
                 },
             }),
             database: database(),
-            getFiles: async () => new Files({ adapter: memory() }),
+            getStorage: createFilesStorage(async () => new Files({ adapter: memory() })),
             site: { url: 'https://example.com' },
         })
         const asset = await admin.uploadAsset({ body: png, filename: 'cover.png' })
@@ -233,7 +242,7 @@ describe('public entry SEO payload', () => {
             new Request('https://example.com/api/content/settings?markdown=summary'),
         )
         expect(await response.json()).toMatchObject([
-            { data: { _siteAdmin: { seo: { description: 'Configured description' } } } },
+            { data: { _liti: { seo: { description: 'Configured description' } } } },
         ])
         expect((await admin.getPublicEntry('disabled', disabled.id))?.seo).toEqual({ image: false })
         expect((await admin.getPublicEntry('generated', generated.id))?.seo).toEqual({ image: component })
@@ -246,7 +255,7 @@ describe('public entry SEO payload', () => {
         'keeps the model-derived image independent from the global default: %j',
         async (globalImage) => {
             const admin = await createMigratedTestAdmin({
-                config: defineSiteAdminConfig({
+                config: defineLitiConfig({
                     assets: { storage: 'content' },
                     seo: { image: globalImage },
                     models: {
@@ -259,7 +268,7 @@ describe('public entry SEO payload', () => {
                     },
                 }),
                 database: database(),
-                getFiles: async () => new Files({ adapter: memory() }),
+                getStorage: createFilesStorage(async () => new Files({ adapter: memory() })),
                 site: { url: 'https://example.com' },
             })
             const asset = await admin.uploadAsset({ body: png, filename: 'cover.png' })
@@ -279,7 +288,7 @@ describe('public entry SEO payload', () => {
         const privateResolver = vi.fn(() => ({ title: 'Private model SEO' }))
         const db = database()
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 assets: { storage: 'content' },
                 models: {
                     pages: {
@@ -302,7 +311,7 @@ describe('public entry SEO payload', () => {
                 },
             }),
             database: db,
-            getFiles: async () => new Files({ adapter: memory() }),
+            getStorage: createFilesStorage(async () => new Files({ adapter: memory() })),
             locales: {
                 defaultLocale: 'en',
                 localizePath: (path, locale) => (locale === 'en' ? path : `/translated/${locale}${path}`),
@@ -329,7 +338,7 @@ describe('public entry SEO payload', () => {
             defaultLocale: 'de',
             data: { slug: 'private-german', title: 'Private German' },
         })
-        await db.prepare("UPDATE site_admin_assets SET state = 'deleting' WHERE id = ?").bind(unavailableAsset.id).run()
+        await db.prepare("UPDATE liti_assets SET state = 'deleting' WHERE id = ?").bind(unavailableAsset.id).run()
         const projected = await admin.getPublicEntry('pages', ja.id, 'ja')
         expect(projected?.path).toBe('/translated/ja/pages/%E3%83%9B%E3%83%BC%E3%83%A0')
         expect(projected?.seo).toEqual({
@@ -342,7 +351,7 @@ describe('public entry SEO payload', () => {
         })
         expect(projected?.seo?.alternates).toHaveLength(2)
         expect(privateResolver).not.toHaveBeenCalled()
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             origin: 'https://example.com',
             fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
         })
@@ -354,7 +363,7 @@ describe('public entry SEO payload', () => {
     })
 
     it('bounds sparse translation loading to D1 limits across more than 100 original entries', async () => {
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             models: {
                 pages: { fields: { slug: text({ i18n: true }), title: text({ i18n: true }) }, route: '/pages/:slug' },
                 secrets: { fields: { slug: text(), title: text() }, public: false, publishing: false },
@@ -363,7 +372,7 @@ describe('public entry SEO payload', () => {
         const db = database()
         await migrateTestDatabase(db, config)
         const adapter = await testAdapter(db, config)
-        const admin = createSiteAdmin({
+        const admin = createRuntime({
             config,
             database: adapter,
             locales: {
@@ -426,7 +435,7 @@ describe('public entry SEO payload', () => {
             return { titleTemplate: '%s | Model' }
         })
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 markdown: { plugins: [{ name: 'seo-parser-count', post: plugin }] },
                 models: {
                     posts: {
@@ -443,7 +452,7 @@ describe('public entry SEO payload', () => {
         const entry = await admin.createEntry('posts', {
             data: { slug: 'parsed', summary: 'Intro **summary**\n\n<!-- more -->\n\nLong body' },
         })
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             origin: 'https://example.com',
             fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
         })
@@ -488,7 +497,7 @@ describe('public entry SEO payload', () => {
                 callback: () => secret,
             }) as unknown as PublicEntrySeo
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: { pages: { fields: { slug: text(), body: markdown() }, publishing: false, seo: resolver } },
             }),
             database: database(),

@@ -41,7 +41,7 @@ jobs:
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   prerelease: ${{ inputs.prerelease }}
-                  packages: packages/site-admin
+                  packages: packages/liti
 
     release:
         if: |
@@ -61,7 +61,7 @@ jobs:
             - uses: danielroe/uppt/release@6ec27140623aa835e362f866d8ab0018ab057f4d # v0.6.11
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
-                  packages: packages/site-admin
+                  packages: packages/liti
 
     pack:
         if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
@@ -101,7 +101,7 @@ jobs:
               with:
                   checkout: false
                   install: false
-                  packages: packages/site-admin
+                  packages: packages/liti
 
             - name: Verify the exact release artifact
               env:
@@ -109,7 +109,7 @@ jobs:
               run: |
                   set -euo pipefail
                   tarball=$(jq -er 'if length == 1 then .[0] else error("Expected one release tarball") end' <<< "$PACKED_FILES")
-                  SITE_ADMIN_TARBALL="$RUNNER_TEMP/uppt-pack/$tarball" bun run test:packed
+                  LITI_TARBALL="$RUNNER_TEMP/uppt-pack/$tarball" bun run test:packed
 
     publish:
         if: |

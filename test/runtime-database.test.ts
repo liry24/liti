@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
 import { withRuntimeEnv } from 'void/_env'
-import { useVoidDatabase, createAuthDatabase } from '../packages/site-admin/src/runtime/database'
+import { useVoidDatabase, createAuthDatabase } from '../packages/void/src/session'
 import { sqliteD1 } from './d1'
 
 const connections: DatabaseSync[] = []

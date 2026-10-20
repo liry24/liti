@@ -4,12 +4,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ref, toValue } from 'vue'
 
-import {
-    createSiteAdminClient,
-    SiteAdminClientError,
-    type SiteAdminClient,
-    type PublicEntry,
-} from '../packages/site-admin/src/client'
+import { createPublicClient, LitiClientError, type LitiClient, type PublicEntry } from '../packages/liti/src/client'
 
 interface ResolvedRequest {
     name: string
@@ -36,7 +31,7 @@ interface BatchHelpers {
         locale?: string,
     ): string
     resolve(
-        client: SiteAdminClient<Record<string, PublicEntry>>,
+        client: LitiClient<Record<string, PublicEntry>>,
         requests: readonly ResolvedRequest[],
         locale: string | undefined,
         signal: AbortSignal,
@@ -45,25 +40,23 @@ interface BatchHelpers {
 
 // Execute the production transport without instantiating AsyncData or mocking its cache.
 const source = stripRuntimeImports(
-    stripTypeScriptTypes(
-        readFileSync(new URL('../packages/site-admin/src/runtime/composables.ts', import.meta.url), 'utf8'),
-    ),
+    stripTypeScriptTypes(readFileSync(new URL('../packages/nuxt/src/runtime/composables.ts', import.meta.url), 'utf8')),
 )
     .replace(/^export /gmu, '')
     .replaceAll('import.meta.server', 'false')
 const initialize = new Function(
-    'SiteAdminClientError',
+    'LitiClientError',
     'toValue',
     'defineUseFetchAddon',
-    `${source}; const api = createSiteAdminComposables({basePath:'/content',managementBase:'/manage'}, undefined, undefined); return { snapshot: api.siteAdminSnapshotBatchRequests, key: api.siteAdminBatchDataKey, resolve: api.siteAdminResolveBatch }`,
+    `${source}; const api = createLitiComposables({basePath:'/content',managementBase:'/manage'}, undefined, undefined); return { snapshot: api.litiSnapshotBatchRequests, key: api.litiBatchDataKey, resolve: api.litiResolveBatch }`,
 ) as (...dependencies: unknown[]) => BatchHelpers
-const helpers = initialize(SiteAdminClientError, toValue, (addon: unknown) => addon)
+const helpers = initialize(LitiClientError, toValue, (addon: unknown) => addon)
 
-const document = (model: string, id: string) => ({ data: { _siteAdmin: { id, model, slug: id }, title: id } })
+const document = (model: string, id: string) => ({ data: { _liti: { id, model, slug: id }, title: id } })
 
 describe('generated public batch transport', () => {
     it('includes a DB page in batch keys and preserves page metadata', async () => {
-        const client = createSiteAdminClient({
+        const client = createPublicClient({
             fetch: async (input) => {
                 const url = new URL(String(input), 'http://localhost')
                 expect(url.searchParams.get('limit')).toBe('1')
@@ -86,7 +79,7 @@ describe('generated public batch transport', () => {
     })
     it('captures list summary mode in transport and native keys without changing full/detail requests', async () => {
         const modes: Array<string | null> = []
-        const client = createSiteAdminClient({
+        const client = createPublicClient({
             fetch: async (input) => {
                 const url = new URL(String(input), 'http://localhost')
                 modes.push(url.searchParams.get('markdown'))
@@ -116,7 +109,7 @@ describe('generated public batch transport', () => {
     it('keeps successful requests, serializes item failures, and distinguishes a missing entry', async () => {
         const signal = new AbortController().signal
         const calls: Array<{ path: string; signal: AbortSignal | null | undefined }> = []
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             fetch: async (input, init) => {
                 const url = new URL(String(input), 'http://localhost')
                 calls.push({ path: url.pathname, signal: init?.signal })
@@ -127,7 +120,7 @@ describe('generated public batch transport', () => {
                 return Response.json(
                     {
                         error: {
-                            code: 'SITE_ADMIN_UNAVAILABLE',
+                            code: 'LITI_UNAVAILABLE',
                             message: 'Unavailable.',
                             issues: [{ path: 'title', message: 'Bad.', stack: 'private' }],
                             stack: 'private',
@@ -156,7 +149,7 @@ describe('generated public batch transport', () => {
         expect(result.posts).toEqual({
             data: [],
             error: {
-                code: 'SITE_ADMIN_UNAVAILABLE',
+                code: 'LITI_UNAVAILABLE',
                 message: 'Unavailable.',
                 status: 503,
                 issues: [{ path: 'title', message: 'Bad.' }],
@@ -174,7 +167,7 @@ describe('generated public batch transport', () => {
     it('starts request promises in parallel and gives no-response failures status zero', async () => {
         const started: string[] = []
         let finish: ((response: Response) => void) | undefined
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             fetch: (input) => {
                 started.push(String(input))
                 if (String(input).endsWith('/arts'))
@@ -195,7 +188,7 @@ describe('generated public batch transport', () => {
         const result = await pending
         expect(result.arts?.error).toBeNull()
         expect(result.posts?.error).toEqual({
-            code: 'SITE_ADMIN_REQUEST_FAILED',
+            code: 'LITI_REQUEST_FAILED',
             message: 'Network unavailable.',
             status: 0,
         })
@@ -220,7 +213,7 @@ describe('generated public batch transport', () => {
 
     it('rejects cancellation for the entire batch rather than serializing aborted partial data', async () => {
         const controller = new AbortController()
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             fetch: async (input, init) => {
                 if (String(input).endsWith('/arts')) return Response.json([document('arts', 'art')])
                 return new Promise((_resolve, reject) => {

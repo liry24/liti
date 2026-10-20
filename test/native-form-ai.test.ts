@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { Output } from 'ai'
 import { z } from 'zod'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
-import { executeSiteAdminAiAction } from '../packages/site-admin/src/ai'
-import { handleAiActionRequest } from '../packages/site-admin/src/server/ai-actions-http'
-import { useEntryForm } from '../packages/site-admin/src/form'
-import { createSiteAdmin, handleManagementRequest } from '../packages/site-admin/src/server'
+import { defineLitiConfig, text } from '../packages/liti/src'
+import { executeLitiAiAction } from '../packages/liti/src/ai'
+import { handleAiActionRequest } from '../packages/liti/src/server/ai-actions-http'
+import { useEntryForm } from '../packages/vue/src/form'
+import { createRuntime, handleManagementRequest } from '../packages/liti/src/server'
 import { createMemoryDatabase } from './memory-storage'
 import { modelFixture } from './model-fixture'
 
@@ -23,7 +23,7 @@ const setup = (run: MockLanguageModelV4['doGenerate']) => {
     const platformContext = { binding: 'native-app' }
     const model = new MockLanguageModelV4({ doGenerate: run })
     const modelResolver = vi.fn(async () => model)
-    const config = defineSiteAdminConfig({
+    const config = defineLitiConfig({
         models: { notes: { fields: { slug: text(), title: text({ required: true }), summary: text() } } },
         ai: {
             model: modelResolver,
@@ -45,12 +45,12 @@ const setup = (run: MockLanguageModelV4['doGenerate']) => {
     const database = createMemoryDatabase()
     const assertSchema = vi.spyOn(database.storage, 'assertSchema')
     const commit = vi.spyOn(database.storage, 'commit')
-    const admin = createSiteAdmin({ config, database, authorize: () => actor })
+    const admin = createRuntime({ config, database, authorize: () => actor })
     const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init)
         return String(input).includes('/ai/actions/')
-            ? handleAiActionRequest(request, '/api/site-admin', (name, payload) =>
-                  executeSiteAdminAiAction(config, name, payload, { actor, request, platformContext }),
+            ? handleAiActionRequest(request, '/api/liti', (name, payload) =>
+                  executeLitiAiAction(config, name, payload, { actor, request, platformContext }),
               )
             : handleManagementRequest(admin, request)
     }
@@ -105,7 +105,7 @@ describe('app-owned native AI with resource forms', () => {
         const result = (await proposal) as { data: { summary: string } }
         formState.form.setFieldValue('summary', result.data.summary)
         await formState.form.handleSubmit()
-        expect(fixture.resource.error.value?.data?.code).toBe('SITE_ADMIN_CONFLICT')
+        expect(fixture.resource.error.value?.data?.code).toBe('LITI_CONFLICT')
         expect(formState.draft.snapshot().version).toBe(entry.version)
         expect(formState.form.state.values).toEqual({ title: 'Stored', summary: 'Proposed', slug: '' })
         expect((await admin.getEntry(entry.id)).data.title).toBe('Elsewhere')

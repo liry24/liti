@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import manifest from '../packages/site-admin/package.json'
+import manifest from '../packages/liti/package.json'
 
 it('declares shared runtime packages as peers without exporting dependency aliases', () => {
     expect(manifest.exports).not.toHaveProperty('./dependency-aliases')

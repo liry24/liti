@@ -4,9 +4,9 @@ import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { defineSiteAdminConfig, file, text } from '../packages/site-admin/dist/index.js'
+import { defineLitiConfig, file, text } from '../packages/liti/dist/index.js'
 import { generateFixtureSQL } from './generate-fixture.mjs'
-import { createSiteAdminManagementClient } from '../packages/site-admin/dist/client.js'
+import { createLitiManagementClient } from '../packages/liti/dist/client.js'
 
 const run = promisify(execFile)
 const fixture = fileURLToPath(new URL('./fixtures/cloudflare/', import.meta.url))
@@ -25,7 +25,7 @@ await mkdir(migrations, { recursive: true })
 await writeFile(
     migrations + '/0001_initial.sql',
     await generateFixtureSQL(
-        defineSiteAdminConfig({
+        defineLitiConfig({
             models: {
                 posts: {
                     fields: { slug: text(), attachment: file(), title: text({ required: true }) },
@@ -111,14 +111,14 @@ try {
         !large.unchanged ||
         !large.sizes?.every(({ bytes }) => bytes < 2_000_000) ||
         large.status !== 400 ||
-        String(large.rejected) !== Array(3).fill('SITE_ADMIN_INVALID_INPUT').join(',')
+        String(large.rejected) !== Array(3).fill('LITI_INVALID_INPUT').join(',')
     )
         throw new Error(`Native D1 chunk-boundary/query-bounds/history probe failed: ${JSON.stringify(large)}`)
     const seeded = await (await fetch(origin + '/search-cold/seed')).json()
     if (seeded.seeded !== 257) throw new Error(`Native D1 cold-search seeding failed: ${JSON.stringify(seeded)}`)
     const before = await (await fetch(origin + '/search-cold/state')).text()
     const calls = []
-    const client = createSiteAdminManagementClient({
+    const client = createLitiManagementClient({
         origin,
         basePath: '/search-cold/manage',
         fetch: async (input, init) => {
@@ -131,7 +131,7 @@ try {
     try {
         await client.listEntries('posts', { q: 'école', limit: 1, offset: 256 })
     } catch (error) {
-        required = error.code === 'SITE_ADMIN_MIGRATION_REQUIRED'
+        required = error.code === 'LITI_MIGRATION_REQUIRED'
     }
     if (!required) throw new Error('Incomplete native D1 search must require explicit rebuild.')
     const rebuilt = await (await fetch(origin + '/search-cold/rebuild', { method: 'POST' })).json()

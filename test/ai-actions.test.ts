@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { APICallError, Output } from 'ai'
 import { Experimental_DecisionMockModelV4, MockLanguageModelV4 } from 'ai/test'
-import { defineSiteAdminConfig } from '../packages/site-admin/src'
-import { executeSiteAdminAiAction } from '../packages/site-admin/src/ai'
-import { handleAiActionRequest } from '../packages/site-admin/src/server/ai-actions-http'
-import { SiteAdminError } from '../packages/site-admin/src/errors'
+import { defineLitiConfig } from '../packages/liti/src'
+import { executeLitiAiAction } from '../packages/liti/src/ai'
+import { handleAiActionRequest } from '../packages/liti/src/server/ai-actions-http'
+import { LitiError } from '../packages/liti/src/errors'
 
 const result = (text: string) => ({
     content: [{ type: 'text' as const, text }],
@@ -23,7 +23,7 @@ const context = {
 const setup = (generate: MockLanguageModelV4['doGenerate'] = async () => result('{"content":"Corrected"}')) => {
     const run = vi.fn(generate)
     const model = new MockLanguageModelV4({ doGenerate: run })
-    const config = defineSiteAdminConfig({
+    const config = defineLitiConfig({
         models: {},
         authorization: { roles: { editor: { ai: ['proofread', 'plain', 'safe'] } } },
         ai: {
@@ -44,7 +44,7 @@ const setup = (generate: MockLanguageModelV4['doGenerate'] = async () => result(
                     type: 'text-generation',
                     input: z.object({ content: z.string(), version: z.number() }).strict(),
                     prompt: ({ content, version }) => {
-                        if (version !== 3) throw new SiteAdminError('SITE_ADMIN_CONFLICT', 'Version changed.')
+                        if (version !== 3) throw new LitiError('LITI_CONFLICT', 'Version changed.')
                         return content
                     },
                     output: ({ content }) =>
@@ -69,42 +69,42 @@ describe('authenticated named native AI actions', () => {
             finishReason: { unified: reason, raw: undefined },
         }))
         await expect(
-            executeSiteAdminAiAction(config, 'proofread', { input: { content: 'Original' } }, context),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_AI_OUTPUT_INVALID' })
+            executeLitiAiAction(config, 'proofread', { input: { content: 'Original' } }, context),
+        ).rejects.toMatchObject({ code: 'LITI_AI_OUTPUT_INVALID' })
     })
     it('validates and transforms input before resolving the native model, returns native output or text', async () => {
         const { config, run } = setup()
         expect(
-            await executeSiteAdminAiAction(config, 'proofread', { input: { content: 'Input', count: '2' } }, context),
+            await executeLitiAiAction(config, 'proofread', { input: { content: 'Input', count: '2' } }, context),
         ).toEqual({ content: 'Corrected' })
         expect(run.mock.calls[0]?.[0].prompt).toContainEqual({
             role: 'user',
             content: [{ type: 'text', text: 'Input2' }],
         })
-        expect(await executeSiteAdminAiAction(config, 'plain', { input: { content: 'Text' } }, context)).toBe(
+        expect(await executeLitiAiAction(config, 'plain', { input: { content: 'Text' } }, context)).toBe(
             '{"content":"Corrected"}',
         )
     })
     it.each([
-        { actor: null, name: 'proofread', input: { content: 'x' }, code: 'SITE_ADMIN_AUTH_REQUIRED' },
+        { actor: null, name: 'proofread', input: { content: 'x' }, code: 'LITI_AUTH_REQUIRED' },
         {
             actor: { id: 'user', roles: ['user'] },
             name: 'proofread',
             input: { content: 'x' },
-            code: 'SITE_ADMIN_FORBIDDEN',
+            code: 'LITI_FORBIDDEN',
         },
-        { actor: context.actor, name: 'proofread', input: {}, code: 'SITE_ADMIN_INVALID_INPUT' },
-        { actor: context.actor, name: 'proofread', input: { content: 4 }, code: 'SITE_ADMIN_INVALID_INPUT' },
+        { actor: context.actor, name: 'proofread', input: {}, code: 'LITI_INVALID_INPUT' },
+        { actor: context.actor, name: 'proofread', input: { content: 4 }, code: 'LITI_INVALID_INPUT' },
         {
             actor: context.actor,
             name: 'proofread',
             input: { content: 'x', model: 'injected' },
-            code: 'SITE_ADMIN_INVALID_INPUT',
+            code: 'LITI_INVALID_INPUT',
         },
-        { actor: { id: 'admin', roles: ['admin'] }, name: '__proto__', input: {}, code: 'SITE_ADMIN_ENTRY_NOT_FOUND' },
+        { actor: { id: 'admin', roles: ['admin'] }, name: '__proto__', input: {}, code: 'LITI_ENTRY_NOT_FOUND' },
     ])('rejects $code before inference', async ({ actor, name, input, code }) => {
         const { config, run } = setup()
-        await expect(executeSiteAdminAiAction(config, name, { input }, { ...context, actor })).rejects.toMatchObject({
+        await expect(executeLitiAiAction(config, name, { input }, { ...context, actor })).rejects.toMatchObject({
             code,
         })
         expect(run).not.toHaveBeenCalled()
@@ -112,22 +112,12 @@ describe('authenticated named native AI actions', () => {
     it('keeps native output validation and server version guards application-owned', async () => {
         const { config, run } = setup(async () => result('{"content":"Changed URL"}'))
         await expect(
-            executeSiteAdminAiAction(
-                config,
-                'safe',
-                { input: { content: 'https://original.test', version: 2 } },
-                context,
-            ),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            executeLitiAiAction(config, 'safe', { input: { content: 'https://original.test', version: 2 } }, context),
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
         expect(run).not.toHaveBeenCalled()
         await expect(
-            executeSiteAdminAiAction(
-                config,
-                'safe',
-                { input: { content: 'https://original.test', version: 3 } },
-                context,
-            ),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_AI_FAILED' })
+            executeLitiAiAction(config, 'safe', { input: { content: 'https://original.test', version: 3 } }, context),
+        ).rejects.toMatchObject({ code: 'LITI_AI_FAILED' })
         expect(run).toHaveBeenCalledTimes(1)
     })
     it('snapshots before async validation and forwards native request/platform context', async () => {
@@ -138,7 +128,7 @@ describe('authenticated named native AI actions', () => {
         const { run } = setup(async () => result('Text'))
         const resolver = vi.fn(() => new MockLanguageModelV4({ doGenerate: run }))
         const prompt = vi.fn(({ content }: { content: string }) => content)
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             models: {},
             ai: {
                 model: resolver,
@@ -160,7 +150,7 @@ describe('authenticated named native AI actions', () => {
         })
         const input = { input: { content: 'Original' } }
         const platformContext = { binding: 'App-owned' }
-        const pending = executeSiteAdminAiAction(config, 'action', input, {
+        const pending = executeLitiAiAction(config, 'action', input, {
             ...context,
             actor: { id: 'admin', roles: ['admin'] },
             platformContext,
@@ -180,9 +170,10 @@ describe('authenticated named native AI actions', () => {
                 isRetryable: true,
             })
         })
-        await expect(
-            executeSiteAdminAiAction(config, 'plain', { input: { content: 'x' } }, context),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_AI_FAILED', message: 'AI action failed.' })
+        await expect(executeLitiAiAction(config, 'plain', { input: { content: 'x' } }, context)).rejects.toMatchObject({
+            code: 'LITI_AI_FAILED',
+            message: 'AI action failed.',
+        })
         expect(run).toHaveBeenCalledTimes(1)
     })
     it('propagates the request abort signal to the native provider', async () => {
@@ -193,7 +184,7 @@ describe('authenticated named native AI actions', () => {
                     abortSignal?.addEventListener('abort', () => reject(abortSignal.reason), { once: true })
                 }),
         )
-        const pending = executeSiteAdminAiAction(
+        const pending = executeLitiAiAction(
             config,
             'plain',
             { input: { content: 'x' } },
@@ -210,7 +201,7 @@ describe('authenticated named native AI actions', () => {
             warnings: [],
         }))
         const model = new Experimental_DecisionMockModelV4({ doDecide: decide })
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             models: {},
             ai: {
                 decisionModel: model,
@@ -231,7 +222,7 @@ describe('authenticated named native AI actions', () => {
             },
         })
         expect(
-            await executeSiteAdminAiAction(
+            await executeLitiAiAction(
                 config,
                 'classify',
                 { input: { content: 'SDK types' } },
@@ -242,7 +233,7 @@ describe('authenticated named native AI actions', () => {
     })
     it('protects the HTTP boundary with POST, same origin, private responses and sanitized errors', async () => {
         const { config } = setup()
-        const execute = vi.fn((name: string, input: unknown) => executeSiteAdminAiAction(config, name, input, context))
+        const execute = vi.fn((name: string, input: unknown) => executeLitiAiAction(config, name, input, context))
         const req = (headers: Record<string, string> = {}, method = 'POST', body = '{"input":{"content":"x"}}') =>
             new Request('https://site.test/manage/ai/actions/proofread', {
                 method,

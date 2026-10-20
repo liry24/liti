@@ -19,7 +19,7 @@
             "ignoreDependencies": ["@intlify/h3"],
             "ignore": ["test/fixtures/**/.nuxt/**", "test/fixtures/**/.wrangler/**"]
         },
-        "packages/site-admin": {
+        "packages/liti": {
             "entry": [
                 "src/{index,adapter,ai,client,cli,form,generate,nuxt}.ts!",
                 "src/runtime/*.ts!",

@@ -1,0 +1,59 @@
+{
+    "name": "@litijs/sqlite",
+    "version": "0.0.3",
+    "description": "SQLite domain storage and native drivers for liti",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/liti.git",
+        "directory": "packages/sqlite"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./runtime": {
+            "types": "./dist/runtime.d.ts",
+            "import": "./dist/runtime.js"
+        },
+        "./schema": {
+            "types": "./dist/schema.d.ts",
+            "import": "./dist/schema.js"
+        },
+        "./tooling": {
+            "types": "./dist/schema-source.d.ts",
+            "import": "./dist/schema-source.js"
+        },
+        "./storage": {
+            "types": "./dist/connection.d.ts",
+            "import": "./dist/connection.js"
+        },
+        "./package.json": "./package.json",
+        "./native": {
+            "types": "./dist/native.d.ts",
+            "import": "./dist/native.js"
+        }
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "vp pack",
+        "prepack": "bun run build",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@types/bun": "^1.4.3",
+        "liti": "workspace:*"
+    },
+    "peerDependencies": {
+        "liti": "^0.0.3"
+    }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allowGeneratedFilesConfig } from '../packages/site-admin/src/nuxt/files-source'
+import { allowGeneratedFilesConfig } from '../packages/void/src/nuxt-files'
 
 describe('native Files generated TypeScript configuration', () => {
     it('exempts only the generated directory while retaining native dependency exclusions', () => {

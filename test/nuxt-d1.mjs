@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { join as joinPath } from 'pathe'
 import { buildNuxt, loadNuxt } from 'nuxt/kit'
-import { generateCombinedSchema } from '../packages/site-admin/dist/generate.js'
+import { generateCombinedSchema } from '@litijs/void/tooling'
 import { admin } from 'better-auth/plugins'
-import domain from './fixtures/nuxt-d1/site-admin.config.ts'
+import domain from './fixtures/nuxt-d1/liti.config.ts'
 import { assertNoNodeSQLiteDriver, verifyNodeSQLiteDriverCheck } from './fixtures/nuxt-d1/worker-imports.mjs'
 import { assertAiOmitted } from './assert-ai-omitted.mjs'
 
@@ -21,7 +21,7 @@ const wrangler = join(workspace, 'node_modules/wrangler/bin/wrangler.js')
 const schemaPath = joinPath(fixture, 'db/schema.ts')
 const migrations = joinPath(fixture, '.data/migrations')
 const wranglerConfig = join(fixture, '.data/wrangler.json')
-const authSecret = 'site-admin-d1-integration-test-secret-0000000000000000'
+const authSecret = 'liti-d1-integration-test-secret-0000000000000000'
 const wranglerEnvironment = {
     ...process.env,
     WRANGLER_LOG_PATH: join(fixture, '.data/wrangler-logs'),
@@ -74,7 +74,7 @@ process.env.NUXT_PUBLIC_SITE_URL = origin
 await writeFile(
     wranglerConfig,
     JSON.stringify({
-        name: 'site-admin-nuxt-d1-test',
+        name: 'liti-nuxt-d1-test',
         main: '../.output/server/index.mjs',
         compatibility_date: '2026-10-08',
         compatibility_flags: ['nodejs_compat'],
@@ -83,13 +83,13 @@ await writeFile(
         d1_databases: [
             {
                 binding: 'DB',
-                database_name: 'site-admin-nuxt-d1-test',
+                database_name: 'liti-nuxt-d1-test',
                 database_id: '00000000-0000-4000-8000-000000000002',
                 migrations_dir: './wrangler-migrations',
             },
             {
                 binding: 'ALT_DB',
-                database_name: 'site-admin-nuxt-d1-alternate-test',
+                database_name: 'liti-nuxt-d1-alternate-test',
                 database_id: '00000000-0000-4000-8000-000000000003',
                 migrations_dir: './wrangler-migrations',
             },
@@ -176,11 +176,8 @@ try {
         await new Promise((resolveWait) => setTimeout(resolveWait, 100))
     }
     if (!ready) throw new Error('The local Nuxt D1 worker did not start.')
-    const anonymousManagement = await fetch(origin + '/api/site-admin/models')
-    if (
-        anonymousManagement.status !== 401 ||
-        (await anonymousManagement.json()).error?.code !== 'SITE_ADMIN_AUTH_REQUIRED'
-    )
+    const anonymousManagement = await fetch(origin + '/api/liti/models')
+    if (anonymousManagement.status !== 401 || (await anonymousManagement.json()).error?.code !== 'LITI_AUTH_REQUIRED')
         throw new Error('The native D1 auth integration did not protect management routes.')
     if ((await request('/api/auth/get-session')) !== null)
         throw new Error('An anonymous D1 request unexpectedly received a session.')
@@ -199,7 +196,7 @@ try {
         throw new Error('The native D1 session did not match the signed-up user.')
     if (session.user.role !== 'user')
         throw new Error('The first native D1 signup did not retain the ordinary user role.')
-    const alternateHeaders = { 'x-site-admin-test-database': 'alternate' }
+    const alternateHeaders = { 'x-liti-test-database': 'alternate' }
     if ((await request('/api/auth/get-session', { headers: { cookie, ...alternateHeaders } })) !== null)
         throw new Error('A native auth session crossed from DB into ALT_DB.')
     const alternateSignup = await fetch(origin + '/api/auth/sign-up/email', {
@@ -234,10 +231,10 @@ try {
         Object.entries(alternateDatabase).some(([key, value]) => key !== 'users' && value !== true)
     )
         throw new Error(`The alternate D1 database/context probe failed: ${JSON.stringify(alternateDatabase)}`)
-    const authenticatedManagement = await request('/api/site-admin/models', { headers: { cookie } })
+    const authenticatedManagement = await request('/api/liti/models', { headers: { cookie } })
     if (Object.keys(authenticatedManagement.models).length !== 0)
         throw new Error('The native D1 ordinary user unexpectedly received model permissions.')
-    const forbiddenOperation = await fetch(origin + '/api/site-admin/entries?model=posts', { headers: { cookie } })
+    const forbiddenOperation = await fetch(origin + '/api/liti/entries?model=posts', { headers: { cookie } })
     if (forbiddenOperation.status !== 403)
         throw new Error('The first D1 signup unexpectedly received management permissions.')
     const unicodeSearch = await request('/api/__search', { method: 'POST' })
@@ -247,7 +244,7 @@ try {
         unicodeSearch.elapsed >= 2000
     )
         throw new Error(`Native D1 management Unicode search failed or was too slow: ${JSON.stringify(unicodeSearch)}`)
-    const crossDatabaseManagement = await fetch(origin + '/api/site-admin/models', {
+    const crossDatabaseManagement = await fetch(origin + '/api/liti/models', {
         headers: { cookie, ...alternateHeaders },
     })
     if (crossDatabaseManagement.status !== 401) throw new Error('A cross-database session received management access.')
@@ -273,7 +270,7 @@ try {
     let scheduledPublished = false
     for (let attempt = 0; attempt < 100; attempt++) {
         scheduledPublished = (await request('/api/content/posts')).some(
-            (entry) => entry.data?.['_siteAdmin']?.id === scheduled.id,
+            (entry) => entry.data?.['_liti']?.id === scheduled.id,
         )
         if (scheduledPublished) break
         await new Promise((resolveWait) => setTimeout(resolveWait, 100))
@@ -288,7 +285,7 @@ try {
     })
     if ((await request('/api/auth/get-session', { headers: { cookie } })) !== null)
         throw new Error('The native D1 session remained valid after sign-out.')
-    const signedOutManagement = await fetch(origin + '/api/site-admin/models', { headers: { cookie } })
+    const signedOutManagement = await fetch(origin + '/api/liti/models', { headers: { cookie } })
     if (signedOutManagement.status !== 401) throw new Error('A signed-out D1 session retained management access.')
     if (
         (await request('/api/auth/get-session', { headers: { cookie: alternateCookie, ...alternateHeaders } }))?.user

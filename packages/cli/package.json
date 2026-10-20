@@ -1,0 +1,8 @@
+{
+    "name": "@liti-internal/cli",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    }
+}

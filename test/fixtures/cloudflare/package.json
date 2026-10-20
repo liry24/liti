@@ -1,5 +1,5 @@
 {
-    "name": "site-admin-cloudflare-fixture",
+    "name": "liti-cloudflare-fixture",
     "private": true,
     "type": "module",
     "devDependencies": {

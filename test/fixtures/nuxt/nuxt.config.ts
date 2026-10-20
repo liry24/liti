@@ -1,4 +1,4 @@
-import siteAdmin from '@liria24/site-admin/nuxt'
+import liti from 'liti/nuxt'
 // oxlint-disable-next-line unicorn/require-module-specifiers -- loads the module augmentation without a runtime import
 import type {} from '@nuxtjs/i18n'
 import { defineNuxtConfig } from 'nuxt/config'
@@ -18,5 +18,15 @@ export default defineNuxtConfig({
         full: { description: 'All published content', title: 'Full site content' },
         title: 'Site content',
     },
-    modules: [siteAdmin],
+    modules: [liti],
+    liti: {
+        auth: true,
+        i18n: true,
+        llms: true,
+        ogImage: true,
+        robots: true,
+        schemaOrg: true,
+        seo: true,
+        sitemap: true,
+    },
 })

@@ -1,0 +1,16 @@
+{
+    "name": "@liti-internal/nuxt",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@nuxt/devtools-kit": "4.0.0-beta.5",
+        "@nuxt/kit": "^4.6.2",
+        "@nuxt/schema": "^4.6.2",
+        "@standard-schema/spec": "^1.1.0",
+        "devframe": "1.2.6",
+        "nypm": "^0.6.10"
+    }
+}

@@ -1,7 +1,7 @@
-import { defineSiteAdminConfig, markdown, text, textarea, type InferSiteAdminModels } from '../packages/site-admin/src'
-import { createSiteAdminManagementClient } from '../packages/site-admin/src/client'
+import { defineLitiConfig, markdown, text, textarea, type InferLitiModels } from '../packages/liti/src'
+import { createLitiManagementClient } from '../packages/liti/src/client'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         articles: {
             fields: {
@@ -15,7 +15,7 @@ const config = defineSiteAdminConfig({
 })
 
 const checkAIClientTypes = async (): Promise<void> => {
-    const client = createSiteAdminManagementClient<InferSiteAdminModels<typeof config>>()
+    const client = createLitiManagementClient<InferLitiModels<typeof config>>()
     const candidate = { title: 'Typed publication', excerpt: 'Manual excerpt' }
     const published = await client.publishEntry('id', {
         expectedVersion: 1,

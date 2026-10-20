@@ -2,17 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { parseMarkdown } from 'comark'
 import security from 'comark/plugins/security'
 import type { Node, ElementNode } from 'comark'
-import {
-    markdownAssetReferences,
-    markdownAssets,
-    resolveMarkdownSource,
-} from '../packages/site-admin/src/markdown/assets'
-import { markdownPlugins } from '../packages/site-admin/src/markdown/plugins'
-import { createMarkdownContent } from '../packages/site-admin/src/markdown/content'
-import { astText, cleanText } from '../packages/site-admin/src/markdown/document'
-import { paragraphSummary } from '../packages/site-admin/src/markdown/summary'
-import { array, markdown, object } from '../packages/site-admin/src/fields'
-import { collectReferences } from '../packages/site-admin/src/validation'
+import { markdownAssetReferences, markdownAssets, resolveMarkdownSource } from '../packages/liti/src/markdown/assets'
+import { markdownPlugins } from '../packages/liti/src/markdown/plugins'
+import { createMarkdownContent } from '../packages/liti/src/markdown/content'
+import { astText, cleanText } from '../packages/liti/src/markdown/document'
+import { paragraphSummary } from '../packages/liti/src/markdown/summary'
+import { array, markdown, object } from '../packages/liti/src/fields'
+import { collectReferences } from '../packages/liti/src/validation'
 
 const url = (id: string) => `/custom/content/_assets/${id}`
 const elements = (nodes: Node[], tag: string): ElementNode[] =>
@@ -74,18 +70,18 @@ describe('internal Markdown asset contracts', () => {
     })
     it('keeps legacy source-order ledger metadata and string projection without reformatting', () => {
         const source =
-            '  ![a](site-admin://asset/a)\r\n\r\n`site-admin://asset/code`\r\n' +
-            '```txt\nsite-admin://asset/fence\n```\n' +
-            '[unused]: site-admin://asset/unused\n' +
-            ':card{label="site-admin://asset/label" :src="site-admin://asset/bound"}\n' +
-            'plain site-admin://asset/a site-admin://asset/prefix.suffix site-admin://asset/ 日本語'
+            '  ![a](liti://asset/a)\r\n\r\n`liti://asset/code`\r\n' +
+            '```txt\nliti://asset/fence\n```\n' +
+            '[unused]: liti://asset/unused\n' +
+            ':card{label="liti://asset/label" :src="liti://asset/bound"}\n' +
+            'plain liti://asset/a liti://asset/prefix.suffix liti://asset/ 日本語'
         const ids = ['a', 'code', 'fence', 'unused', 'label', 'bound', 'a', 'prefix']
         expect(markdownAssetReferences(source)).toEqual(ids.map((id, position) => ({ id, position })))
         expect(
             collectReferences({ sections: array(object({ body: markdown() })) }, { sections: [{ body: source }] })
                 .assets,
         ).toEqual(ids.map((id, position) => ({ id, position, path: 'sections.0.body.$markdown' })))
-        const projected = source.replace(/site-admin:\/\/asset\/([A-Za-z0-9_-]+)/gu, (_, id: string) => url(id))
+        const projected = source.replace(/liti:\/\/asset\/([A-Za-z0-9_-]+)/gu, (_, id: string) => url(id))
         expect(resolveMarkdownSource(source, url)).toBe(projected)
         expect(resolveMarkdownSource(projected, url)).toBe(projected)
         expect(resolveMarkdownSource('plain\r\n', url)).toBe('plain\r\n')
@@ -94,18 +90,18 @@ describe('internal Markdown asset contracts', () => {
 
     it('resolves actual destinations in nested Markdown, references and static component props', async () => {
         const source =
-            '![a](site-admin://asset/a)\n\n[download][ref]\n\n[ref]: site-admin://asset/a\n\n' +
-            '> - ![nested](site-admin://asset/a)\n\n' +
-            '::card{src="site-admin://asset/a" href="site-admin://asset/a" label="site-admin://asset/a" :src="data.url"}\n' +
-            '![inside](site-admin://asset/a)\n::\n\n' +
-            '<Photo src="site-admin://asset/a" xlink:href="site-admin://asset/a" />'
+            '![a](liti://asset/a)\n\n[download][ref]\n\n[ref]: liti://asset/a\n\n' +
+            '> - ![nested](liti://asset/a)\n\n' +
+            '::card{src="liti://asset/a" href="liti://asset/a" label="liti://asset/a" :src="data.url"}\n' +
+            '![inside](liti://asset/a)\n::\n\n' +
+            '<Photo src="liti://asset/a" xlink:href="liti://asset/a" />'
         const document = await parseMarkdown(source, { plugins: [markdownAssets(url)] })
         expect(elements(document.nodes, 'img').map((node) => node[1].src)).toEqual([url('a'), url('a'), url('a')])
         expect(elements(document.nodes, 'a')[0]?.[1].href).toBe(url('a'))
         expect(elements(document.nodes, 'card')[0]?.[1]).toMatchObject({
             src: url('a'),
             href: url('a'),
-            label: 'site-admin://asset/a',
+            label: 'liti://asset/a',
             ':src': 'data.url',
         })
         expect(elements(document.nodes, 'photo')[0]?.[1]).toMatchObject({ src: url('a'), 'xlink:href': url('a') })
@@ -114,10 +110,10 @@ describe('internal Markdown asset contracts', () => {
 
     it('preserves code, prose, escaped syntax, frontmatter, arbitrary and bound props', async () => {
         const source =
-            '---\nexample: site-admin://asset/a\n---\n' +
-            '`site-admin://asset/a`\n\n```md\n![example](site-admin://asset/a)\n```\n\n' +
-            'plain site-admin://asset/a\n\n\\![escaped]\\(site-admin://asset/a\\)\n\n' +
-            ':card{label="site-admin://asset/a" :src="site-admin://asset/a" poster="site-admin://asset/a"}'
+            '---\nexample: liti://asset/a\n---\n' +
+            '`liti://asset/a`\n\n```md\n![example](liti://asset/a)\n```\n\n' +
+            'plain liti://asset/a\n\n\\![escaped]\\(liti://asset/a\\)\n\n' +
+            ':card{label="liti://asset/a" :src="liti://asset/a" poster="liti://asset/a"}'
         const native = await parseMarkdown(source)
         const document = await parseMarkdown(source, { plugins: [markdownAssets(url)] })
         expect(document).toEqual(native)
@@ -125,10 +121,10 @@ describe('internal Markdown asset contracts', () => {
 
     it('does not resolve decoded or malformed destinations outside the tracked ID set', async () => {
         const source =
-            '![entity](site-admin&colon;//asset/hidden)\n\n' +
-            '![escaped](site-admin://asset/a\\_b)\n\n![suffix](site-admin://asset/a.png)\n\n' +
-            '![query](site-admin://asset/a?x=1)\n\n![empty](site-admin://asset/)\n\n' +
-            '[external](https://example.com/site-admin://asset/a)'
+            '![entity](liti&colon;//asset/hidden)\n\n' +
+            '![escaped](liti://asset/a\\_b)\n\n![suffix](liti://asset/a.png)\n\n' +
+            '![query](liti://asset/a?x=1)\n\n![empty](liti://asset/)\n\n' +
+            '[external](https://example.com/liti://asset/a)'
         const document = await parseMarkdown(source, { plugins: [markdownAssets(url)] })
         expect(elements(document.nodes, 'img').map((node) => node[1].src)).toEqual([
             undefined,
@@ -137,27 +133,27 @@ describe('internal Markdown asset contracts', () => {
             undefined,
             undefined,
         ])
-        expect(elements(document.nodes, 'a')[0]?.[1].href).toBe('https://example.com/site-admin://asset/a')
+        expect(elements(document.nodes, 'a')[0]?.[1].href).toBe('https://example.com/liti://asset/a')
         expect(markdownAssetReferences(source).map(({ id }) => id)).toEqual(['a', 'a', 'a', 'a'])
     })
 
     it('is idempotent and isolates source metadata across concurrent parses', async () => {
         const resolve = vi.fn(url)
         const plugin = markdownAssets(resolve)
-        const source = '![a](site-admin://asset/a)'
+        const source = '![a](liti://asset/a)'
         const document = await parseMarkdown(source, { plugins: [plugin] })
         await plugin.post?.({ tree: document, markdown: source, options: {}, tokens: [] })
         expect(resolve).toHaveBeenCalledTimes(1)
         const [tracked, hidden] = await Promise.all([
             parseMarkdown(source, { plugins: [plugin] }),
-            parseMarkdown('![a](site-admin&colon;//asset/a)', { plugins: [plugin] }),
+            parseMarkdown('![a](liti&colon;//asset/a)', { plugins: [plugin] }),
         ])
         expect(elements(tracked.nodes, 'img')[0]?.[1].src).toBe(url('a'))
         expect(elements(hidden.nodes, 'img')[0]?.[1].src).toBeUndefined()
     })
 
     it('checks generated URLs before configured security and applies both to summary nodes', async () => {
-        const source = '![a](site-admin://asset/a)\n\n<!-- more -->\n\nAfter'
+        const source = '![a](liti://asset/a)\n\n<!-- more -->\n\nAfter'
         for (const target of ['javascript:alert(1)', 'https://blocked.example/a']) {
             const policy = security({ allowedImagePrefixes: ['https://allowed.example/'] })
             const document = await parseMarkdown(source, {
@@ -190,7 +186,7 @@ describe('internal Markdown asset contracts', () => {
                             name: 'consumer',
                             pre(state) {
                                 expect(state.markdown).toBe('Original')
-                                state.markdown += '\n\n![injected](site-admin://asset/private)\n\n<!-- more -->'
+                                state.markdown += '\n\n![injected](liti://asset/private)\n\n<!-- more -->'
                             },
                         },
                     ],
@@ -236,7 +232,7 @@ describe('internal Markdown asset contracts', () => {
                 state.tree.meta.custom = 'kept'
             },
         }
-        const source = 'Intro ![a](site-admin://asset/a)\n\n<!-- cut -->\n\nAfter'
+        const source = 'Intro ![a](liti://asset/a)\n\n<!-- cut -->\n\nAfter'
         const document = await parseMarkdown(source, {
             plugins: await markdownPlugins({ plugins: [configured], summary: { delimiter: '<!-- cut -->' } }, url),
         })
@@ -266,7 +262,7 @@ describe('internal Markdown asset contracts', () => {
     })
 
     it('preserves content source identity, nested fields, frontmatter and document output shape', async () => {
-        const body = '---\ntitle: Frontmatter\n---\nIntro\n\n<!-- more -->\n\n![a](site-admin://asset/a)'
+        const body = '---\ntitle: Frontmatter\n---\nIntro\n\n<!-- more -->\n\n![a](liti://asset/a)'
         const entry = {
             defaultLocale: '',
             id: 'entry',
@@ -287,7 +283,7 @@ describe('internal Markdown asset contracts', () => {
         const [item] = await content.list()
         expect(item?.path).toBe('/posts/entry')
         expect(item?.data).toMatchObject({
-            _siteAdmin: { id: 'entry', revisionId: 'revision', path: '/posts/post' },
+            _liti: { id: 'entry', revisionId: 'revision', path: '/posts/post' },
             body: { frontmatter: { title: 'Frontmatter' }, meta: { summary: [['p', {}, 'Intro']] } },
         })
         const data = item!.data as { body: { nodes: Node[] }; sections: { body: { nodes: Node[] } }[] }

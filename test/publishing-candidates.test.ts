@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import { MockLanguageModelV4 } from 'ai/test'
-import { defineSiteAdminConfig, number, text } from '../packages/site-admin/src'
-import { handleManagementRequest, type SiteAdminActor } from '../packages/site-admin/src/server'
+import { defineLitiConfig, number, text } from '../packages/liti/src'
+import { handleManagementRequest, type LitiActor } from '../packages/liti/src/server'
 import { modelFixture } from './model-fixture'
-import { useEntryForm } from '../packages/site-admin/src/form'
+import { useEntryForm } from '../packages/vue/src/form'
 import { createMigratedTestAdmin } from './migrate'
 
 const databases: Database[] = []
@@ -20,9 +20,9 @@ const setup = async () => {
     const prepare = vi.fn(async () => {
         throw new Error('Draft saves must not invoke AI')
     })
-    let actor: SiteAdminActor | null = { id: 'admin', roles: ['admin'] }
+    let actor: LitiActor | null = { id: 'admin', roles: ['admin'] }
     let sequence = 0
-    const config = defineSiteAdminConfig({
+    const config = defineLitiConfig({
         ai: {
             model: new MockLanguageModelV4(),
             actions: { publication: { type: 'text-generation', input: z.object({}).strict(), prompt: prepare } },
@@ -61,13 +61,13 @@ const setup = async () => {
     return {
         admin,
         prepare,
-        actor: (value: SiteAdminActor | null) => {
+        actor: (value: LitiActor | null) => {
             actor = value
         },
     }
 }
 const request = (path: string, body: unknown) =>
-    new Request(`https://site.test/api/site-admin/${path}`, {
+    new Request(`https://site.test/api/liti/${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
@@ -119,7 +119,7 @@ describe('application-owned AI and atomic publication candidates', () => {
         expect(saved.data.slug).toBe(controlledSlug)
         controllerState.form.setFieldValue('slug', '')
         await controllerState.form.handleSubmit()
-        expect(fixture.resource.error.value?.data?.code).toBe('SITE_ADMIN_INVALID_INPUT')
+        expect(fixture.resource.error.value?.data?.code).toBe('LITI_INVALID_INPUT')
         expect((await admin.getEntry(saved.id)).data.slug).toBe(saved.data.slug)
         expect(prepare).not.toHaveBeenCalled()
     })
@@ -146,7 +146,7 @@ describe('application-owned AI and atomic publication candidates', () => {
                 expectedVersion: entry.version,
                 draft: { data: { slug: 'double', title: 'Double' } },
             }),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
         expect(await admin.listRevisions(entry.id)).toHaveLength(2)
         await admin.updateEntry(entry.id, {
             expectedVersion: scheduled.version,
@@ -170,11 +170,11 @@ describe('application-owned AI and atomic publication candidates', () => {
         expect(await admin.getPublicEntry('notes', draft.id)).toBeNull()
         expect(await admin.routeSnapshot()).toEqual([])
         await expect(admin.publishEntry(draft.id, { expectedVersion: draft.version })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_INVALID_INPUT',
+            code: 'LITI_INVALID_INPUT',
         })
         await expect(
             admin.schedulePublish(draft.id, { expectedVersion: draft.version, at: '2099-01-01T00:00:00Z' }),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+        ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
         const updated = await admin.updateEntry(draft.id, {
             expectedVersion: draft.version,
             data: { slug: '', title: 'Edited' },
@@ -229,7 +229,7 @@ describe('application-owned AI and atomic publication candidates', () => {
                 expectedVersion: entry.version,
                 draft: { data: { slug: '', title: 'Bad' } },
             }),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+        ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
         expect((await admin.getEntry(entry.id)).version).toBe(entry.version)
         expect((await admin.getPublicEntry('notes', entry.id))?.data.slug).toBe('stable-url')
     })
@@ -244,7 +244,7 @@ describe('application-owned AI and atomic publication candidates', () => {
         ])
         expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
         expect(results.filter((result) => result.status === 'rejected')).toMatchObject([
-            { reason: { code: 'SITE_ADMIN_CONFLICT' } },
+            { reason: { code: 'LITI_CONFLICT' } },
         ])
         expect(await admin.listRevisions(entry.id)).toHaveLength(2)
         const latest = await admin.getEntry(entry.id)
@@ -266,7 +266,7 @@ describe('application-owned AI and atomic publication candidates', () => {
                 expectedVersion: draft.version,
                 draft: { data: { slug: 'taken', title: 'Candidate' } },
             }),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_ROUTE_CONFLICT' })
+        ).rejects.toMatchObject({ code: 'LITI_ROUTE_CONFLICT' })
         expect(await admin.getEntry(draft.id)).toMatchObject({
             version: draft.version,
             currentRevisionId: draft.currentRevisionId,

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { computed, effectScope, nextTick, reactive } from 'vue'
-import { useEntryForm, siteAdminFormDefaults } from '../packages/site-admin/src/form'
-import { siteAdminModelContext } from '../packages/site-admin/src/model'
+import { useEntryForm, litiFormDefaults } from '../packages/vue/src/form'
+import { litiModelContext } from '../packages/vue/src/model'
 import { formDescriptor, modelEntry, modelFixture } from './model-fixture'
+import type { LitiClientOptions } from '../packages/liti/src/client'
 
 describe('native resource form', () => {
     it('preserves schema field order without applying a screen layout policy', () => {
@@ -25,7 +26,7 @@ describe('native resource form', () => {
         resource.data.value = modelEntry('one', 2, { title: 'Remote input' })
         resource.error.value = undefined
         resource.status.value = 'success'
-        expect(resource.error.value).toMatchObject({ data: { code: 'SITE_ADMIN_CONFLICT' } })
+        expect(resource.error.value).toMatchObject({ data: { code: 'LITI_CONFLICT' } })
         expect(editor.form.state.values.title).toBe('Local input')
         expect(editor.draft.snapshot().version).toBe(1)
     })
@@ -34,8 +35,8 @@ describe('native resource form', () => {
             ...formDescriptor,
             fields: { gallery: { kind: 'images' as const, required: true, serverValidation: false, default: [] } },
         })
-        const a = siteAdminFormDefaults(descriptor)
-        const b = siteAdminFormDefaults(descriptor)
+        const a = litiFormDefaults(descriptor)
+        const b = litiFormDefaults(descriptor)
         expect(a.gallery).not.toBe(b.gallery)
     })
     it('returns native fields and saves slug and data through one validation path', async () => {
@@ -63,7 +64,7 @@ describe('native resource form', () => {
             Response.json(
                 {
                     error: {
-                        code: 'SITE_ADMIN_VALIDATION_FAILED',
+                        code: 'LITI_VALIDATION_FAILED',
                         message: 'Rejected',
                         issues: [{ path: 'title', message: 'Taken' }],
                     },
@@ -79,7 +80,7 @@ describe('native resource form', () => {
         formState.form.setFieldValue('title', 'Retry')
         await formState.form.handleSubmit()
         expect(resource.error.value?.data).toMatchObject({
-            code: 'SITE_ADMIN_VALIDATION_FAILED',
+            code: 'LITI_VALIDATION_FAILED',
             issues: [{ path: 'title', message: 'Taken' }],
         })
         expect(formState.form.state.values.title).toBe('Retry')
@@ -103,8 +104,8 @@ describe('native resource form', () => {
         formState.form.setFieldValue('title', 'Second')
         await formState.form.handleSubmit()
         expect(requests.map((item) => item.url)).toEqual([
-            'http://site.test/api/site-admin/entries/posts',
-            'http://site.test/api/site-admin/entries/created',
+            'http://site.test/api/liti/entries/posts',
+            'http://site.test/api/liti/entries/created',
         ])
         expect(requests[1]?.body.expectedVersion).toBe(1)
     })
@@ -145,12 +146,12 @@ describe('native resource form', () => {
         fixture.state.data.value = modelEntry('one', 2)
         await nextTick()
         expect(formState.form.state.values.title).toBe('Unsaved')
-        expect(fixture.resource.error.value?.data?.code).toBe('SITE_ADMIN_CONFLICT')
+        expect(fixture.resource.error.value?.data?.code).toBe('LITI_CONFLICT')
         scope.stop()
     })
     it('keeps the original draft version when remounting after a remote edit', async () => {
         let writes = 0
-        const request: typeof fetch = async () => {
+        const request: NonNullable<LitiClientOptions['fetch']> = async () => {
             writes++
             return Response.json(modelEntry())
         }
@@ -163,7 +164,7 @@ describe('native resource form', () => {
         const restoredState = useEntryForm(next.resource)
         expect(restoredState.form.state.values.title).toBe('Unsaved')
         expect(restoredState.draft.snapshot().version).toBe(1)
-        expect(next.resource.error.value?.data?.code).toBe('SITE_ADMIN_CONFLICT')
+        expect(next.resource.error.value?.data?.code).toBe('LITI_CONFLICT')
         await restoredState.form.handleSubmit()
         expect(writes).toBe(0)
     })
@@ -180,7 +181,7 @@ describe('native resource form', () => {
         const next = modelFixture(async () => Response.json(null), null, first.drafts)
         next.identity.value = first.identity.value
         next.id.value = first.id.value
-        const context = next.resource[siteAdminModelContext]
+        const context = next.resource[litiModelContext]
         context.descriptor.value = undefined
         next.resource.status.value = 'pending'
         const restored = useEntryForm(next.resource)

@@ -5,18 +5,18 @@ import type { MarkdownDocument } from 'comark'
 
 import {
     array,
-    defineSiteAdminConfig,
+    defineLitiConfig,
     markdown,
     object,
     relation,
     text,
-    type InferSiteAdminPublicModels,
-} from '../packages/site-admin/src'
-import { createSiteAdminClient } from '../packages/site-admin/src/client'
-import { handlePublicRequest } from '../packages/site-admin/src/server'
+    type InferLitiPublicModels,
+} from '../packages/liti/src'
+import { createPublicClient } from '../packages/liti/src/client'
+import { handlePublicRequest } from '../packages/liti/src/server'
 import { createMigratedTestAdmin } from './migrate'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         authors: { fields: { slug: text(), name: text({ required: true }), bio: markdown({ required: true }) } },
         posts: {
@@ -34,7 +34,7 @@ const config = defineSiteAdminConfig({
 describe('public client Markdown contract', () => {
     it('keeps every summary after sequential detail routes and full HTTP reads', async () => {
         const database = createDatabase(nodeSqlite({ name: ':memory:' }))
-        const configured = defineSiteAdminConfig({
+        const configured = defineLitiConfig({
             models: {
                 posts: {
                     route: '/posts/:slug',
@@ -45,9 +45,9 @@ describe('public client Markdown contract', () => {
         })
         try {
             const admin = await createMigratedTestAdmin({ config: configured, database })
-            const client = createSiteAdminClient<
-                InferSiteAdminPublicModels<typeof configured>,
-                InferSiteAdminPublicModels<typeof configured, 'summary'>
+            const client = createPublicClient<
+                InferLitiPublicModels<typeof configured>,
+                InferLitiPublicModels<typeof configured, 'summary'>
             >({
                 origin: 'http://localhost',
                 fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
@@ -110,7 +110,7 @@ describe('public client Markdown contract', () => {
                 },
             })
             await admin.publishEntry(post.id, { expectedVersion: post.version })
-            const client = createSiteAdminClient<InferSiteAdminPublicModels<typeof config>>({
+            const client = createPublicClient<InferLitiPublicModels<typeof config>>({
                 origin: 'http://localhost',
                 fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
             })
@@ -138,7 +138,7 @@ describe('public client Markdown contract', () => {
 
     it('projects nested and related list summaries without body/frontmatter/plugin copies and preserves the full cache', async () => {
         const database = createDatabase(nodeSqlite({ name: ':memory:' }))
-        const configured = defineSiteAdminConfig({
+        const configured = defineLitiConfig({
             ...config,
             markdown: {
                 plugins: [
@@ -170,9 +170,9 @@ describe('public client Markdown contract', () => {
                 },
             })
             await admin.publishEntry(post.id, { expectedVersion: post.version })
-            const client = createSiteAdminClient<
-                InferSiteAdminPublicModels<typeof configured>,
-                InferSiteAdminPublicModels<typeof configured, 'summary'>
+            const client = createPublicClient<
+                InferLitiPublicModels<typeof configured>,
+                InferLitiPublicModels<typeof configured, 'summary'>
             >({
                 origin: 'http://localhost',
                 fetch: (input, init) => handlePublicRequest(admin, new Request(input, init)),
@@ -263,7 +263,7 @@ describe('public client Markdown contract', () => {
                 }>
                 expect(item!.data.body.nodes).toEqual([])
                 expect(item!.data.author.data.bio.nodes).toEqual([])
-                expect(item!.data).not.toHaveProperty('_siteAdmin.seo.description')
+                expect(item!.data).not.toHaveProperty('_liti.seo.description')
                 if (custom) {
                     const full = await (await admin.content('posts')).list()
                     expect(full[0]?.data.body).toMatchObject({

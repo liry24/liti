@@ -1,4 +1,4 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import {
     generatedRuntimeSource,
     nativeNuxtDependencies,
@@ -12,16 +12,20 @@ import { describe, expect, it, vi } from 'vitest'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import {
-    createSiteAdminClient,
-    createSiteAdminManagementClient,
-    presentSiteAdminData,
-    SiteAdminClientError,
-    type SiteAdminManagementClient,
-} from '../packages/site-admin/src/client'
-import { defineSiteAdminConfig, image, text } from '../packages/site-admin/src'
-import { siteAdminNuxtClientTemplate } from '../packages/site-admin/src/nuxt/client-templates'
-import { useEntryForm } from '../packages/site-admin/src/form'
-import { createSiteAdminModel, siteAdminModelError, type SiteAdminModel } from '../packages/site-admin/src/model'
+    createPublicClient,
+    createLitiManagementClient,
+    presentLitiData,
+    LitiClientError,
+    type LitiManagementClient,
+    type LitiClientOptions,
+} from '../packages/liti/src/client'
+import { defineLitiConfig, image, text } from '../packages/liti/src'
+import { litiNuxtClientTemplate } from '../packages/nuxt/src/nuxt/client-templates'
+import { normalizeLitiQuery } from '../packages/liti/src/query'
+import { litiModelCatalog } from '../packages/liti/src/admin-client'
+import { projectQuery } from '../packages/vue/src/query'
+import { useEntryForm } from '../packages/vue/src/form'
+import { createLitiModel, litiModelError, type LitiModel } from '../packages/vue/src/model'
 
 interface State {
     data: Vue.Ref<unknown>
@@ -32,39 +36,39 @@ interface State {
     refresh(options?: { cachedData?: unknown; signal?: AbortSignal; dedupe?: 'cancel' | 'defer' }): Promise<void>
 }
 interface Helpers {
-    useAdminForm(model: string, options?: Record<string, unknown>): Promise<FormResource> & FormResource
-    siteAdminManagementKey(
-        connection: import('../packages/site-admin/src/client').SiteAdminManagementClientOptions,
+    useLitiForm(model: string, options?: Record<string, unknown>): Promise<FormResource> & FormResource
+    litiManagementKey(
+        connection: import('../packages/liti/src/client').LitiManagementClientOptions,
         scope: string,
         operation: string,
         model: string | null,
         identity: unknown,
         locale?: string,
     ): string
-    siteAdminManagementClientOptions(): import('../packages/site-admin/src/client').SiteAdminManagementClientOptions
+    litiManagementClientOptions(): import('../packages/liti/src/client').LitiManagementClientOptions
     useAi(name: string, options: Record<string, unknown>): State & Promise<State>
     modelList(model: string, options?: Record<string, unknown>): State
     modelEntry(model: string, id: Vue.MaybeRefOrGetter<string>, options?: Record<string, unknown>): State
     publicList(model: string, options?: Record<string, unknown>): State
     publicEntry(model: string, id: string, options?: Record<string, unknown>): State
     publicBatch(requests: Record<string, unknown>, options?: Record<string, unknown>): State
-    useSiteAdminManagementClient(): SiteAdminManagementClient<Record<string, Record<string, unknown>>>
-    createNuxtSiteAdminManagementClient(
+    useLitiManagementClient(): LitiManagementClient<Record<string, Record<string, unknown>>>
+    createNuxtLitiManagementClient(
         connection: {
             origin: string
             basePath: string
-            fetch: typeof fetch
+            fetch: NonNullable<LitiClientOptions['fetch']>
             credentials?: RequestCredentials
         },
         auth: Vue.MaybeRefOrGetter<string>,
-    ): SiteAdminManagementClient<Record<string, Record<string, unknown>>>
+    ): LitiManagementClient<Record<string, Record<string, unknown>>>
 }
 
 type FormResource = ReturnType<typeof useEntryForm<Record<string, unknown>>> &
     Pick<State, 'data' | 'status' | 'error' | 'refresh'>
 
 const nativeEnvironment = async (
-    request: typeof fetch,
+    request: NonNullable<LitiClientOptions['fetch']>,
     { i18n = false, aiActions = false, serverFetch = false, serverRuntime = false } = {},
 ) => {
     const native = nativeRuntimeSource(await readNuxtSource('composables/asyncData.js'), {
@@ -130,7 +134,7 @@ const nativeEnvironment = async (
         `${native}\n${addonsSource}\n${fetchSource}; return { useAsyncData, clearNuxtData, refreshNuxtData, useNuxtData, createUseFetch, defineUseFetchAddon }`,
     )(...Object.values(nativeDependencies)) as Record<string, unknown>
     const generated = generatedRuntimeSource(
-        siteAdminNuxtClientTemplate({
+        litiNuxtClientTemplate({
             basePath: '/content',
             managementBase: '/manage',
             i18n,
@@ -142,9 +146,12 @@ const nativeEnvironment = async (
     let requestFetches = 0
     const states = new Map<string, Vue.Ref<unknown>>()
     const dependencies = {
+        normalizeLitiQuery,
+        litiModelCatalog,
+        projectQuery,
         useEntryForm,
-        createSiteAdminModel,
-        siteAdminModelError,
+        createLitiModel,
+        litiModelError,
         useRoute: () => ({ path: '/' }),
         useState: (key: string, initialize: () => unknown) => {
             if (!states.has(key)) states.set(key, Vue.ref(initialize()))
@@ -152,14 +159,14 @@ const nativeEnvironment = async (
         },
         ...nativeDependencies,
         ...runtime,
-        siteAdminAsyncData: runtime.useAsyncData,
-        createSiteAdminClient,
-        createSiteAdminManagementClient: (...args: Parameters<typeof createSiteAdminManagementClient>) => {
+        litiAsyncData: runtime.useAsyncData,
+        createPublicClient,
+        createLitiManagementClient: (...args: Parameters<typeof createLitiManagementClient>) => {
             managementFactories += 1
-            return createSiteAdminManagementClient(...args)
+            return createLitiManagementClient(...args)
         },
-        presentSiteAdminData,
-        SiteAdminClientError,
+        presentLitiData,
+        LitiClientError,
         useNuxtApp: () => app,
         useRequestURL: () => new URL('http://site.test'),
         useRequestFetch: () => {
@@ -177,15 +184,15 @@ const nativeEnvironment = async (
     }
     const helpers = new Function(
         ...Object.keys(dependencies),
-        `${generated}; return { ${aiActions ? 'useAi,' : ''} useAdminForm, siteAdminAttachAsyncData, modelList: useAdminEntries, modelEntry: useAdminEntry, publicEntry: (model, id, opts) => useContent(model, { ...opts, id }), publicList: useContent, publicBatch: useContent, createNuxtSiteAdminManagementClient, siteAdminManagementClientOptions, useSiteAdminModels, siteAdminReadModels, siteAdminManagementKey, useSiteAdminAuthScope }`,
+        `${generated}; return { ${aiActions ? 'useAi,' : ''} useLitiForm, litiAttachAsyncData, useLitiQuery, useLitiModels, modelList: composables.useManagedSource, modelEntry: (model, id, opts) => composables.useManagedSource(model, { ...opts, id }), publicEntry: (model, id, opts) => useLitiQuery(model, { ...opts, mode: 'one', id }), publicList: useLitiQuery, publicBatch: composables.usePublishedSource, createNuxtLitiManagementClient, litiManagementClientOptions, useLitiModels, litiReadModels, litiManagementKey, useLitiAuthScope }`,
     )(...Object.values(dependencies)) as Helpers
     return {
         app,
         helpers,
         setRouteResult: (value: unknown) => {
-            const route = states.get('site-admin-route')
+            const route = states.get('liti-route')
             if (route) route.value = value
-            else states.set('site-admin-route', Vue.ref(value))
+            else states.set('liti-route', Vue.ref(value))
         },
         refreshSubscribers: () => hooks.get('app:data:refresh')?.size ?? 0,
         managementFactories: () => managementFactories,
@@ -483,7 +490,7 @@ describe('native createUseFetch AI actions', () => {
                         once: true,
                     })
                 })
-                return Response.json({ error: { code: 'SITE_ADMIN_AI_FAILED' } }, { status: 502 })
+                return Response.json({ error: { code: 'LITI_AI_FAILED' } }, { status: 502 })
             },
             { aiActions: true },
         )
@@ -505,8 +512,8 @@ describe('native createUseFetch AI actions', () => {
         scope.stop()
     })
 })
-const modelDescriptor = createSiteAdminDescriptor(
-    defineSiteAdminConfig({
+const modelDescriptor = createLitiDescriptor(
+    defineLitiConfig({
         models: {
             posts: { fields: { slug: text(), title: text({ required: true }), image: image() } },
             authors: { fields: { slug: text(), title: text({ required: true }) } },
@@ -537,9 +544,9 @@ describe('native management AsyncData and mutation invalidation', () => {
         const actor = Vue.ref('alice')
         const instance = Vue.ref('a')
         const firstScope = Vue.effectScope()
-        const a = firstScope.run(() => helpers.useAdminForm('posts', { instance, authScope: actor }))!
+        const a = firstScope.run(() => helpers.useLitiForm('posts', { instance, authScope: actor }))!
         const secondScope = Vue.effectScope()
-        const b = secondScope.run(() => helpers.useAdminForm('posts', { instance: 'b', authScope: actor }))!
+        const b = secondScope.run(() => helpers.useLitiForm('posts', { instance: 'b', authScope: actor }))!
         expect(a.form.Field).toBeDefined()
         expect((await a).form).toBe(a.form)
         await b
@@ -564,7 +571,7 @@ describe('native management AsyncData and mutation invalidation', () => {
         expect(a.form.state.values.title).toBe('A')
         firstScope.stop()
         const reopenedScope = Vue.effectScope()
-        const reopened = reopenedScope.run(() => helpers.useAdminForm('posts', { instance, authScope: actor }))!
+        const reopened = reopenedScope.run(() => helpers.useLitiForm('posts', { instance, authScope: actor }))!
         await reopened
         expect(reopened.draft.snapshot().entryId).toBe('created-1')
         reopened.form.setFieldValue('title', 'A again')
@@ -595,8 +602,8 @@ describe('native management AsyncData and mutation invalidation', () => {
         })
         const instance = Vue.ref('a')
         const scope = Vue.effectScope()
-        const a = scope.run(() => helpers.useAdminForm('posts', { instance, defaultValues: { title: 'A' } }))!
-        const b = scope.run(() => helpers.useAdminForm('posts', { instance: 'b', defaultValues: { title: 'B' } }))!
+        const a = scope.run(() => helpers.useLitiForm('posts', { instance, defaultValues: { title: 'A' } }))!
+        const b = scope.run(() => helpers.useLitiForm('posts', { instance: 'b', defaultValues: { title: 'B' } }))!
         await a.form.handleSubmit()
         expect(saves).toBe(0)
         descriptor.resolve(Response.json(modelDescriptor))
@@ -626,7 +633,7 @@ describe('native management AsyncData and mutation invalidation', () => {
             return save.promise
         })
         const firstScope = Vue.effectScope()
-        const first = firstScope.run(() => helpers.useAdminForm('posts', { instance: 'a' }))!
+        const first = firstScope.run(() => helpers.useLitiForm('posts', { instance: 'a' }))!
         await first
         first.form.setFieldValue('title', 'Kept draft')
         const pending = first.form.handleSubmit()
@@ -634,7 +641,7 @@ describe('native management AsyncData and mutation invalidation', () => {
         firstScope.stop()
         expect(saveSignal?.aborted).toBe(true)
         const nextScope = Vue.effectScope()
-        const next = nextScope.run(() => helpers.useAdminForm('posts', { instance: 'a' }))!
+        const next = nextScope.run(() => helpers.useLitiForm('posts', { instance: 'a' }))!
         await next
         save.resolve(Response.json(modelRecord('late', 1, { title: 'Kept draft' })))
         await pending
@@ -660,8 +667,8 @@ describe('native management AsyncData and mutation invalidation', () => {
         })
         const locale = Vue.ref('ja')
         const scope = Vue.effectScope()
-        const a = scope.run(() => helpers.useAdminForm('posts', { instance: 'a', locale, defaultLocale: 'ja' }))!
-        const b = scope.run(() => helpers.useAdminForm('posts', { instance: 'b', locale, defaultLocale: 'ja' }))!
+        const a = scope.run(() => helpers.useLitiForm('posts', { instance: 'a', locale, defaultLocale: 'ja' }))!
+        const b = scope.run(() => helpers.useLitiForm('posts', { instance: 'b', locale, defaultLocale: 'ja' }))!
         await Promise.all([a, b])
         a.form.setFieldValue('title', '原本 A')
         b.form.setFieldValue('title', '原本 B')
@@ -693,15 +700,15 @@ describe('native management AsyncData and mutation invalidation', () => {
             return Response.json(record)
         })
         const scope = Vue.effectScope()
-        const a = scope.run(() => helpers.useAdminForm('posts', { id: 'one', instance: 'a' }))!
-        const b = scope.run(() => helpers.useAdminForm('posts', { id: 'one', instance: 'b' }))!
+        const a = scope.run(() => helpers.useLitiForm('posts', { id: 'one', instance: 'a' }))!
+        const b = scope.run(() => helpers.useLitiForm('posts', { id: 'one', instance: 'b' }))!
         await Promise.all([a, b])
         a.form.setFieldValue('title', 'Saved A')
         b.form.setFieldValue('title', 'Unsaved B')
         await a.form.handleSubmit()
         expect(a.draft.snapshot().version).toBe(2)
         expect(b.form.state.values.title).toBe('Unsaved B')
-        expect(b.error.value).toMatchObject({ data: { code: 'SITE_ADMIN_CONFLICT' } })
+        expect(b.error.value).toMatchObject({ data: { code: 'LITI_CONFLICT' } })
         expect(a.error.value).toBeUndefined()
         scope.stop()
     })
@@ -719,7 +726,7 @@ describe('native management AsyncData and mutation invalidation', () => {
         const html = await renderToString(
             Vue.createSSRApp({
                 async setup() {
-                    const { form, draft } = await helpers.useAdminForm('posts', { id: 'one' })
+                    const { form, draft } = await helpers.useLitiForm('posts', { id: 'one' })
                     expect(draft.snapshot().version).toBe(3)
                     return () => Vue.h('div', String(form.state.values.title))
                 },
@@ -749,14 +756,14 @@ describe('native management AsyncData and mutation invalidation', () => {
             setElementText: () => {},
             setText: () => {},
         })
-        let controller: Awaited<ReturnType<Helpers['useAdminForm']>> | undefined
+        let controller: Awaited<ReturnType<Helpers['useLitiForm']>> | undefined
         const app = renderer.createApp({
             render: () =>
                 Vue.h(Vue.Suspense, null, {
                     default: () =>
                         Vue.h({
                             async setup() {
-                                controller = await helpers.useAdminForm('posts', {
+                                controller = await helpers.useLitiForm('posts', {
                                     defaultValues: { title: 'Default' },
                                     beforeUnload: busy,
                                 })
@@ -919,8 +926,8 @@ describe('native management AsyncData and mutation invalidation', () => {
             fetch: request,
             credentials: 'same-origin' as RequestCredentials,
         }
-        const a = environment.helpers.createNuxtSiteAdminManagementClient(connection, auth)
-        const b = environment.helpers.createNuxtSiteAdminManagementClient({ ...connection }, auth)
+        const a = environment.helpers.createNuxtLitiManagementClient(connection, auth)
+        const b = environment.helpers.createNuxtLitiManagementClient({ ...connection }, auth)
         await Promise.all([a.listEntries('posts'), b.listEntries('posts')])
         expect(environment.managementFactories()).toBe(1)
         auth.value = 'bob'
@@ -932,28 +939,28 @@ describe('native management AsyncData and mutation invalidation', () => {
         connection.credentials = 'same-origin'
         await a.listEntries('posts')
         expect(environment.managementFactories()).toBe(3)
-        environment.helpers.createNuxtSiteAdminManagementClient({ ...connection, fetch: async () => request() }, auth)
+        environment.helpers.createNuxtLitiManagementClient({ ...connection, fetch: async () => request() }, auth)
         expect(environment.managementFactories()).toBe(4)
         const otherRequest = await nativeEnvironment(request)
-        otherRequest.helpers.createNuxtSiteAdminManagementClient(connection, auth)
+        otherRequest.helpers.createNuxtLitiManagementClient(connection, auth)
         expect(otherRequest.managementFactories()).toBe(1)
     })
 
     it('shares one native request-fetch wrapper per SSR app without retaining it across requests', async () => {
         const request = async () => Response.json(modelDescriptor)
         const first = await nativeEnvironment(request, { serverFetch: true })
-        const a = first.helpers.siteAdminManagementClientOptions()
-        const b = first.helpers.siteAdminManagementClientOptions()
+        const a = first.helpers.litiManagementClientOptions()
+        const b = first.helpers.litiManagementClientOptions()
         expect(a.fetch).toBe(b.fetch)
         expect(first.requestFetches()).toBe(1)
         await first.helpers
-            .createNuxtSiteAdminManagementClient(
-                a as typeof a & { origin: string; basePath: string; fetch: typeof fetch },
+            .createNuxtLitiManagementClient(
+                a as typeof a & { origin: string; basePath: string; fetch: NonNullable<LitiClientOptions['fetch']> },
                 'alice',
             )
             .models()
         const second = await nativeEnvironment(request, { serverFetch: true })
-        const c = second.helpers.siteAdminManagementClientOptions()
+        const c = second.helpers.litiManagementClientOptions()
         expect(c.fetch).not.toBe(a.fetch)
         expect(second.requestFetches()).toBe(1)
     })
@@ -1084,9 +1091,7 @@ describe('native management AsyncData and mutation invalidation', () => {
                 if (url.pathname === '/manage/entries')
                     return Response.json({ items: [entry], total: 1, limit: 50, offset: 0 })
                 if (url.pathname === '/manage/entries/one') return Response.json(entry)
-                return Response.json([
-                    { data: { _siteAdmin: { id: 'one', model: 'posts', slug: 'one' }, title: 'Public' } },
-                ])
+                return Response.json([{ data: { _liti: { id: 'one', model: 'posts', slug: 'one' }, title: 'Public' } }])
             },
             { i18n: true },
         )
@@ -1135,9 +1140,8 @@ describe('native management AsyncData and mutation invalidation', () => {
         app.isHydrating = true
         app.payload.serverRendered = true
         const prefix = ['http://site.test', '/manage', 'alice']
-        app.payload.data['site-admin-management:' + JSON.stringify([...prefix, 'models', null, null, null])] =
-            modelDescriptor
-        app.payload.data['site-admin-management:' + JSON.stringify([...prefix, 'form-entry', 'posts', 'one', null])] = {
+        app.payload.data['liti-management:' + JSON.stringify([...prefix, 'models', null, null, null])] = modelDescriptor
+        app.payload.data['liti-management:' + JSON.stringify([...prefix, 'entry', 'posts', 'one', null])] = {
             defaultLocale: '',
             translations: {},
             id: 'one',
@@ -1170,11 +1174,11 @@ describe('native management AsyncData and mutation invalidation', () => {
                                         withAsyncContext: (fn: () => unknown) => [Promise<unknown>, () => void]
                                     }
                                 ).withAsyncContext(() =>
-                                    helpers.useAdminForm('posts', { id: 'one', authScope: 'alice' }),
+                                    helpers.useLitiForm('posts', { id: 'one', authScope: 'alice' }),
                                 )
                                 const resource = await pending
                                 restore()
-                                controller = resource as Awaited<ReturnType<Helpers['useAdminForm']>>
+                                controller = resource as Awaited<ReturnType<Helpers['useLitiForm']>>
                                 return () => Vue.h('div')
                             },
                         }),
@@ -1242,7 +1246,7 @@ describe('native management AsyncData and mutation invalidation', () => {
                                 )
                                 const resource = await pending
                                 restore()
-                                controller = useEntryForm(resource as SiteAdminModel<Record<string, unknown>>)
+                                controller = useEntryForm(resource as LitiModel<Record<string, unknown>>)
                                 return () => Vue.h('div')
                             },
                         }),
@@ -1275,7 +1279,7 @@ describe('native management AsyncData and mutation invalidation', () => {
     it('refreshes the same actor/model list, affected entry and dependent batch, preserving unrelated caches', async () => {
         let version = 1
         const calls: Record<string, number> = {}
-        const request: typeof fetch = async (input, init) => {
+        const request: NonNullable<LitiClientOptions['fetch']> = async (input, init) => {
             const url = new URL(String(input))
             const method = init?.method ?? 'GET'
             const key = method + ' ' + url.pathname + url.search
@@ -1298,7 +1302,7 @@ describe('native management AsyncData and mutation invalidation', () => {
             if (url.pathname.startsWith('/manage/entries/'))
                 return Response.json(record(url.pathname.split('/').at(-1)))
             const publicRecord = (id = 'one') => ({
-                data: { _siteAdmin: { id, model, slug: id }, title: 'v' + version },
+                data: { _liti: { id, model, slug: id }, title: 'v' + version },
             })
             return Response.json(
                 url.pathname.split('/').length === 3 ? [publicRecord()] : publicRecord(url.pathname.split('/').at(-1)),
@@ -1320,7 +1324,7 @@ describe('native management AsyncData and mutation invalidation', () => {
                 .url,
         ).toBe('http://site.test/manage/assets/asset/content')
         const before = { ...calls }
-        const client = helpers.createNuxtSiteAdminManagementClient(
+        const client = helpers.createNuxtLitiManagementClient(
             { origin: 'http://site.test', basePath: '/manage', fetch: request },
             Vue.ref('alice'),
         )
@@ -1361,11 +1365,11 @@ describe('native management AsyncData and mutation invalidation', () => {
 
     it('does not subscribe during invalidation and stops refreshing public entry/batch after unmount', async () => {
         let reads = 0
-        const request: typeof fetch = async (input, init) => {
+        const request: NonNullable<LitiClientOptions['fetch']> = async (input, init) => {
             if (init?.method === 'PATCH') return Response.json({ id: 'one', model: 'posts', slug: 'new', version: 2 })
             reads += 1
             return Response.json({
-                data: { _siteAdmin: { id: 'one', model: 'posts', slug: 'old' }, title: 'Public' },
+                data: { _liti: { id: 'one', model: 'posts', slug: 'old' }, title: 'Public' },
             })
         }
         const { app, helpers, refreshSubscribers } = await nativeEnvironment(request)
@@ -1382,7 +1386,7 @@ describe('native management AsyncData and mutation invalidation', () => {
             Object.values(app['_asyncData'] as Record<string, { _deps: number }>).map((value) => value['_deps'])
         expect(dependencies()).toEqual([1, 1])
         expect(refreshSubscribers()).toBe(2)
-        const client = helpers.createNuxtSiteAdminManagementClient(
+        const client = helpers.createNuxtLitiManagementClient(
             { origin: 'http://site.test', basePath: '/manage', fetch: request },
             'alice',
         )
@@ -1402,7 +1406,7 @@ describe('native management AsyncData and mutation invalidation', () => {
     it('invalidates renamed entries when native transform/pick removes identity, within the affected model', async () => {
         let version = 1
         const reads: Record<string, number> = {}
-        const request: typeof fetch = async (input, init) => {
+        const request: NonNullable<LitiClientOptions['fetch']> = async (input, init) => {
             if (init?.method === 'PATCH') {
                 version += 1
                 return Response.json({ id: 'one', model: 'posts', slug: 'new', version })
@@ -1411,7 +1415,7 @@ describe('native management AsyncData and mutation invalidation', () => {
             reads[path] = (reads[path] ?? 0) + 1
             return Response.json({
                 data: {
-                    _siteAdmin: {
+                    _liti: {
                         id: 'one',
                         model: path.includes('authors') ? 'authors' : 'posts',
                         slug: 'old',
@@ -1440,7 +1444,7 @@ describe('native management AsyncData and mutation invalidation', () => {
             ),
         }))!
         await flush()
-        const client = helpers.createNuxtSiteAdminManagementClient(
+        const client = helpers.createNuxtLitiManagementClient(
             { origin: 'http://site.test', basePath: '/manage', fetch: request },
             'alice',
         )
@@ -1487,13 +1491,10 @@ it('preserves a management snapshot on refresh failure and corrects a deleted la
         if (url.pathname.endsWith('/models')) return Response.json(modelDescriptor)
         if (init?.method === 'DELETE') {
             total = 20
-            return new Response(null, { status: 204, headers: { 'x-site-admin-model': 'posts' } })
+            return new Response(null, { status: 204, headers: { 'x-liti-model': 'posts' } })
         }
         if (fail)
-            return Response.json(
-                { error: { code: 'SITE_ADMIN_STORAGE_UNAVAILABLE', message: 'Try later' } },
-                { status: 503 },
-            )
+            return Response.json({ error: { code: 'LITI_STORAGE_UNAVAILABLE', message: 'Try later' } }, { status: 503 })
         const offset = Number(url.searchParams.get('offset'))
         return Response.json({
             items: offset >= total ? [] : [modelRecord('one')],
@@ -1510,7 +1511,7 @@ it('preserves a management snapshot on refresh failure and corrects a deleted la
     fail = true
     await source.refresh()
     expect(source.status.value).toBe('error')
-    expect(source.error.value).toMatchObject({ data: { code: 'SITE_ADMIN_STORAGE_UNAVAILABLE' } })
+    expect(source.error.value).toMatchObject({ data: { code: 'LITI_STORAGE_UNAVAILABLE' } })
     expect(source.data.value).toMatchObject({ total: 21, items: [{ id: 'one' }] })
     fail = false
     await source.remove(modelRecord('one'))

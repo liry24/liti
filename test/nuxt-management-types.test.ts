@@ -3,22 +3,22 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { siteAdminNuxtClientTemplate, siteAdminNuxtModelTypes } from '../packages/site-admin/src/nuxt/client-templates'
+import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
 
 it('infers high-level form, management list, field and successful save types from model names', async () => {
     await mkdir('.tmp', { recursive: true })
     const directory = await mkdtemp(resolve('.tmp/management-types-'))
     await writeFile(
         join(directory, 'client.ts'),
-        siteAdminNuxtClientTemplate({ basePath: '/content', managementBase: '/manage', auth: true }),
+        litiNuxtClientTemplate({ basePath: '/content', managementBase: '/manage', auth: true }),
     )
-    await writeFile(join(directory, 'models.d.ts'), siteAdminNuxtModelTypes(join(directory, 'config.ts')))
+    await writeFile(join(directory, 'models.d.ts'), litiNuxtModelTypes(join(directory, 'config.ts')))
     await writeFile(
         join(directory, 'config.ts'),
-        `import { array, defineSiteAdminConfig, file, image, images, markdown, object, text } from '@liria24/site-admin'
+        `import { array, defineLitiConfig, file, image, images, markdown, object, text } from 'liti'
 import { Output } from 'ai'
 import { z } from 'zod'
-export default defineSiteAdminConfig({ models: {
+export default defineLitiConfig({ models: {
   posts: { fields: { title: text({ required: true }), copy: markdown({ required: true }), image: image(), gallery: images(), sections: array(object({ attachment: file() })) } },
   authors: { fields: { name: text({ required: true }) } },
 }, ai: { actions: {
@@ -45,16 +45,16 @@ declare module '#imports' {
     await writeFile(
         join(directory, 'consumer.ts'),
         `import { ref } from 'vue'
-import { useAdminEntries, useAdminEntry, useAdminForm } from './client'
+import { useLitiQuery, useLitiForm } from './client'
 const id = ref<string | null>('post')
-const post = await useAdminEntry('posts', id)
-const immediate = useAdminForm('posts', { instance: ref('one') })
+const post = await useLitiQuery('posts', { mode: 'one', view: 'current', id })
+const immediate = useLitiForm('posts', { instance: ref('one') })
 const immediateTitle: string = immediate.form.state.values.title
 immediate.upload('sections[0].attachment', new File(['x'], 'x.txt'))
 // @ts-expect-error Unknown nested field.
 immediate.upload('sections[0].missing', new File(['x'], 'x.txt'))
 void immediateTitle
-const { form } = await useAdminForm('posts', { id, onSuccess: (saved) => {
+const { form } = await useLitiForm('posts', { id, onSuccess: (saved) => {
     const version: number = saved.version
     if ('data' in saved) { const title: string = saved.data.title; const url: string | undefined = saved.data.image?.url; void [title, url] }
     void version
@@ -65,11 +65,11 @@ const assetUrl: string | undefined = form.state.values.image?.url
 form.setFieldValue('title', 'Typed')
 form.setFieldValue('image', { id: 'asset', url: '/manage/assets/asset/content' })
 // @ts-expect-error Unknown model.
-useAdminEntries('missing')
-// @ts-expect-error Admin response shapes are fixed.
-useAdminEntries('posts', { transform: () => ({}) })
-// @ts-expect-error Admin response shapes are fixed.
-useAdminEntries('posts', { pick: ['data'] })
+useLitiQuery('missing', { view: 'current' })
+const projected = useLitiQuery('posts', { view: 'current', transform: (rows) => rows.map((row) => row.data.title) })
+const projectedTitles: string[] = projected.data.value
+// @ts-expect-error Current queries cannot select published paths.
+useLitiQuery('posts', { view: 'current', mode: 'one', path: '/posts/one' })
 // @ts-expect-error Fields retain their schema types.
 form.setFieldValue('title', 12)
 // @ts-expect-error Unknown field.
@@ -78,14 +78,14 @@ form.setFieldValue('missing', '')
 form.setFieldValue('image', { id: 'asset' })
 // @ts-expect-error No second AI execution engine lives in a form.
 form.ai.run('correct', {})
-const page = ref(2)
-const list = await useAdminEntries('posts', { page })
-const first: string | undefined = list.data.value?.items[0]?.data.title
-const total: number | undefined = list.data.value?.total
+const page = ref({ limit: 20, offset: 20 })
+const list = await useLitiQuery('posts', { view: 'current', page })
+const first: string | undefined = list.data.value[0]?.data.title
+const size: number = list.data.value.length
 const one: string | undefined = post.data.value?.data.title
-const { form: author } = await useAdminForm('authors')
+const { form: author } = await useLitiForm('authors')
 const name: string = author.state.values.name
-void [title, copy, assetUrl, first, total, one, name]
+void [title, copy, assetUrl, first, size, projectedTitles, one, name]
 
 `,
     )
@@ -95,12 +95,14 @@ void [title, copy, assetUrl, first, total, one, name]
             extends: resolve('tsconfig.json'),
             compilerOptions: {
                 paths: {
-                    '@liria24/site-admin': [resolve('packages/site-admin/src/index.ts')],
-                    '@liria24/site-admin/internal/*': [resolve('packages/site-admin/src/*')],
-                    '@liria24/site-admin/internal/client': [resolve('packages/site-admin/src/client.ts')],
-                    '@liria24/site-admin/internal/form': [resolve('packages/site-admin/src/form.ts')],
-                    '@liria24/site-admin/internal/model': [resolve('packages/site-admin/src/model.ts')],
-                    '#build/site-admin/client': [join(directory, 'client.ts')],
+                    liti: [resolve('packages/liti/src/index.ts')],
+                    'liti/client': [resolve('packages/liti/src/public-client.ts')],
+                    'liti/internal/*': [resolve('packages/liti/src/*')],
+                    'liti/internal/runtime/*': [resolve('packages/nuxt/src/runtime/*')],
+                    'liti/internal/client': [resolve('packages/liti/src/client.ts')],
+                    'liti/internal/form': [resolve('packages/vue/src/form.ts')],
+                    'liti/internal/model': [resolve('packages/vue/src/model.ts')],
+                    '#build/liti/client': [join(directory, 'client.ts')],
                     '#app/*': [resolve('node_modules/nuxt/dist/app/*')],
                     '#app': [resolve('node_modules/nuxt/dist/app/index.d.ts')],
                     '#app/composables/asyncData': [resolve('node_modules/nuxt/dist/app/composables/asyncData.d.ts')],

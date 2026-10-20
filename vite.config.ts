@@ -1,8 +1,21 @@
 import { defineConfig } from 'vite-plus'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+    resolve: {
+        alias: Object.fromEntries(
+            Object.entries({
+                'liti/adapter': './packages/liti/src/adapter.ts',
+                '@litijs/sqlite/storage': './packages/sqlite/src/connection.ts',
+                '@litijs/sqlite/schema': './packages/sqlite/src/schema.ts',
+                '@litijs/sqlite/tooling': './packages/sqlite/src/schema-source.ts',
+                '@litijs/sqlite/native': './packages/sqlite/src/native.ts',
+                '@litijs/void/database': './packages/void/src/database.ts',
+            }).map(([name, path]) => [name, fileURLToPath(new URL(path, import.meta.url))]),
+        ),
+    },
     fmt: {
-        ignorePatterns: ['bun.lock', 'packages/site-admin/dist/**'],
+        ignorePatterns: ['bun.lock', 'packages/liti/dist/**'],
         printWidth: 120,
         semi: false,
         singleQuote: true,

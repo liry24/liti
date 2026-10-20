@@ -5,7 +5,7 @@ import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 import { buildNuxt, loadNuxt } from 'nuxt/kit'
-import domain from './fixtures/nuxt/site-admin.config.ts'
+import domain from './fixtures/nuxt/liti.config.ts'
 import { generateFixtureSQL } from './generate-fixture.mjs'
 import { admin } from 'better-auth/plugins'
 
@@ -13,7 +13,7 @@ const fixture = fileURLToPath(new URL('./fixtures/nuxt/', import.meta.url))
 process.env.WRANGLER_LOG_PATH = fixture + '/.data/wrangler-logs'
 process.env.XDG_CONFIG_HOME = fixture + '/.data/wrangler-config'
 process.env.WRANGLER_SEND_METRICS = 'false'
-const authSecret = 'site-admin-integration-test-secret-0000000000000000'
+const authSecret = 'liti-integration-test-secret-0000000000000000'
 process.env.NUXT_BETTER_AUTH_SECRET = authSecret
 process.env.NUXT_PUBLIC_SITE_URL = 'http://127.0.0.1:3000'
 await rm(fixture + '/db', { force: true, recursive: true })
@@ -36,7 +36,7 @@ try {
             () => false,
         )
     )
-        throw new Error('Site Admin module setup must not open a SQLite database or apply migrations.')
+        throw new Error('liti module setup must not open a SQLite database or apply migrations.')
 } finally {
     await devNuxt.close()
 }
@@ -48,7 +48,7 @@ const wranglerConfig = fixture + '/.data/wrangler.json'
 await writeFile(
     wranglerConfig,
     JSON.stringify({
-        name: 'site-admin-nuxt-test',
+        name: 'liti-nuxt-test',
         main: '../.output/server/index.mjs',
         compatibility_date: '2026-10-15',
         compatibility_flags: ['nodejs_compat'],
@@ -92,7 +92,7 @@ const publicDirectory = fileURLToPath(new URL('./fixtures/nuxt/.output/public/',
 for (const name of await readdir(publicDirectory, { recursive: true })) {
     if (!/\.(?:js|json|html)$/u.test(name)) continue
     const source = await readFile(publicDirectory + '/' + name, 'utf8')
-    if (source.includes('SITE_ADMIN_SERVER_ONLY_AI_SENTINEL') || source.includes('ignoredCommonStorage'))
+    if (source.includes('LITI_SERVER_ONLY_AI_SENTINEL') || source.includes('ignoredCommonStorage'))
         throw new Error(`Server-only common configuration leaked into public output: ${name}`)
 }
 
@@ -156,8 +156,8 @@ try {
     }
     const seed = await fetch(`http://127.0.0.1:${port}/api/__seed`, { method: 'POST' })
     if (!seed.ok || !(await seed.json()).seeded) throw new Error(`Nuxt seed failed.\n${output.join('')}`)
-    const management = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`)
-    if (management.status !== 401 || (await management.json()).error?.code !== 'SITE_ADMIN_AUTH_REQUIRED') {
+    const management = await fetch(`http://127.0.0.1:${port}/api/liti/models`)
+    if (management.status !== 401 || (await management.json()).error?.code !== 'LITI_AUTH_REQUIRED') {
         throw new Error('Nuxt Better Auth integration did not reject an unauthenticated management request.')
     }
     const authSession = await fetch(`http://127.0.0.1:${port}/api/auth/get-session`)
@@ -173,33 +173,33 @@ try {
         .filter(Boolean)
         .map((value) => value.split(';')[0])
         .join('; ')
-    const userDenied = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`, { headers: { cookie } })
+    const userDenied = await fetch(`http://127.0.0.1:${port}/api/liti/models`, { headers: { cookie } })
     if (!userDenied.ok || Object.keys((await userDenied.json()).models).length !== 0) {
         throw new Error('The Better Auth user role received models in its descriptor.')
     }
-    const userOperation = await fetch(`http://127.0.0.1:${port}/api/site-admin/entries?model=posts`, {
+    const userOperation = await fetch(`http://127.0.0.1:${port}/api/liti/entries?model=posts`, {
         headers: { cookie },
     })
-    if (userOperation.status !== 403) throw new Error('The Better Auth user role received Site Admin permissions.')
-    const hookDenied = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`, {
-        headers: { cookie, 'x-site-admin-test-deny': '1' },
+    if (userOperation.status !== 403) throw new Error('The Better Auth user role received liti permissions.')
+    const hookDenied = await fetch(`http://127.0.0.1:${port}/api/liti/models`, {
+        headers: { cookie, 'x-liti-test-deny': '1' },
     })
     const deniedBody = await hookDenied.text()
     if (
         hookDenied.status !== 403 ||
-        JSON.parse(deniedBody).error?.code !== 'SITE_ADMIN_FORBIDDEN' ||
+        JSON.parse(deniedBody).error?.code !== 'LITI_FORBIDDEN' ||
         deniedBody.includes('PRIVATE_DENIAL')
     ) {
         throw new Error('Native authorization hook status/redaction regression.')
     }
-    const editorModels = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`, {
-        headers: { cookie, 'x-site-admin-test-role': 'editor' },
+    const editorModels = await fetch(`http://127.0.0.1:${port}/api/liti/models`, {
+        headers: { cookie, 'x-liti-test-role': 'editor' },
     })
     if (!editorModels.ok || Object.keys((await editorModels.json()).models).join(',') !== 'posts') {
         throw new Error('Nuxt custom role descriptor filtering failed.')
     }
-    const adminModels = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`, {
-        headers: { cookie, 'x-site-admin-test-role': 'admin' },
+    const adminModels = await fetch(`http://127.0.0.1:${port}/api/liti/models`, {
+        headers: { cookie, 'x-liti-test-role': 'admin' },
     })
     if (!adminModels.ok || Object.keys((await adminModels.json()).models).length !== 3) {
         throw new Error('Nuxt admin role integration failed.')
@@ -208,8 +208,8 @@ try {
         ['ja', '記事', 'タイトル'],
         ['en', 'Post', 'Title'],
     ]) {
-        const metadata = await fetch(`http://127.0.0.1:${port}/api/site-admin/models?uiLocale=${locale}`, {
-            headers: { cookie, 'x-site-admin-test-role': 'admin' },
+        const metadata = await fetch(`http://127.0.0.1:${port}/api/liti/models?uiLocale=${locale}`, {
+            headers: { cookie, 'x-liti-test-role': 'admin' },
         }).then((metadataResponse) => metadataResponse.json())
         if (metadata.models?.posts?.meta?.label !== label || metadata.models?.posts?.fields?.title?.label !== title)
             throw new Error('Native Nuxt i18n model and field presentation failed: ' + JSON.stringify(metadata))
@@ -224,17 +224,17 @@ try {
     }
     const parallel = await Promise.all(
         ['admin', 'user', 'editor', 'user'].map(async (role) => {
-            const parallelResponse = await fetch(`http://127.0.0.1:${port}/api/site-admin/models`, {
-                headers: { cookie, 'x-site-admin-test-role': role },
+            const parallelResponse = await fetch(`http://127.0.0.1:${port}/api/liti/models`, {
+                headers: { cookie, 'x-liti-test-role': role },
             })
             return Object.keys((await parallelResponse.json()).models).length
         }),
     )
     if (String(parallel) !== '3,0,1,0')
         throw new Error('Native authorization contexts leaked between concurrent requests.')
-    const formHeaders = { cookie, 'x-site-admin-test-role': 'editor' }
+    const formHeaders = { cookie, 'x-liti-test-role': 'editor' }
     const aiRequest = (name, headers = {}, props = { content: 'Input' }) =>
-        fetch(`http://127.0.0.1:${port}/api/site-admin/ai/actions/${name}`, {
+        fetch(`http://127.0.0.1:${port}/api/liti/ai/actions/${name}`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...headers },
             body: JSON.stringify({ input: props }),
@@ -268,7 +268,7 @@ try {
     const serverAi = await fetch(`http://127.0.0.1:${port}/api/__ai-action`, { method: 'POST', headers: formHeaders })
     if (!serverAi.ok || (await serverAi.json()).content !== 'Corrected')
         throw new Error('Typed server runAiAction failed.')
-    const formEntries = await fetch(`http://127.0.0.1:${port}/api/site-admin/entries?model=posts&locale=en`, {
+    const formEntries = await fetch(`http://127.0.0.1:${port}/api/liti/entries?model=posts&locale=en`, {
         headers: formHeaders,
     }).then((entriesResponse) => entriesResponse.json())
     const formId = formEntries.items[0]?.id
@@ -370,7 +370,7 @@ try {
         throw new Error('Summary HTTP response contains body/frontmatter or lacks native summary nodes.')
     const postId = (
         await fetch(`http://127.0.0.1:${port}/api/content/posts?locale=en`).then((result) => result.json())
-    )[0].data['_siteAdmin'].id
+    )[0].data['_liti'].id
     const detailHttp = await fetch(`http://127.0.0.1:${port}/api/content/posts/${postId}?locale=en`)
     if (!(await detailHttp.text()).includes('FULL_SSR_BODY_SENTINEL'))
         throw new Error('Summary SSR must not modify the subsequent full detail cache.')

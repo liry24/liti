@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
+import { defineLitiConfig, text } from '../packages/liti/src'
 import {
-    createSiteAdminRouteResolver,
-    mergeSiteAdminSeo,
-    normalizeSiteAdminPath,
-    serializeSiteAdminRouteRules,
-    serializeSiteAdminSeo,
-} from '../packages/site-admin/src/seo'
+    createLitiRouteResolver,
+    mergeLitiSeo,
+    normalizeLitiPath,
+    serializeLitiRouteRules,
+    serializeLitiSeo,
+} from '../packages/liti/src/seo'
 import { createMigratedTestAdmin } from './migrate'
 
 const databases: Database[] = []
@@ -24,7 +24,7 @@ const database = () => {
 
 describe('shared route rules', () => {
     it('matches overlapping rou3 patterns broad to specific, actual localized paths only', () => {
-        const resolve = createSiteAdminRouteResolver({
+        const resolve = createLitiRouteResolver({
             '/posts/specific': { seo: { title: 'Specific', titleTemplate: null }, sitemap: true },
             '/posts/**': { seo: { titleTemplate: '%s | Posts', type: 'article' }, llms: false, sitemap: false },
             '/ja/posts/**': { seo: { titleTemplate: '%s | Japanese' }, sitemap: false },
@@ -48,13 +48,13 @@ describe('shared route rules', () => {
             seo: { description: 'Global route description', titleTemplate: '%s | Site' },
             sitemap: true,
         })
-        expect(normalizeSiteAdminPath('/posts/../pages/home?key=value#fragment')).toBe('/pages/home')
-        expect(createSiteAdminRouteResolver()('/posts/test')).toEqual({})
+        expect(normalizeLitiPath('/posts/../pages/home?key=value#fragment')).toBe('/pages/home')
+        expect(createLitiRouteResolver()('/posts/test')).toEqual({})
     })
 
     it('merges only defined values and replaces images atomically including null template and false image', () => {
         expect(
-            mergeSiteAdminSeo(
+            mergeLitiSeo(
                 { title: 'Global', titleTemplate: '%s | Site', image: { component: 'GlobalOg', props: { old: true } } },
                 { title: 'Entry', image: '/published-cover.png' },
                 {
@@ -65,12 +65,12 @@ describe('shared route rules', () => {
             ),
         ).toEqual({ title: 'Entry', titleTemplate: null, description: 'Page description', image: false })
         expect(
-            mergeSiteAdminSeo<{ title?: string | undefined; image?: object }>(
+            mergeLitiSeo<{ title?: string | undefined; image?: object }>(
                 { title: 'Configured', image: { component: 'FirstOg', props: { old: true } } },
                 { title: undefined, image: { component: 'NextOg', props: { new: true } } },
             ),
         ).toEqual({ title: 'Configured', image: { component: 'NextOg', props: { new: true } } })
-        expect(mergeSiteAdminSeo({ image: false }, { image: '/entry.png' })).toEqual({ image: '/entry.png' })
+        expect(mergeLitiSeo({ image: false }, { image: '/entry.png' })).toEqual({ image: '/entry.png' })
     })
 
     it('only exposes supported JSON configuration and preserves OG configuration arrays', () => {
@@ -93,18 +93,18 @@ describe('shared route rules', () => {
                 options: [{ key: 'og' }, { key: 'whatsapp', width: 800 }],
             },
         }
-        expect(serializeSiteAdminSeo(input)).toEqual(safe)
+        expect(serializeLitiSeo(input)).toEqual(safe)
         expect(
-            serializeSiteAdminRouteRules({ '/posts/**': { seo: input, llms: false, unknownCredential: 'secret' } }),
+            serializeLitiRouteRules({ '/posts/**': { seo: input, llms: false, unknownCredential: 'secret' } }),
         ).toEqual({
             '/posts/**': { seo: safe, llms: false },
         })
-        expect(JSON.stringify(serializeSiteAdminRouteRules({ '/posts/**': { seo: input } }))).not.toContain('secret')
+        expect(JSON.stringify(serializeLitiRouteRules({ '/posts/**': { seo: input } }))).not.toContain('secret')
     })
 
     it('filters existing published public sitemap/llms paths with model then matched rule precedence', async () => {
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     posts: { fields: { slug: text(), title: text() }, route: '/posts/:slug' },
                     excluded: {

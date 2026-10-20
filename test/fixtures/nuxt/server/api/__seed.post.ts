@@ -1,10 +1,10 @@
-import { useSiteAdminRuntime } from '@liria24/site-admin/internal/nuxt/server'
-import { withSiteAdminContext } from '@liria24/site-admin/internal/runtime/context'
+import { useLitiRuntime } from 'liti/internal/nuxt/server'
+import { withLitiContext } from 'liti/internal/runtime/context'
 import { defineEventHandler } from 'nuxt/server'
 
 export default defineEventHandler((event) =>
-    withSiteAdminContext(event.context, async () => {
-        const admin = await useSiteAdminRuntime().getSiteAdmin(event)
+    withLitiContext(event.context, async () => {
+        const admin = await useLitiRuntime().getLiti(event)
         if ((await admin.listEntries('posts')).length === 0) {
             const en = await admin.createEntry('posts', {
                 data: {

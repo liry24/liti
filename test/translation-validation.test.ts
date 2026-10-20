@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { z } from 'zod'
-import { array, text } from '../packages/site-admin/src'
-import { prepareTranslations } from '../packages/site-admin/src/server/translations'
+import { array, text } from '../packages/liti/src'
+import { prepareTranslations } from '../packages/liti/src/server/translations'
 
 it('keeps locale-specific validation outputs while leaving unchanged fallback fields sparse', async () => {
     const definition = {

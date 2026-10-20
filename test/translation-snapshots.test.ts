@@ -1,12 +1,13 @@
+import { createFilesStorage } from '../packages/void/src/storage'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import { Files } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
-import { defineSiteAdminConfig, text, file, relation, markdown } from '../packages/site-admin/src'
+import { defineLitiConfig, text, file, relation, markdown } from '../packages/liti/src'
 import { createMigratedTestAdmin, testAdapter } from './migrate'
 import { createMemoryDatabase } from './memory-storage'
-import { createSiteAdmin } from '../packages/site-admin/src/server'
+import { createRuntime } from '../packages/liti/src/server'
 
 const databases: Database[] = []
 afterEach(async () => {
@@ -15,9 +16,9 @@ afterEach(async () => {
 
 it('retries all DB pages when publication changes during an all-entry read', async () => {
     const database = createMemoryDatabase()
-    const admin = createSiteAdmin({
+    const admin = createRuntime({
         database,
-        config: defineSiteAdminConfig({ models: { posts: { publishing: false, fields: { title: text() } } } }),
+        config: defineLitiConfig({ models: { posts: { publishing: false, fields: { title: text() } } } }),
     })
     const entries: Array<{ id: string; version: number }> = []
     for (let index = 0; index < 101; index++) entries.push(await admin.createEntry('posts', { data: { title: 'old' } }))
@@ -50,7 +51,7 @@ const setup = async () => {
             supported: ['ja', 'en', 'fr'],
             localizePath: (path, locale) => `/${locale}${path}`,
         },
-        config: defineSiteAdminConfig({
+        config: defineLitiConfig({
             models: {
                 posts: {
                     publishing: false,
@@ -95,16 +96,16 @@ it('stores sparse translation children, restores the complete immediate-public s
         data: { title: 'Hello', image: 'shared' },
     })
     expect(await admin.publicGeneration()).toBeGreaterThan(generation)
-    expect(await database.prepare('SELECT COUNT(*) AS total FROM site_admin_translations').get()).toMatchObject({
+    expect(await database.prepare('SELECT COUNT(*) AS total FROM liti_translations').get()).toMatchObject({
         total: 3,
     })
     await expect(
         admin.updateEntry(entry.id, { expectedVersion: entry.version, translations: { en: { image: 'invalid' } } }),
-    ).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+    ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
     for (const translations of [{ ja: {} }, { de: {} }])
         await expect(
             admin.updateEntry(entry.id, { expectedVersion: entry.version, translations }),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+        ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
     entry = await admin.updateEntry(entry.id, { expectedVersion: entry.version, translations: { en: null } })
     expect(await admin.getPublicEntry('posts', entry.id, 'en')).toMatchObject({
         locale: 'ja',
@@ -125,8 +126,8 @@ it('includes translation-only Assets and relations in copy, deletion and committ
     const admin = await createMigratedTestAdmin({
         database,
         locales: { defaultLocale: 'ja', supported: ['ja', 'en'] },
-        getFiles: async (name) => (name === 'draft' ? draft : publicFiles),
-        config: defineSiteAdminConfig({
+        getStorage: createFilesStorage(async (name) => (name === 'draft' ? draft : publicFiles)),
+        config: defineLitiConfig({
             assets: { storage: 'content', separateDrafts: true, cleanup: { minimumAge: 0 } },
             models: {
                 authors: { publishing: false, fields: { name: text() } },
@@ -159,9 +160,9 @@ it('includes translation-only Assets and relations in copy, deletion and committ
     expect(await admin.listRevisions(post.id)).toEqual(revisions)
     expect((await admin.getEntry(post.id)).version).toBe(post.version)
     expect(await admin.downloadAsset(asset.id)).toHaveProperty('file')
-    await expect(admin.deleteAsset(asset.id)).rejects.toMatchObject({ code: 'SITE_ADMIN_ASSET_IN_USE' })
+    await expect(admin.deleteAsset(asset.id)).rejects.toMatchObject({ code: 'LITI_ASSET_IN_USE' })
     await expect(admin.deleteEntry(author.id, { expectedVersion: author.version })).rejects.toMatchObject({
-        code: 'SITE_ADMIN_RELATION_BLOCKED',
+        code: 'LITI_RELATION_BLOCKED',
     })
     const deletion = vi.spyOn(publicFiles, 'delete').mockRejectedValueOnce(new Error('Synthetic delete failure'))
     await expect(admin.deleteEntry(post.id, { expectedVersion: post.version })).rejects.toMatchObject({
@@ -169,13 +170,10 @@ it('includes translation-only Assets and relations in copy, deletion and committ
         receipt: { id: post.id, model: 'posts', version: post.version + 1, deleted: true },
     })
     deletion.mockRestore()
-    await expect(admin.getEntry(post.id)).rejects.toMatchObject({ code: 'SITE_ADMIN_ENTRY_NOT_FOUND' })
+    await expect(admin.getEntry(post.id)).rejects.toMatchObject({ code: 'LITI_ENTRY_NOT_FOUND' })
     expect(await admin.syncAssetCopies()).toMatchObject({ failed: [] })
     expect(
-        await database
-            .prepare('SELECT COUNT(*) AS total FROM site_admin_revisions WHERE entry_id=?')
-            .bind(post.id)
-            .get(),
+        await database.prepare('SELECT COUNT(*) AS total FROM liti_revisions WHERE entry_id=?').bind(post.id).get(),
     ).toMatchObject({ total: 0 })
 })
 
@@ -190,7 +188,7 @@ it('parses only a selected document or page with mixed original languages', asyn
             supported: ['ja', 'en', 'fr'],
             localizePath: (path, locale) => '/' + locale + path,
         },
-        config: defineSiteAdminConfig({
+        config: defineLitiConfig({
             markdown: { plugins: [{ name: 'parse-count', post: parse }] },
             models: {
                 posts: {

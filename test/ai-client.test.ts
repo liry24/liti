@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSiteAdminManagementClient } from '../packages/site-admin/src/client'
+import { createLitiManagementClient } from '../packages/liti/src/client'
 
 describe('native named AI management client', () => {
     it('posts explicit input with native cancellation and same-origin credentials without invalidating saved data', async () => {
@@ -7,7 +7,7 @@ describe('native named AI management client', () => {
         const calls: Array<{ body: unknown; url: string }> = []
         const signal = new AbortController().signal
         const proposal = { data: { title: 'Proposed' }, issues: [] }
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             basePath: '/manage/',
             onMutation,
             fetch: async (input, init) => {
@@ -29,11 +29,11 @@ describe('native named AI management client', () => {
     })
     it('preserves native action errors without a save or retry', async () => {
         const request = vi.fn(async () =>
-            Response.json({ error: { code: 'SITE_ADMIN_AI_UNAVAILABLE', message: 'Unavailable' } }, { status: 503 }),
+            Response.json({ error: { code: 'LITI_AI_UNAVAILABLE', message: 'Unavailable' } }, { status: 503 }),
         )
-        const client = createSiteAdminManagementClient({ fetch: request })
+        const client = createLitiManagementClient({ fetch: request })
         await expect(client.runAiAction('metadata', { input: {} })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_AI_UNAVAILABLE',
+            code: 'LITI_AI_UNAVAILABLE',
             status: 503,
         })
         expect(request).toHaveBeenCalledOnce()

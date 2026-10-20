@@ -3,16 +3,13 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { defineNuxtModule, hasNuxtModule, loadNuxt, writeTypes } from 'nuxt/kit'
+import { defineNuxtModule, hasNuxtModule, installModule, loadNuxt, writeTypes } from 'nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import filesModule from 'nuxt-files-sdk'
-import siteAdminModule from '../../packages/site-admin/src/nuxt'
+import litiModule from '../../packages/nuxt/src/index'
 import { afterEach, expect, test } from 'vite-plus/test'
 
-import {
-    resolveSiteAdminFilesSource,
-    siteAdminFilesModuleDependencies,
-} from '../../packages/site-admin/src/nuxt/files-source'
+import { resolveVoidFilesSource } from '../../packages/void/src/nuxt-files'
 
 const roots: string[] = []
 const instances: Nuxt[] = []
@@ -21,12 +18,12 @@ afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-const fixture = async (standalone = false) => {
-    const root = await mkdtemp(resolve(tmpdir(), 'site-admin-files-source-'))
+const fixture = async (standalone = true) => {
+    const root = await mkdtemp(resolve(tmpdir(), 'liti-files-source-'))
     roots.push(root)
     await writeFile(
         resolve(root, 'package.json'),
-        JSON.stringify({ name: 'site-admin-files-probe', private: true, type: 'module' }),
+        JSON.stringify({ name: 'liti-files-probe', private: true, type: 'module' }),
     )
     await symlink(
         fileURLToPath(new URL('../../node_modules', import.meta.url)),
@@ -34,7 +31,7 @@ const fixture = async (standalone = false) => {
         process.platform === 'win32' ? 'junction' : 'dir',
     )
     for (const name of [
-        'site-admin.config.ts',
+        'liti.config.ts',
         'inline-site.config.ts',
         'custom.ts',
         'top-level.ts',
@@ -69,12 +66,13 @@ const start = async (
 ) => {
     let source: string | undefined
     const siteModule = defineNuxtModule<ProbeOptions>({
-        meta: { name: '@liria24/site-admin', configKey: 'siteAdmin' },
-        defaults: { configFile: './site-admin.config.ts', enabled: true },
-        moduleDependencies: siteAdminFilesModuleDependencies,
+        meta: { name: 'liti', configKey: 'liti' },
+        defaults: { configFile: './liti.config.ts', enabled: true },
         async setup(config, nuxt) {
             if (!config.enabled) return
-            source = await resolveSiteAdminFilesSource(nuxt, config.configFile)
+            const selected = await resolveVoidFilesSource(nuxt)
+            source = selected?.path
+            if (selected) await installModule(selected.module, { ...selected.inline, config: selected.path }, nuxt)
         },
     })
     const sdk =
@@ -105,7 +103,7 @@ const start = async (
         devtools: { enabled: false },
         telemetry: false as const,
         files: options.filesDisabled ? false : options.filesTopLevel ? { config: options.filesTopLevel } : {},
-        siteAdmin: options.siteTopLevel ? { configFile: options.siteTopLevel } : {},
+        liti: options.siteTopLevel ? { configFile: options.siteTopLevel } : {},
     }
     const nuxt = await loadNuxt({
         cwd: root,
@@ -126,7 +124,7 @@ test.each(['function', 'package', 'path'] as const)(
             for (const options of [
                 { filesInline: 'custom.ts', filesTopLevel: 'top-level.ts', expected: 'custom.ts' },
                 { filesTopLevel: 'top-level.ts', expected: 'top-level.ts' },
-                { expected: 'site-admin.config.ts' },
+                { expected: 'files.config.ts' },
             ]) {
                 const { nuxt, source } = await start(root, order, kind, options)
                 expect(source).toBe(resolve(root, options.expected))
@@ -145,27 +143,21 @@ test.each(['function', 'package', 'path'] as const)(
 )
 
 test.each(['before', 'after'] as const)(
-    'Files-first fallback and SiteAdmin inline configFile work with Files %s SiteAdmin',
+    'Files settings stay independent of Liti configFile with Files %s Liti',
     async (order) => {
         const standaloneRoot = await fixture(true)
         const standalone = await start(standaloneRoot, order, 'function', {
             siteInline: 'inline-site.config.ts',
-            siteTopLevel: 'site-admin.config.ts',
+            siteTopLevel: 'liti.config.ts',
         })
         expect(standalone.source).toBe(resolve(standaloneRoot, 'files.config.ts'))
-        const commonRoot = await fixture()
-        const common = await start(commonRoot, order, 'function', {
-            siteInline: 'inline-site.config.ts',
-            siteTopLevel: 'site-admin.config.ts',
-        })
-        expect(common.source).toBe(resolve(commonRoot, 'inline-site.config.ts'))
     },
 )
 
 test('enables the Files dependency without a duplicate application module registration', async () => {
     const root = await fixture()
     const { nuxt, source } = await start(root, 'before', 'function', { installFiles: false })
-    expect(source).toBe(resolve(root, 'site-admin.config.ts'))
+    expect(source).toBe(resolve(root, 'files.config.ts'))
     expect(hasNuxtModule('nuxt-files-sdk', nuxt)).toBe(true)
 })
 
@@ -177,11 +169,18 @@ test('optional Files defaults preserve an explicitly disabled Files module', asy
     ).toBeUndefined()
 })
 
-test('disabled SiteAdmin contributes no Files filename defaults', async () => {
+test('disabled Liti contributes no Files filename defaults', async () => {
     const root = await fixture()
     const { nuxt, source } = await start(root, 'before', 'function', { installFiles: false, siteDisabled: true })
     expect(source).toBeUndefined()
     expect((nuxt.options as typeof nuxt.options & { files?: unknown }).files).toEqual({})
+})
+
+test('does not read storage from Liti config when no Files config is selected', async () => {
+    const root = await fixture(false)
+    const { nuxt, source } = await start(root, 'before', 'function', { installFiles: false })
+    expect(source).toBeUndefined()
+    expect(hasNuxtModule('nuxt-files-sdk', nuxt)).toBe(false)
 })
 
 test.each(['inline', 'top-level'] as const)(
@@ -200,20 +199,22 @@ test.each(['inline', 'top-level'] as const)(
 )
 
 test.each(['disabled', 'inactive'] as const)(
-    'full Site Admin leaves Files types to the peer package when native Files is %s',
+    'full liti leaves Files types to the peer package when native Files is %s',
     async (mode) => {
         const root = await fixture()
-        await writeFile(resolve(root, 'site-admin.config.ts'), 'export default { models: {} }')
+        await writeFile(resolve(root, 'liti.config.ts'), 'export default { models: {} }')
         await writeFile(
             resolve(root, 'files.config.ts'),
             "export default { $development: { storage: { adapter: 'memory' } } }",
         )
         const overrides = {
-            modules: [filesModule, siteAdminModule],
+            modules: [filesModule, litiModule],
             files: mode === 'disabled' ? false : { devtools: false },
             devtools: { enabled: false },
             telemetry: false,
-            siteAdmin: {
+            liti: {
+                server: { enabled: false },
+                client: { origin: 'https://content.example.test' },
                 auth: false,
                 devtools: false,
                 i18n: false,
@@ -235,17 +236,17 @@ test.each(['disabled', 'inactive'] as const)(
         const config = JSON.parse(await readFile(resolve(nuxt.options.buildDir, 'tsconfig.server.json'), 'utf8')) as {
             compilerOptions: { paths: Record<string, string[]> }
         }
-        // Files owns its native aliases. Site Admin no longer rewrites their declaration paths.
+        // Files owns its native aliases. liti no longer rewrites their declaration paths.
         if (mode === 'disabled') expect(config.compilerOptions.paths['#files-sdk/memory']).toBeUndefined()
         else expect(config.compilerOptions.paths['#files-sdk/memory']?.[0]).toMatch(/\/dist\/memory\/index$/u)
         expect(config.compilerOptions.paths['#ai']).toBeUndefined()
     },
 )
 
-test('native common config template prunes inactive storage and keeps named environment overrides', async () => {
+test('native Files template prunes inactive storage and keeps named environment overrides', async () => {
     const root = await fixture()
     await writeFile(
-        resolve(root, 'site-admin.config.ts'),
+        resolve(root, 'files.config.ts'),
         `export default {
         storage: { content: { adapter: 'memory', prefix: 'active' } },
         models: { secret: { fields: {} } },

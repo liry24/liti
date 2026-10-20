@@ -6,9 +6,9 @@ import {
     createPresentationContext,
     requestedPresentationLocale,
     resolvePublicPresentation,
-} from '../packages/site-admin/src/runtime/presentation'
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
+} from '../packages/nuxt/src/runtime/presentation'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
+import { defineLitiConfig, text } from '../packages/liti/src'
 
 // Exercise the translator version owned by Nuxt i18n, without a separate dependency pin.
 const require = createRequire(import.meta.resolve('@nuxtjs/i18n'))
@@ -46,7 +46,7 @@ it('binds concurrent native translations to each request and keeps UI locale sep
 })
 
 it('resolves model/field labels and public SEO without exporting functions or private configuration', () => {
-    const config = defineSiteAdminConfig({
+    const config = defineLitiConfig({
         seo: ({ t }) => ({ title: t('site') }),
         routeRules: { '/about': { seo: ({ t }) => ({ title: t('about') }) } },
         models: {
@@ -57,7 +57,7 @@ it('resolves model/field labels and public SEO without exporting functions or pr
         },
     })
     const context = { locale: 'ja', t: (key: string) => 'ja:' + key }
-    const descriptor = createSiteAdminDescriptor(config, context)
+    const descriptor = createLitiDescriptor(config, context)
     expect(descriptor.models.posts?.meta).toEqual({
         label: 'ja:post',
         plural: 'ja:posts',

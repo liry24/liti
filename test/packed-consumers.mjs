@@ -15,9 +15,9 @@ import { assertAiOmitted } from './assert-ai-omitted.mjs'
 import { consumerDependencies } from './consumer-dependencies.mjs'
 
 const workspace = fileURLToPath(new URL('../', import.meta.url))
-const packageManager = process.env.SITE_ADMIN_PACKAGE_MANAGER || 'bun'
-if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown SITE_ADMIN_PACKAGE_MANAGER.')
-const integrations = !process.env.SITE_ADMIN_PACKAGE_MANAGER || packageManager === 'pnpm'
+const packageManager = process.env.LITI_PACKAGE_MANAGER || 'bun'
+if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown LITI_PACKAGE_MANAGER.')
+const integrations = !process.env.LITI_PACKAGE_MANAGER || packageManager === 'pnpm'
 const ogImage = JSON.parse(
     await readFile(new URL('../node_modules/nuxt-og-image/package.json', import.meta.url), 'utf8'),
 )
@@ -27,7 +27,7 @@ const renderers = Object.fromEntries(
         return [name, ogImage.peerDependencies[name]]
     }),
 )
-const temporary = await mkdtemp(join(tmpdir(), 'site-admin-consumers-'))
+const temporary = await mkdtemp(join(tmpdir(), 'liti-consumers-'))
 const run = (command, args, cwd = temporary, env = process.env) => {
     console.log(`Consumer: ${command} ${args[0] ?? ''} (${cwd})`)
     const result = spawnSync(command, args, {
@@ -129,18 +129,14 @@ const filesUnder = async (directory) => {
 }
 
 try {
-    let tarball = process.env.SITE_ADMIN_TARBALL ? resolvePath(process.env.SITE_ADMIN_TARBALL) : undefined
+    let tarball = process.env.LITI_TARBALL ? resolvePath(process.env.LITI_TARBALL) : undefined
     if (!tarball) {
-        run(
-            'bun',
-            ['pm', 'pack', '--destination', temporary, '--ignore-scripts'],
-            join(workspace, 'packages/site-admin'),
-        )
+        run('bun', ['pm', 'pack', '--destination', temporary, '--ignore-scripts'], join(workspace, 'packages/liti'))
         const tarballName = (await readdir(temporary)).find((name) => name.endsWith('.tgz'))
         if (!tarballName) throw new Error('Package tarball was not created.')
         tarball = join(temporary, tarballName)
     }
-    if (!(await stat(tarball)).isFile()) throw new Error('SITE_ADMIN_TARBALL must be a package file.')
+    if (!(await stat(tarball)).isFile()) throw new Error('LITI_TARBALL must be a package file.')
     console.log(`Testing ${tarball} with ${packageManager}`)
     if (packageManager === 'npm') {
         await verifyStandalone(tarball)
@@ -152,7 +148,7 @@ try {
         join(temporary, 'package.json'),
         JSON.stringify({
             dependencies: {
-                '@liria24/site-admin': `file:${tarball.replaceAll('\\', '/')}`,
+                liti: `file:${tarball.replaceAll('\\', '/')}`,
                 ...consumerDependencies([
                     'better-auth',
                     'ai',
@@ -188,19 +184,19 @@ try {
     )
     await writeFile(
         join(temporary, 'core.ts'),
-        `import { defineSiteAdminConfig, image, text, type InferSiteAdminPublicModels } from '@liria24/site-admin'
-import { createSiteAdminClient, managementAssetUrl, type PublicAsset } from '@liria24/site-admin/internal/client'
-import { createSiteAdmin } from '@liria24/site-admin/internal/server'
-const config = defineSiteAdminConfig({ models: { posts: { fields: { cover: image(), title: text({ required: true }) } } } })
-const data = { title: 'Public', cover: { id: 'asset', url: '/api/content/_assets/asset' } } satisfies InferSiteAdminPublicModels<typeof config>['posts']['data']
+        `import { defineLitiConfig, image, text, type InferLitiPublicModels } from 'liti'
+import { createPublicClient, managementAssetUrl, type PublicAsset } from 'liti/internal/client'
+import { createRuntime } from 'liti/internal/server'
+const config = defineLitiConfig({ models: { posts: { fields: { cover: image(), title: text({ required: true }) } } } })
+const data = { title: 'Public', cover: { id: 'asset', url: '/api/content/_assets/asset' } } satisfies InferLitiPublicModels<typeof config>['posts']['data']
 const cover: PublicAsset = data.cover
 if (managementAssetUrl(cover.id, '/manage/') !== '/manage/assets/asset/content') throw new Error('management asset helper invalid')
-if (!config.models.posts || typeof createSiteAdmin !== 'function' || typeof createSiteAdminClient !== 'function') throw new Error('core exports missing')
+if (!config.models.posts || typeof createRuntime !== 'function' || typeof createPublicClient !== 'function') throw new Error('core exports missing')
 `,
     )
     await writeFile(
         join(temporary, 'form.ts'),
-        `import { useEntryForm } from '@liria24/site-admin/internal/form'
+        `import { useEntryForm } from 'liti/internal/form'
 if (typeof useEntryForm !== 'function') throw new Error('form export missing')
 `,
     )
@@ -223,7 +219,7 @@ if (typeof useEntryForm !== 'function') throw new Error('form export missing')
         join(temporary, 'server/nuxt.config.ts'),
         `import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
-  modules: ['@liria24/site-admin/nuxt'],
+  modules: ['liti/nuxt'],
   ...{ files: false },
   i18n: { locales: ['en'], defaultLocale: 'en' },
   llms: { domain: 'http://localhost', title: 'Packed' },
@@ -231,9 +227,9 @@ export default defineNuxtConfig({
 `,
     )
     await writeFile(
-        join(temporary, 'server/site-admin.config.ts'),
-        `import { defineSiteAdminConfig, text } from '@liria24/site-admin'
-export default defineSiteAdminConfig({ authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
+        join(temporary, 'server/liti.config.ts'),
+        `import { defineLitiConfig, text } from 'liti'
+export default defineLitiConfig({ authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
 `,
     )
     await mkdir(join(temporary, 'server/app/components/OgImage'), { recursive: true })
@@ -250,12 +246,12 @@ export default defineSiteAdminConfig({ authorization: { roles: { user: {} } }, m
     await writeFile(
         join(temporary, 'remote/nuxt.config.ts'),
         `import { defineNuxtConfig } from 'nuxt/config'
-export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ files: false }, siteAdmin: { ${disabled}, client: { origin: ${JSON.stringify(remoteOrigin)} }, server: { enabled: false } } })
+export default defineNuxtConfig({ modules: ['liti/nuxt'], ...{ files: false }, liti: { ${disabled}, client: { origin: ${JSON.stringify(remoteOrigin)} }, server: { enabled: false } } })
 `,
     )
     await writeFile(
         join(temporary, 'remote/app.vue'),
-        `<script setup>const route = useRoute(); const { data: entry } = await useContent('posts', { path: () => route.path })</script><template><div>{{ entry?.data?.title || 'remote empty' }}</div></template>`,
+        `<script setup>const route = useRoute(); const { data: entry } = await useLitiQuery('posts', { mode: 'one', path: () => route.path })</script><template><div>{{ entry?.data?.title || 'remote empty' }}</div></template>`,
     )
 
     for (const name of ['server', 'remote'])
@@ -265,7 +261,7 @@ export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ fi
         )
     await writeFile(
         join(temporary, 'server/void.config.ts'),
-        "export default { inference: { bindings: { db: true } }, cloudflare: { name: 'packed-site-admin', compatibility_flags: ['nodejs_compat'] } }",
+        "export default { inference: { bindings: { db: true } }, cloudflare: { name: 'packed-liti', compatibility_flags: ['nodejs_compat'] } }",
     )
     await install()
     exec(['tsc', '--noEmit'])
@@ -273,7 +269,7 @@ export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ fi
     run(process.execPath, [
         '--input-type=module',
         '-e',
-        `import { readFileSync } from 'node:fs'; const meta = JSON.parse(readFileSync(new URL(import.meta.resolve('@liria24/site-admin/module.json')))); const pkg = JSON.parse(readFileSync(new URL(import.meta.resolve('@liria24/site-admin/package.json')))); if (meta.name !== pkg.name || meta.configKey !== 'siteAdmin' || meta.version !== pkg.version) throw new Error('Invalid module metadata')`,
+        `import { readFileSync } from 'node:fs'; const meta = JSON.parse(readFileSync(new URL(import.meta.resolve('liti/module.json')))); const pkg = JSON.parse(readFileSync(new URL(import.meta.resolve('liti/package.json')))); if (meta.name !== pkg.name || meta.configKey !== 'liti' || meta.version !== pkg.version) throw new Error('Invalid module metadata')`,
     ])
     run(process.execPath, [
         '--input-type=module',
@@ -285,13 +281,13 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === 'ai' || specifier.startsWith('ai/') || specifier.startsWith('@ai-sdk/') || specifier.startsWith('workers-ai-provider')) throw new Error('Core eagerly imported AI: ' + specifier)
   return next(specifier, context)
 } })
-await import('@liria24/site-admin')
-await import('@liria24/site-admin/internal/client')
-await import('@liria24/site-admin/internal/server')
-await import('@liria24/site-admin/internal/adapter')
+await import('liti')
+await import('liti/internal/client')
+await import('liti/internal/server')
+await import('liti/internal/adapter')
 for (const module of ['assets', 'content', 'document', 'plugins']) {
   try {
-    import.meta.resolve('@liria24/site-admin/markdown/' + module)
+    import.meta.resolve('liti/markdown/' + module)
     throw new Error('Internal Markdown module became a public export: ' + module)
   } catch (error) {
     if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error
@@ -309,10 +305,10 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === 'comark' || specifier.startsWith('comark/') || specifier.startsWith('markdown-exit') || specifier.startsWith('mdurl') || specifier.startsWith('linkify-it')) throw new Error('Form imported Markdown parser: ' + specifier)
   return next(specifier, context)
 } })
-await import('@liria24/site-admin/internal/form')
+await import('liti/internal/form')
 `,
     ])
-    exec(['site-admin', 'generate', '--config', 'server/site-admin.config.ts', '--out', 'server/db/schema.ts'])
+    exec(['liti', 'generate', '--config', 'server/liti.config.ts', '--out', 'server/db/schema.ts'])
     await writeFile(
         join(temporary, 'server/auth.config.ts'),
         `import { defineServerAuth } from '@nuxtjs/better-auth/config'
@@ -322,10 +318,10 @@ export default defineServerAuth({
 `,
     )
     exec([
-        'site-admin',
+        'liti',
         'generate',
         '--config',
-        'server/site-admin.config.ts',
+        'server/liti.config.ts',
         '--out',
         'server/db/schema.ts',
         '--auth',
@@ -342,7 +338,7 @@ export default defineServerAuth({
     await writeFile(
         join(temporary, 'server/.data/wrangler.json'),
         JSON.stringify({
-            name: 'packed-site-admin',
+            name: 'packed-liti',
             main: '../.output/server/index.mjs',
             compatibility_date: '2026-10-15',
             compatibility_flags: ['nodejs_compat'],
@@ -381,7 +377,7 @@ export default defineServerAuth({
         join(temporary, 'server/server/types.ts'),
         `import { useServerHooks } from 'nuxt/server'
 export default () => {
-  useServerHooks().hook('site-admin:authorize', (context) => {
+  useServerHooks().hook('liti:authorize', (context) => {
     const request: Request = context.event.req
     context.event.res.headers.set('x-native-probe', '1')
     // @ts-expect-error Native events do not expose Node.
@@ -390,10 +386,10 @@ export default () => {
     context.request
     void request
   })
-  // @ts-expect-error Unknown Site Admin hook.
-  useServerHooks().hook('site-admin:missing', () => {})
+  // @ts-expect-error Unknown liti hook.
+  useServerHooks().hook('liti:missing', () => {})
 }
-const admin: ReturnType<typeof import('@liria24/site-admin/server').useAdmin> = useAdmin()
+const admin: ReturnType<typeof import('liti/nuxt/server').useAdmin> = useAdmin()
 void admin
 `,
     )
@@ -406,10 +402,10 @@ const impersonatedBy: NonNullable<typeof nativeSession.session.value>['impersona
 const invalidRole: NonNullable<typeof nativeSession.user.value>['role'] = 1
 // @ts-expect-error Native session inference must retain its field type.
 const invalidImpersonatedBy: NonNullable<typeof nativeSession.session.value>['impersonatedBy'] = 1
-const client = useAdminClient()
+const { data: models } = useLitiModels()
 const route = useRoute()
 // @ts-expect-error No such public client method.
-client.missing()
+models.value.missing()
 void route
 void role
 void impersonatedBy
@@ -424,7 +420,7 @@ void invalidImpersonatedBy
                 [
                     '--input-type=module',
                     '-e',
-                    `import { loadNuxt } from 'nuxt/kit'; const nuxt = await loadNuxt({ cwd: '.', dev: ${dev}, ready: true }); try { if (!nuxt.options.alias['#auth/server']?.endsWith('site-admin/better-auth-server-config.ts')) throw new Error('Native module ordering lost the Site Admin auth wrapper'); } finally { await nuxt.close() }`,
+                    `import { loadNuxt } from 'nuxt/kit'; const nuxt = await loadNuxt({ cwd: '.', dev: ${dev}, ready: true }); try { if (!nuxt.options.alias['#auth/server']?.endsWith('liti/better-auth-server-config.ts')) throw new Error('Native module ordering lost the liti auth wrapper'); } finally { await nuxt.close() }`,
                 ],
                 join(temporary, 'server'),
                 {
@@ -462,11 +458,8 @@ void invalidImpersonatedBy
         setupNuxt(false)
         const nativeConfigPath = join(temporary, 'server/nuxt.config.ts')
         const nativeConfig = await readFile(nativeConfigPath, 'utf8')
-        for (const modules of [
-            "['@liria24/site-admin/nuxt', '@nuxtjs/better-auth']",
-            "['@nuxtjs/better-auth', '@liria24/site-admin/nuxt']",
-        ]) {
-            await writeFile(nativeConfigPath, nativeConfig.replace("['@liria24/site-admin/nuxt']", modules))
+        for (const modules of ["['liti/nuxt', '@nuxtjs/better-auth']", "['@nuxtjs/better-auth', 'liti/nuxt']"]) {
+            await writeFile(nativeConfigPath, nativeConfig.replace("['liti/nuxt']", modules))
             setupNuxt(false)
         }
         await writeFile(nativeConfigPath, nativeConfig)
@@ -494,7 +487,7 @@ void invalidImpersonatedBy
         await Promise.all(serverFiles.map((file) => readFile(file).catch(() => Buffer.alloc(0))))
     ).join('\n')
     if (!serverBundle.includes('management-handler')) throw new Error('Default auth integration was not bundled.')
-    for (const forbidden of ['devframe', '@nuxt/devtools-kit', '__site-admin-devtools']) {
+    for (const forbidden of ['devframe', '@nuxt/devtools-kit', '__liti-devtools']) {
         if (serverBundle.includes(forbidden))
             throw new Error(`Development-only code leaked into production server: ${forbidden}`)
     }
@@ -537,7 +530,7 @@ void invalidImpersonatedBy
             'drizzle-kit',
             'nuxt-og-image',
             'nuxt-schema-org',
-            'site-admin.ai',
+            'liti.ai',
         ]) {
             const leaked = remoteContents.filter(([, content]) => content.includes(forbidden)).map(([file]) => file)
             if (leaked.length > 0) {

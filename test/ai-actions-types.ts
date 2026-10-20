@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import { Output } from 'ai'
 import { Experimental_DecisionMockModelV4, MockLanguageModelV4 } from 'ai/test'
-import { defineSiteAdminConfig, type InferSiteAdminNamedAiActions } from '../packages/site-admin/src'
+import { defineLitiConfig, type InferLitiNamedAiActions } from '../packages/liti/src'
 
 const model = new MockLanguageModelV4()
 const decisionModel = new Experimental_DecisionMockModelV4()
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {},
     ai: {
         model,
@@ -46,7 +46,7 @@ const config = defineSiteAdminConfig({
         },
     },
 })
-type Actions = InferSiteAdminNamedAiActions<typeof config>
+type Actions = InferLitiNamedAiActions<typeof config>
 const input: Actions['proofread']['input'] = { content: 'Typed' }
 const result: Actions['proofread']['data'] = { content: 'Typed' }
 const text: Actions['text']['data'] = 'Typed'
@@ -63,7 +63,7 @@ const wrongChoice: Actions['classify']['data'] = { category: { type: 'choice', c
 const missingProp: Actions['proofread']['input'] = {}
 // @ts-expect-error input do not accept an unknown key
 const extraProp: Actions['proofread']['input'] = { content: 'Typed', unknown: true }
-defineSiteAdminConfig({
+defineLitiConfig({
     models: {},
     ai: {
         actions: {
@@ -78,7 +78,7 @@ defineSiteAdminConfig({
         },
     },
 })
-defineSiteAdminConfig({
+defineLitiConfig({
     models: {},
     ai: {
         actions: {

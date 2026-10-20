@@ -3,23 +3,23 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { siteAdminNuxtClientTemplate, siteAdminNuxtModelTypes } from '../packages/site-admin/src/nuxt/client-templates'
+import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
 
 it('infers native fetch and server action names, props, output and choice answers from type-only config', async () => {
     await mkdir('.tmp', { recursive: true })
     const directory = await mkdtemp(resolve('.tmp/ai-types-'))
     await writeFile(
         join(directory, 'client.ts'),
-        siteAdminNuxtClientTemplate({ basePath: '/content', managementBase: '/manage', auth: true, aiActions: true }),
+        litiNuxtClientTemplate({ basePath: '/content', managementBase: '/manage', auth: true, aiActions: true }),
     )
-    await writeFile(join(directory, 'models.d.ts'), siteAdminNuxtModelTypes(join(directory, 'config.ts')))
+    await writeFile(join(directory, 'models.d.ts'), litiNuxtModelTypes(join(directory, 'config.ts')))
     await writeFile(
         join(directory, 'config.ts'),
-        `import { defineSiteAdminConfig } from '@liria24/site-admin'
+        `import { defineLitiConfig } from 'liti'
 import { Output } from 'ai'
 import { z } from 'zod'
 import { MockLanguageModelV4, Experimental_DecisionMockModelV4 } from 'ai/test'
-export default defineSiteAdminConfig({ models: {}, ai: { model: new MockLanguageModelV4(), decisionModel: new Experimental_DecisionMockModelV4(), actions: {
+export default defineLitiConfig({ models: {}, ai: { model: new MockLanguageModelV4(), decisionModel: new Experimental_DecisionMockModelV4(), actions: {
   proofread: { type: 'text-generation', input: z.object({ content: z.string() }), prompt: ({ content }) => content, output: Output.object({ schema: z.object({ content: z.string() }) }) },
   plain: { type: 'text-generation', input: z.object({ content: z.string() }), prompt: ({ content }) => content },
   classify: { type: 'decision', input: z.object({ content: z.string() }), state: ({ content }) => ({ content }), questions: { category: { type: 'choice', instructions: 'Classify', criteria: { technology: 'Tech', diary: 'Diary' } } } },
@@ -43,9 +43,9 @@ declare module '#imports' {
         join(directory, 'consumer.ts'),
         `import { ref } from 'vue'
 import { useAi } from './client'
-import { useAdmin } from '@liria24/site-admin/server'
+import { useAdmin } from 'liti/nuxt/server'
 const runAiAction = async (event: Parameters<typeof useAdmin>[0], name: 'proofread', payload: { input: { content: string } }) => (await useAdmin(event)).ai.run(name, payload.input)
-import { createSiteAdminManagementClient } from '@liria24/site-admin/internal/client'
+import { createLitiManagementClient } from 'liti/internal/client'
 declare const event: Parameters<typeof runAiAction>[0]
 const content = ref('Typed')
 const { data, status, error, execute } = await useAi('proofread', { input: () => ({ content: content.value }), immediate: false })
@@ -55,7 +55,7 @@ const controller = new AbortController()
 const executed: void = await execute({ signal: controller.signal, dedupe: 'cancel' })
 const server = await runAiAction(event, 'proofread', { input: { content: 'Typed' } })
 const serverContent: string = server.content
-const client = createSiteAdminManagementClient()
+const client = createLitiManagementClient()
 const directContent: string = (await client.runAiAction('proofread', { input: { content: 'Typed' } })).content
 // @ts-expect-error Direct clients preserve configured action names.
 client.runAiAction('unknown', { input: {} })
@@ -91,12 +91,14 @@ void [output, nativeStatus, error, executed, serverContent, directContent, text,
             compilerOptions: {
                 paths: {
                     vue: [resolve('node_modules/vue/dist/vue.d.mts')],
-                    '@liria24/site-admin': [resolve('packages/site-admin/src/index.ts')],
-                    '@liria24/site-admin/internal/*': [resolve('packages/site-admin/src/*')],
-                    '@liria24/site-admin/server': [resolve('packages/site-admin/src/server-api.ts')],
-                    '@liria24/site-admin/internal/client': [resolve('packages/site-admin/src/client.ts')],
-                    '@liria24/site-admin/internal/model': [resolve('packages/site-admin/src/model.ts')],
-                    '@liria24/site-admin/internal/nuxt/server': [resolve('packages/site-admin/src/nuxt/server.ts')],
+                    liti: [resolve('packages/liti/src/index.ts')],
+                    'liti/client': [resolve('packages/liti/src/public-client.ts')],
+                    'liti/internal/*': [resolve('packages/liti/src/*')],
+                    'liti/internal/runtime/*': [resolve('packages/nuxt/src/runtime/*')],
+                    'liti/nuxt/server': [resolve('packages/nuxt/src/server-api.ts')],
+                    'liti/internal/client': [resolve('packages/liti/src/client.ts')],
+                    'liti/internal/model': [resolve('packages/vue/src/model.ts')],
+                    'liti/internal/nuxt/server': [resolve('packages/nuxt/src/nuxt/server.ts')],
                     '#app/*': [resolve('node_modules/nuxt/dist/app/*')],
                     '#app': [resolve('node_modules/nuxt/dist/app/index.d.ts')],
                     '#app/composables/asyncData': [resolve('node_modules/nuxt/dist/app/composables/asyncData.d.ts')],

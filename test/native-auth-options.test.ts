@@ -11,15 +11,15 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createJiti } from 'jiti'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
-import { generateCombinedSchema } from '../packages/site-admin/src/generate'
-import { extendSiteAdminAuth } from '../packages/site-admin/src/runtime/auth'
+import { defineLitiConfig, text } from '../packages/liti/src'
+import { generateCombinedSchema } from '../packages/void/src/tooling'
+import { extendLitiAuth } from '../packages/void/src/auth'
 
-const resources = { 'siteAdmin:model:posts': ['readDraft', 'update'] }
+const resources = { 'liti:model:posts': ['readDraft', 'update'] }
 const permissions = {
     admin: resources,
-    editor: { 'siteAdmin:model:posts': ['readDraft'] },
-    user: { 'siteAdmin:model:posts': [] },
+    editor: { 'liti:model:posts': ['readDraft'] },
+    user: { 'liti:model:posts': [] },
 }
 
 describe('native admin configuration preservation', () => {
@@ -60,7 +60,7 @@ describe('native admin configuration preservation', () => {
                 },
             })
             const other = username()
-            const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+            const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
             const schemaSource = await generateCombinedSchema(
                 config,
                 {
@@ -91,7 +91,7 @@ describe('native admin configuration preservation', () => {
             const schema = await createJiti(import.meta.url, { fsCache: false }).import<Record<string, unknown>>(
                 schemaFile,
             )
-            const extended = extendSiteAdminAuth(
+            const extended = extendLitiAuth(
                 {
                     database: drizzleAdapter(
                         drizzle(sqliteD1(database) as unknown as import('drizzle-orm/d1').AnyD1Database, { schema }),
@@ -149,12 +149,10 @@ describe('native admin configuration preservation', () => {
     })
 
     it('adds native defaults only when absent and rejects duplicate admin instances', () => {
-        const extended = extendSiteAdminAuth({ plugins: [] }, resources, permissions)
+        const extended = extendLitiAuth({ plugins: [] }, resources, permissions)
         expect(extended.plugins.map(({ id }) => id)).toEqual(['admin'])
         expect(extended.plugins[0]!.options.roles!.admin!.statements.user).toContain('list')
         expect(extended.plugins[0]!.options.roles!.user!.statements.user).toEqual([])
-        expect(() => extendSiteAdminAuth({ plugins: [admin(), admin()] }, resources, permissions)).toThrow(
-            'single native',
-        )
+        expect(() => extendLitiAuth({ plugins: [admin(), admin()] }, resources, permissions)).toThrow('single native')
     })
 })

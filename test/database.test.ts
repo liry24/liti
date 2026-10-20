@@ -6,17 +6,17 @@ import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { DrizzleSiteAdminDatabase } from '../packages/site-admin/src/adapters/database'
-const queryRows = (database: DrizzleSiteAdminDatabase, sql: string) => database.query(sql)
-const runAtomic = (database: DrizzleSiteAdminDatabase, statements: Parameters<DrizzleSiteAdminDatabase['atomic']>[0]) =>
+import type { DrizzleLitiDatabase } from '../packages/void/src/database'
+const queryRows = (database: DrizzleLitiDatabase, sql: string) => database.query(sql)
+const runAtomic = (database: DrizzleLitiDatabase, statements: Parameters<DrizzleLitiDatabase['atomic']>[0]) =>
     database.atomic(statements)
 import { createMigratedTestAdmin, testAdapter } from './migrate'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
-import { createD1Database, type DrizzleConnection } from '../packages/site-admin/src/adapters/database'
-import {
-    queryRows as nativeQueryRows,
-    runAtomic as nativeRunAtomic,
-} from '../packages/site-admin/src/adapters/drizzle-database'
+import { defineLitiConfig, text } from '../packages/liti/src'
+import { createD1Database, type DrizzleConnection } from '../packages/void/src/database'
+import { createNativeSqliteDatabase } from '../packages/sqlite/src/native'
+import { createRuntime } from '../packages/liti/src/server'
+import { migrateTestDatabase } from './migrate'
+import { queryRows as nativeQueryRows, runAtomic as nativeRunAtomic } from '../packages/void/src/d1-connection'
 
 const databases: Database[] = []
 const temporaryFiles: string[] = []
@@ -27,36 +27,64 @@ afterEach(async () => {
 })
 
 describe('atomic database execution', () => {
-    it('reads list/count/search snapshots while a separate SQLite connection holds a reserved writer lock', async () => {
-        const path = join(tmpdir(), `site-admin-reader-${crypto.randomUUID()}.sqlite`)
-        temporaryFiles.push(path)
-        const reader = createDatabase(nodeSqlite({ path })),
-            writer = createDatabase(nodeSqlite({ path }))
-        databases.push(reader, writer)
-        const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
-        const core = await createMigratedTestAdmin({ config, database: reader })
-        const entry = await core.createEntry('posts', { data: { slug: 'reader-snapshot', title: 'Reader snapshot' } })
-        await core.createEntry('posts', { data: { slug: 'other', title: 'Other' } })
-        const storage = (await testAdapter(reader, config)).bind(config)
-        await storage.pageEntries({ q: 'reader' }, { limit: 1, offset: 0 })
-        const nativeReader = (await reader.getInstance()) as import('node:sqlite').DatabaseSync
-        const nativeWriter = (await writer.getInstance()) as import('node:sqlite').DatabaseSync
-        expect(nativeReader).not.toBe(nativeWriter)
-        nativeWriter.exec('BEGIN IMMEDIATE')
-        try {
-            nativeWriter.prepare('UPDATE site_admin_entries SET version=version+1 WHERE id=?').run(entry.id)
-            expect(await storage.entries()).toHaveLength(2)
-            expect(await storage.pageEntries({}, { limit: 1, offset: 1 })).toMatchObject({
-                total: 2,
-                items: [{ version: 1 }],
+    it.each(['d1', 'native'] as const)(
+        'reads %s list/count/search snapshots while a separate connection holds a reserved writer lock',
+        async (driver) => {
+            const path = join(tmpdir(), `liti-reader-${crypto.randomUUID()}.sqlite`)
+            temporaryFiles.push(path)
+            const reader = createDatabase(nodeSqlite({ path })),
+                writer = createDatabase(nodeSqlite({ path }))
+            databases.push(reader, writer)
+            const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+            await migrateTestDatabase(reader, config)
+            const adapter =
+                driver === 'native'
+                    ? createNativeSqliteDatabase((await reader.getInstance()) as import('node:sqlite').DatabaseSync)
+                    : await testAdapter(reader, config)
+            const core = createRuntime({ config, database: adapter })
+            const entry = await core.createEntry('posts', {
+                data: { slug: 'reader-snapshot', title: 'Reader snapshot' },
             })
-            expect(await storage.pageEntries({ q: 'reader' }, { limit: 1, offset: 0 })).toMatchObject({
-                total: 1,
-                items: [{ id: entry.id, version: 1 }],
-            })
-        } finally {
-            nativeWriter.exec('ROLLBACK')
-        }
+            await core.createEntry('posts', { data: { slug: 'other', title: 'Other' } })
+            const storage = adapter.bind(config)
+            await storage.pageEntries({ q: 'reader' }, { limit: 1, offset: 0 })
+            const nativeReader = (await reader.getInstance()) as import('node:sqlite').DatabaseSync
+            const nativeWriter = (await writer.getInstance()) as import('node:sqlite').DatabaseSync
+            expect(nativeReader).not.toBe(nativeWriter)
+            nativeWriter.exec('BEGIN IMMEDIATE')
+            try {
+                nativeWriter.prepare('UPDATE liti_entries SET version=version+1 WHERE id=?').run(entry.id)
+                expect(await storage.entries()).toHaveLength(2)
+                expect(await storage.pageEntries({}, { limit: 1, offset: 1 })).toMatchObject({
+                    total: 2,
+                    items: [{ version: 1 }],
+                })
+                expect(await storage.pageEntries({ q: 'reader' }, { limit: 1, offset: 0 })).toMatchObject({
+                    total: 1,
+                    items: [{ id: entry.id, version: 1 }],
+                })
+            } finally {
+                nativeWriter.exec('ROLLBACK')
+            }
+        },
+    )
+
+    it('rolls back native writes when a later RETURNING guard rejects the transaction', async () => {
+        const database = createDatabase(nodeSqlite({ name: ':memory:' }))
+        databases.push(database)
+        await database.exec('CREATE TABLE candidates (value TEXT PRIMARY KEY)')
+        const adapter = createNativeSqliteDatabase((await database.getInstance()) as import('node:sqlite').DatabaseSync)
+        await expect(
+            adapter.atomic([
+                { sql: "INSERT INTO candidates VALUES ('discarded')" },
+                {
+                    sql: "UPDATE candidates SET value='changed' WHERE value='missing' RETURNING value",
+                    query: true,
+                    expectRow: true,
+                },
+            ]),
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+        expect(await adapter.query('SELECT * FROM candidates')).toEqual([])
     })
 
     it('retains write mode for query statements with INSERT/UPDATE RETURNING', async () => {
@@ -156,8 +184,8 @@ describe('atomic database execution', () => {
             exec: async () => ({ count: 0, duration: 0 }),
             prepare: (sql: string) => new Statement(sql),
         }
-        Object.assign(globalThis, { __env__: { SITE_ADMIN_TEST_DB: binding } })
-        const database = createDatabase(cloudflareD1({ bindingName: 'SITE_ADMIN_TEST_DB' }))
+        Object.assign(globalThis, { __env__: { LITI_TEST_DB: binding } })
+        const database = createDatabase(cloudflareD1({ bindingName: 'LITI_TEST_DB' }))
         databases.push(database)
 
         await expect(
@@ -165,7 +193,7 @@ describe('atomic database execution', () => {
                 { params: ['a'], sql: 'INSERT INTO example(value) VALUES (?)' },
                 { expectRow: true, query: true, sql: 'UPDATE example SET value = value RETURNING value' },
             ]),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
         expect(batches).toHaveLength(1)
         expect(batches[0]?.map((statement) => statement.sql)).toEqual([
             'INSERT INTO example(value) VALUES (?)',

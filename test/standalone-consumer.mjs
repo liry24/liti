@@ -5,14 +5,14 @@ import { join } from 'node:path'
 import { consumerDependencies } from './consumer-dependencies.mjs'
 
 export const verifyStandalone = async (tarball) => {
-    const cwd = await mkdtemp(join(tmpdir(), 'site-admin-core-only-'))
+    const cwd = await mkdtemp(join(tmpdir(), 'liti-core-only-'))
     await writeFile(
         join(cwd, 'package.json'),
         JSON.stringify({
             private: true,
             type: 'module',
             dependencies: {
-                '@liria24/site-admin': 'file:' + tarball.replaceAll('\\', '/'),
+                liti: 'file:' + tarball.replaceAll('\\', '/'),
                 ...consumerDependencies(['typescript', 'comark']),
             },
         }),
@@ -30,9 +30,9 @@ export const verifyStandalone = async (tarball) => {
     await writeFile(
         join(cwd, 'core.ts'),
         [
-            "import { createSiteAdmin, handlePublicRequest, handleManagementRequest, type SiteAdminOptions } from '@liria24/site-admin/internal/server'",
-            "const options: SiteAdminOptions<{ principal: string }>['authorize'] = (_request, context) => ({ id: context?.principal ?? 'background' })",
-            'void options; void createSiteAdmin; void handlePublicRequest; void handleManagementRequest',
+            "import { createRuntime, handlePublicRequest, handleManagementRequest, type LitiOptions } from 'liti/internal/server'",
+            "const options: LitiOptions<{ principal: string }>['authorize'] = (_request, context) => ({ id: context?.principal ?? 'background' })",
+            'void options; void createRuntime; void handlePublicRequest; void handleManagementRequest',
         ].join('\n'),
     )
     await writeFile(
@@ -55,14 +55,14 @@ export const verifyStandalone = async (tarball) => {
         [
             "import assert from 'node:assert/strict'",
             "import { createRequire } from 'node:module'",
-            "import { createSiteAdmin, handlePublicRequest, handleManagementRequest } from '@liria24/site-admin/internal/server'",
+            "import { createRuntime, handlePublicRequest, handleManagementRequest } from 'liti/internal/server'",
             'const require = createRequire(import.meta.url)',
             "assert.throws(() => require.resolve('nuxt/package.json'), { code: 'MODULE_NOT_FOUND' })",
-            "assert.equal(typeof createSiteAdmin, 'function')",
+            "assert.equal(typeof createRuntime, 'function')",
             "const admin = { descriptor: { models: { posts: { public: true } } }, authorizeRequest: () => ({ id: 'admin' }), presentationContext: () => ({}), descriptorFor: () => ({ models: {} }) }",
             "const publicResponse = await handlePublicRequest(admin, new Request('http://localhost/api/content/models'))",
             'assert.equal(publicResponse.status, 200); assert.ok((await publicResponse.json()).models.posts)',
-            "const management = await handleManagementRequest(admin, new Request('http://localhost/api/site-admin/models'))",
+            "const management = await handleManagementRequest(admin, new Request('http://localhost/api/liti/models'))",
             "assert.equal(management.status, 200); assert.equal(management.headers.get('cache-control'), 'private, no-store')",
         ].join('\n'),
     )

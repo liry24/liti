@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import { mkdtemp, mkdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-const directory = await mkdtemp(join(tmpdir(), 'site-admin-public-data-cleanup-'))
+const directory = await mkdtemp(join(tmpdir(), 'liti-public-data-cleanup-'))
 const profile = join(directory, 'chromium-profile', 'Default')
 await mkdir(profile, { recursive: true })
 const target = ${persistent} ? directory : profile
@@ -79,7 +79,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
-const directory = await mkdtemp(join(tmpdir(), 'site-admin-chromium-startup-'))
+const directory = await mkdtemp(join(tmpdir(), 'liti-chromium-startup-'))
 await mkdir(join(directory, 'chromium-profile', 'Default'), { recursive: true })
 process.env.CHROMIUM_PATH = process.execPath
 childProcess.spawn = () => {

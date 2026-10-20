@@ -4,7 +4,7 @@ import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { createDevServer, createNitro } from 'nitropack'
 import { expect, it } from 'vitest'
-import { stopNitroDevReloadOnClose } from '../packages/site-admin/src/nuxt/dev-close'
+import { stopNitroDevReloadOnClose } from '../packages/nuxt/src/nuxt/dev-close'
 
 it('closes active dev workers and ignores a build that completes after shutdown', async () => {
     await mkdir('.tmp', { recursive: true })
@@ -13,7 +13,7 @@ it('closes active dev workers and ignores a build that completes after shutdown'
     await mkdir(output)
     const pipe =
         process.platform === 'win32'
-            ? '\\\\.\\pipe\\site-admin-nitro-close-' + randomUUID()
+            ? '\\\\.\\pipe\\liti-nitro-close-' + randomUUID()
             : process.env.NITRO_NO_UNIX_SOCKET
               ? undefined
               : join(fixture, 'socket')

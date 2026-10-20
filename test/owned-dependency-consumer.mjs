@@ -7,7 +7,7 @@ import { consumerDependencies } from './consumer-dependencies.mjs'
 
 /** Exercise the real package manager, including a nested Nuxt postinstall. */
 export async function verifyPeerDependencies(tarball, manager) {
-    const directory = await mkdtemp(join(tmpdir(), 'site-admin-dependencies-'))
+    const directory = await mkdtemp(join(tmpdir(), 'liti-dependencies-'))
     const run = (command, args, env = process.env, failure = false) => {
         const result = spawnSync(command, args, {
             cwd: directory,
@@ -23,7 +23,7 @@ export async function verifyPeerDependencies(tarball, manager) {
     const disabled =
         "auth: false, i18n: false, ai: false, markdown: false, seo: false, schemaOrg: false, sitemap: false, robots: false, llms: false, ogImage: false, server: { enabled: false }, client: { origin: 'https://content.example.invalid' }"
     const config = (i18n) =>
-        "export default { modules: ['@liria24/site-admin/nuxt'], files: false, i18n: { locales: ['en'], defaultLocale: 'en' }, siteAdmin: { " +
+        "export default { modules: ['liti/nuxt'], files: false, i18n: { locales: ['en'], defaultLocale: 'en' }, liti: { " +
         disabled.replace('i18n: false', 'i18n: ' + i18n) +
         ' } }'
     try {
@@ -33,7 +33,7 @@ export async function verifyPeerDependencies(tarball, manager) {
         await writeFile(
             join(directory, 'package.json'),
             JSON.stringify({
-                name: 'site-admin-auto-dependencies',
+                name: 'liti-auto-dependencies',
                 private: true,
                 type: 'module',
                 packageManager: manager + '@' + version,
@@ -41,7 +41,7 @@ export async function verifyPeerDependencies(tarball, manager) {
                 ...(manager === 'pnpm' ? { pnpm: { overrides } } : {}),
                 scripts: { postinstall: 'nuxt prepare' },
                 dependencies: {
-                    '@liria24/site-admin': 'file:' + resolve(tarball).replaceAll('\\', '/'),
+                    liti: 'file:' + resolve(tarball).replaceAll('\\', '/'),
                     ...consumerDependencies(['nuxt', 'vue']),
                 },
             }),
