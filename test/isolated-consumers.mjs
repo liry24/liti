@@ -94,7 +94,7 @@ try {
             }),
         )
         console.log(`${manager}: installing isolated ${profile.name} consumer`)
-        await installDependencies({ cwd, packageManager: manager, silent: true })
+        await installDependencies({ cwd, packageManager: manager, silent: true, corepack: false })
         const source = [
             "import { defineLitiConfig, resolveLitiConfig, text, type InferLitiSchema } from 'liti'",
             "import { createLitiClient } from 'liti/client'",

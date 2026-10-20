@@ -15,7 +15,7 @@
         "lint:fix": "vp lint . --fix",
         "unused": "knip && knip --production",
         "workspace:check": "sherif -i drizzle-orm -i drizzle-kit",
-        "preview:package": "pkg-pr-new publish ./packages/liti ./packages/sqlite ./packages/drizzle ./packages/void ./packages/ai ./packages/blog --bun --no-compact --previewVersion --comment=update",
+        "preview:package": "pkg-pr-new publish ./packages/liti ./packages/sqlite ./packages/drizzle ./packages/void ./packages/ai ./packages/blog --bun --no-compact --previewVersion --peerDeps --comment=update",
         "package:check": "node scripts/check-packages.mjs",
         "test": "vp test run",
         "test:bun-sqlite": "bun test test/adapter.test.ts -t 'sqlite domain storage conformance'",

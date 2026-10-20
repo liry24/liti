@@ -44,7 +44,7 @@ export async function verifyPeerDependencies(tarball, manager) {
             }),
         )
         await writeFile(join(directory, 'nuxt.config.ts'), config(false))
-        await installDependencies({ cwd: directory, packageManager: manager, silent: true })
+        await installDependencies({ cwd: directory, packageManager: manager, silent: true, corepack: false })
         run(process.execPath, nuxt, { ...process.env, CI: 'true' })
         await writeFile(join(directory, 'nuxt.config.ts'), config(true))
         const manifestBefore = await readFile(join(directory, 'package.json'), 'utf8')
@@ -60,6 +60,7 @@ export async function verifyPeerDependencies(tarball, manager) {
         await addDependency(`@nuxtjs/i18n@${consumerDependencies(['@nuxtjs/i18n'])['@nuxtjs/i18n']}`, {
             cwd: directory,
             packageManager: manager,
+            corepack: false,
             silent: true,
         })
         const installed = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))

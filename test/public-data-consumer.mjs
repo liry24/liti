@@ -322,7 +322,7 @@ export const verifyPublicDataConsumer = async (tarball, { browser = true } = {})
             }),
         )
         console.log('Public data consumer: isolated packed installation')
-        await installDependencies({ cwd: directory, packageManager: 'npm', silent: true })
+        await installDependencies({ cwd: directory, packageManager: 'npm', silent: true, corepack: false })
         await put(
             'nuxt.config.ts',
             `import { defineNuxtConfig } from 'nuxt/config'
@@ -604,7 +604,7 @@ void [title, nodes, titles, featuredTitle, count]`,
     }
 }
 
-if (process.argv[1]?.endsWith('/public-data-consumer.mjs')) {
+if (import.meta.main) {
     if (!process.argv[2]) throw new Error('Pass the packed liti tarball path.')
     await verifyPublicDataConsumer(process.argv[2], { browser: !process.argv.includes('--ssr-only') })
 }

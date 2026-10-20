@@ -43,7 +43,7 @@ const run = (command, args, cwd = temporary, env = process.env) => {
 const install = async (cwd = temporary, production = false) => {
     // npm cannot reify Nitro's traced links; its production manifest contains no development dependencies.
     if (packageManager === 'npm' && production) await rm(join(cwd, 'node_modules'), { force: true, recursive: true })
-    await installDependencies({ cwd, packageManager, silent: true })
+    await installDependencies({ cwd, packageManager, silent: true, corepack: false })
 }
 const exec = ([name, ...args], cwd = temporary) => {
     const local = createRequire(join(temporary, 'package.json'))

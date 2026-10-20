@@ -17,8 +17,6 @@ import { presentLitiData } from '../../../liti/src/client'
 import { createLitiModel, litiModelError } from '../../../vue/src/model'
 // oxlint-disable-next-line no-unused-vars -- declaration emit must name the resource's unique symbol property
 import type { litiModelContext } from '../../../vue/src/model'
-// oxlint-disable-next-line no-unused-vars -- inferred native form declarations must use the owning schema package
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { LitiFailure, LitiModelActions, LitiModelError, LitiSessionDraft } from '../../../vue/src/model'
 import type { ModelDescriptor, LitiDescriptor } from '../../../liti/src/descriptor'
 import { clearNuxtData, refreshNuxtData, useNuxtApp } from '#app'
@@ -252,6 +250,10 @@ type SingleResource<Name extends string> = Omit<
         value?: FormData<Name>,
     ) => Promise<Awaited<ReturnType<ModelActions<Name>['schedule']>> | undefined>
 }
+
+type FormResource<Name extends string> = ReturnType<typeof useEntryForm<FormData<Name>>> &
+    Pick<SingleResource<Name>, 'meta' | 'data' | 'status' | 'error' | 'refresh' | 'features' | 'display' | 'remove'> &
+    LitiFormExtensions<Name>
 
 type ValidModel<Name extends string> = Name &
     (Name extends ManagementModelName ? unknown : string extends Name ? unknown : never)
@@ -987,7 +989,7 @@ export const createLitiComposables = (
     const useLitiForm = <Name extends string>(
         model: ValidModel<Name>,
         options: LitiFormOptions<FormData<Name>> = {},
-    ) => {
+    ): FormResource<Name> & Promise<FormResource<Name>> => {
         const generatedInstance = getCurrentInstance() ? useId() : crypto.randomUUID()
         const resource = useAdminResource(
             model,
@@ -1019,7 +1021,7 @@ export const createLitiComposables = (
         return Object.assign(
             resource.then(() => result),
             result,
-        ) as typeof result & LitiFormExtensions<Name> & Promise<typeof result & LitiFormExtensions<Name>>
+        ) as FormResource<Name> & Promise<FormResource<Name>>
     }
 
     function useAdminResource(
