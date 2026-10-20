@@ -47,7 +47,7 @@
     },
     "peerDependencies": {
         "ai": "7.0.145",
-        "liti": "^0.0.3",
+        "liti": "^0.1.0",
         "void": "1.1.12"
     },
     "peerDependenciesMeta": {
@@ -62,7 +62,7 @@
         "id": "ai",
         "apiVersion": 1,
         "kind": "plugin",
-        "liti": "^0.0.3 || ^0.1.0",
+        "liti": "^0.1.0",
         "factory": "ai",
         "config": "@litijs/ai"
     }

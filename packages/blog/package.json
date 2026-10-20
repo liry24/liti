@@ -42,8 +42,8 @@
         "vue": "3.6.0-rc.12"
     },
     "peerDependencies": {
-        "@litijs/ai": "^0.0.3",
-        "liti": "^0.0.3",
+        "@litijs/ai": "^0.1.0",
+        "liti": "^0.1.0",
         "vue": "^3.5.44 || ^3.6.0-rc.2"
     },
     "peerDependenciesMeta": {
@@ -58,7 +58,7 @@
         "id": "blog",
         "apiVersion": 1,
         "kind": "plugin",
-        "liti": "^0.0.3 || ^0.1.0",
+        "liti": "^0.1.0",
         "factory": "blog",
         "config": "@litijs/blog",
         "options": {

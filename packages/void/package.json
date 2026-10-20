@@ -89,7 +89,7 @@
     },
     "peerDependencies": {
         "@nuxtjs/better-auth": "^0.3.11",
-        "liti": "^0.0.3",
+        "liti": "^0.1.0",
         "nuxt": "^4.6.2",
         "nuxt-files-sdk": "^0.3.1",
         "void": "1.1.12"
@@ -109,7 +109,7 @@
         "id": "void",
         "apiVersion": 1,
         "kind": "adapter",
-        "liti": "^0.0.3 || ^0.1.0",
+        "liti": "^0.1.0",
         "factory": "voidAdapter",
         "config": "@litijs/void",
         "managedPeers": [
