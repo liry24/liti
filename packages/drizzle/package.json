@@ -1,6 +1,6 @@
 {
     "name": "@litijs/drizzle",
-    "version": "0.0.3",
+    "version": "0.1.0",
     "description": "Independent Drizzle SQLite adapters for liti",
     "license": "MIT",
     "repository": {
