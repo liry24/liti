@@ -18,7 +18,7 @@ await writeFile(
     join(fixture, 'nuxt.config.ts'),
     [
         "import { defineNuxtConfig } from 'nuxt/config'",
-        "import { transformNitroCloudflareRequest } from '@liria24/site-admin/internal/runtime/nitro2'",
+        "import { transformNitroCloudflareRequest } from 'liti/internal/runtime/nitro2'",
         'export default defineNuxtConfig({ devtools: { enabled: false }, nitro: {',
         'preset: ' + JSON.stringify(platform === 'cloudflare' ? 'cloudflare-module' : 'node-server') + ',',
         "rollupConfig: { plugins: [{ name: 'native-stream-input', transform: transformNitroCloudflareRequest }] }",
@@ -29,7 +29,7 @@ await writeFile(
     join(fixture, 'server/plugins/input.ts'),
     [
         "import { defineNitroPlugin } from 'nitropack/runtime'",
-        "import { captureNitroRequest } from '@liria24/site-admin/internal/runtime/nitro2'",
+        "import { captureNitroRequest } from 'liti/internal/runtime/nitro2'",
         "export default defineNitroPlugin((app) => { app.hooks.hook('request', (event) => captureNitroRequest(event, '/api', true)) })",
     ].join('\n'),
 )
@@ -108,7 +108,7 @@ if (platform === 'cloudflare') {
     await writeFile(
         config,
         JSON.stringify({
-            name: 'site-admin-native-stream-test',
+            name: 'liti-native-stream-test',
             main: '.output/server/index.mjs',
             compatibility_date: '2026-07-30',
             compatibility_flags: ['nodejs_compat'],

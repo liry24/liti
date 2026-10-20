@@ -2,12 +2,12 @@ import { expect, it } from 'vitest'
 import { createError, type RequestEvent } from 'nuxt/server'
 import { createDatabase } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
-import { configureSiteAdminRuntime, normalizeSiteAdminAuthorizationError } from '../packages/site-admin/src/nuxt/server'
-import management from '../packages/site-admin/src/runtime/management-handler'
-import publicHandler from '../packages/site-admin/src/runtime/public-handler'
-import middleware from '../packages/site-admin/src/runtime/database-middleware'
-import { createSiteAdmin } from '../packages/site-admin/src/server'
+import { defineLitiConfig, text } from '../packages/liti/src'
+import { configureLitiRuntime, normalizeLitiAuthorizationError } from '../packages/nuxt/src/nuxt/server'
+import management from '../packages/nuxt/src/runtime/management-handler'
+import publicHandler from '../packages/nuxt/src/runtime/public-handler'
+import middleware from '../packages/nuxt/src/runtime/database-middleware'
+import { createRuntime } from '../packages/liti/src/server'
 import { migrateTestDatabase, testAdapter } from './migrate'
 
 const event = (path: string, authorization?: string, method = 'GET'): RequestEvent => {
@@ -24,10 +24,10 @@ it('awaits request initialization and keeps context identity isolated', async ()
     const ready = new Promise<void>((resolve) => {
         release = resolve
     })
-    configureSiteAdminRuntime({
+    configureLitiRuntime({
         publicBase: '/api/content',
-        managementBase: '/api/site-admin',
-        getSiteAdmin: () => {
+        managementBase: '/api/liti',
+        getLiti: () => {
             throw new Error('Not needed in middleware')
         },
         initializeRequest: async (request) => {
@@ -49,11 +49,11 @@ it('awaits request initialization and keeps context identity isolated', async ()
 
 it('native HTTP handlers preserve intentional auth statuses, redact errors and return Web responses', async () => {
     const database = createDatabase(nodeSqlite({ name: ':memory:' }))
-    const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+    const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
     try {
         await migrateTestDatabase(database, config)
         const adapter = await testAdapter(database, config)
-        const admin = createSiteAdmin<RequestEvent>({
+        const admin = createRuntime<RequestEvent>({
             config,
             database: adapter,
             authorize: (_request, context) => {
@@ -63,21 +63,21 @@ it('native HTTP handlers preserve intentional auth statuses, redact errors and r
                     if (mode === 'broken') throw new Error('PRIVATE_FAILURE')
                     return mode ? { id: mode, roles: ['admin'] } : null
                 } catch (error) {
-                    throw normalizeSiteAdminAuthorizationError(error)
+                    throw normalizeLitiAuthorizationError(error)
                 }
             },
         })
-        configureSiteAdminRuntime({
+        configureLitiRuntime({
             publicBase: '/api/content',
-            managementBase: '/api/site-admin',
-            getSiteAdmin: () => admin,
+            managementBase: '/api/liti',
+            getLiti: () => admin,
         })
         for (const [mode, status, code] of [
-            [undefined, 401, 'SITE_ADMIN_AUTH_REQUIRED'],
-            ['denied', 403, 'SITE_ADMIN_FORBIDDEN'],
-            ['broken', 500, 'SITE_ADMIN_INTERNAL_ERROR'],
+            [undefined, 401, 'LITI_AUTH_REQUIRED'],
+            ['denied', 403, 'LITI_FORBIDDEN'],
+            ['broken', 500, 'LITI_INTERNAL_ERROR'],
         ] as const) {
-            const response = await management(event('/api/site-admin/models', mode))
+            const response = await management(event('/api/liti/models', mode))
             expect(response).toBeInstanceOf(Response)
             expect(response.status).toBe(status)
             expect(response.headers.get('cache-control')).toBe('private, no-store')
@@ -86,7 +86,7 @@ it('native HTTP handlers preserve intentional auth statuses, redact errors and r
             expect(JSON.parse(body).error.code).toBe(code)
             expect(body).not.toContain('PRIVATE_')
         }
-        const successful = await management(event('/api/site-admin/models', 'admin'))
+        const successful = await management(event('/api/liti/models', 'admin'))
         expect(successful.status).toBe(200)
         const read = await publicHandler(event('/api/content/posts'))
         expect(read.status).toBe(200)

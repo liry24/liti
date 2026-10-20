@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { effectScope, nextTick, type Ref } from 'vue'
-import { useEntryForm } from '../packages/site-admin/src/form'
-import { siteAdminModelContext } from '../packages/site-admin/src/model'
+import { useEntryForm } from '../packages/vue/src/form'
+import { litiModelContext } from '../packages/vue/src/model'
 import { formDescriptor, modelEntry, modelFixture } from './model-fixture'
 
 it('validates before hooks, coalesces quiet draft creation, and completes before success navigation', async () => {
@@ -84,11 +84,12 @@ it('keeps fallback values sparse and unsaved inputs separate across locale chang
         {},
         { model: 'posts', descriptor },
     )
-    const context = fixture.resource[siteAdminModelContext]
+    const context = fixture.resource[litiModelContext]
+    context.group = 'posts:one'
     const locale = context.locale as Ref<string>
     locale.value = 'en'
     fixture.identity.value =
-        'site-admin-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'en'])
+        'liti-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'en'])
     const scope = effectScope()
     const editor = scope.run(() => useEntryForm(fixture.resource))!
     await editor.form.handleSubmit()
@@ -99,7 +100,7 @@ it('keeps fallback values sparse and unsaved inputs separate across locale chang
     expect(editor.draft.isStale(snapshot)).toBe(false)
     locale.value = 'ja'
     fixture.identity.value =
-        'site-admin-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'ja'])
+        'liti-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'ja'])
     fixture.state.data.value = { ...original, version: 2 }
     await nextTick()
     expect(editor.form.state.values.title).toBe('Original')
@@ -107,7 +108,7 @@ it('keeps fallback values sparse and unsaved inputs separate across locale chang
     expect(editor.draft.isStale(snapshot)).toBe(true)
     locale.value = 'en'
     fixture.identity.value =
-        'site-admin-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'en'])
+        'liti-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', 'one', 'en'])
     fixture.state.data.value = { ...original, version: 2 }
     await nextTick()
     expect(editor.form.state.values.title).toBe('Unsaved English')
@@ -183,7 +184,7 @@ it('retains a committed new ID/version and later edits when file effects fail, w
         Response.json(
             {
                 error: {
-                    code: 'SITE_ADMIN_STORAGE_UNAVAILABLE',
+                    code: 'LITI_STORAGE_UNAVAILABLE',
                     message: 'Retry Asset synchronization only.',
                     committed: true,
                     receipt: { id: 'created', model: 'posts', version: 1 },
@@ -237,10 +238,11 @@ it('creates the original and edited locale buffers in one snapshot without persi
             },
         },
     )
-    const context = fixture.resource[siteAdminModelContext]
+    const context = fixture.resource[litiModelContext]
+    context.group = 'posts:new'
     const locale = context.locale as Ref<string>
     const identity = (language: string) =>
-        'site-admin-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', null, language])
+        'liti-management:' + JSON.stringify(['origin', '/manage', 'alice', 'entry', 'posts', null, language])
     locale.value = 'ja'
     fixture.identity.value = identity('ja')
     const scope = effectScope()

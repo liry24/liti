@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { paragraphSummary } from '../packages/site-admin/src/markdown/summary'
+import { paragraphSummary } from '../packages/liti/src/markdown/summary'
 
 it('preserves explicitly configured inline nodes without allowing other components or changing the prose budget', () => {
     const nodes = [

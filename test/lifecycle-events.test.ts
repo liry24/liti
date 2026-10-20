@@ -1,14 +1,14 @@
 import { createDatabase } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import { expect, test, vi } from 'vitest'
-import { defineSiteAdminConfig, text, type SiteAdminLifecycleEvent } from '../packages/site-admin/src'
-import { createManagementOperations } from '../packages/site-admin/src/server/operations'
+import { defineLitiConfig, text, type LitiLifecycleEvent } from '../packages/liti/src'
+import { createManagementOperations } from '../packages/liti/src/server/operations'
 import { createMigratedTestAdmin } from './migrate'
 
 test('management mutations emit attributed data snapshots only after committing', async () => {
     const database = createDatabase(nodeSqlite({ name: ':memory:' }))
-    const events: SiteAdminLifecycleEvent[] = []
-    const afterCommit = vi.fn((event: SiteAdminLifecycleEvent) => {
+    const events: LitiLifecycleEvent[] = []
+    const afterCommit = vi.fn((event: LitiLifecycleEvent) => {
         events.push(event)
     })
     try {
@@ -16,7 +16,7 @@ test('management mutations emit attributed data snapshots only after committing'
             database,
             authorize: () => ({ id: 'actor', roles: ['admin'] }),
             afterCommit,
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     items: { fields: { name: text(), note: text() }, sortable: true },
                 },
@@ -42,9 +42,9 @@ test('management mutations emit attributed data snapshots only after committing'
         const count = events.length
         await expect(
             api.setSortOrders('items', [{ id: entry.id, expectedVersion: 999, sortOrder: 0 }]),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
         await expect(api.cancelScheduledPublish(entry.id, { expectedVersion: 999 })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_CONFLICT',
+            code: 'LITI_CONFLICT',
         })
         expect(events).toHaveLength(count)
         entry = await api.setSortOrder(entry.id, 1, entry.version)
@@ -63,7 +63,7 @@ test('management mutations emit attributed data snapshots only after committing'
             data: { name: 'Renamed', note: 'Updated' },
         })
         expect((await admin.getEntry(entry.id)).data.name).toBe('Renamed')
-        expect(admin.diagnostics).toContainEqual(expect.objectContaining({ code: 'SITE_ADMIN_HOOK_FAILED' }))
+        expect(admin.diagnostics).toContainEqual(expect.objectContaining({ code: 'LITI_HOOK_FAILED' }))
         await api.deleteEntry(entry.id, { expectedVersion: entry.version })
         expect(events.at(-1)).toMatchObject({
             type: 'delete',

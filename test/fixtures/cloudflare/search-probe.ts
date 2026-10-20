@@ -1,9 +1,9 @@
 import type { AnyD1Database } from 'drizzle-orm/d1'
-import { createD1Database } from '../../../packages/site-admin/src/adapters/database'
-import { defineSiteAdminConfig, file, text } from '../../../packages/site-admin/src/index'
-import { createSiteAdmin, handleManagementRequest } from '../../../packages/site-admin/src/server/index'
+import { createD1Database } from '../../../packages/void/src/database'
+import { defineLitiConfig, file, text } from '../../../packages/liti/src/index'
+import { createRuntime, handleManagementRequest } from '../../../packages/liti/src/server/index'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         posts: {
             fields: { slug: text(), attachment: file(), title: text({ required: true }) },
@@ -18,7 +18,7 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
     const path = new URL(request.url).pathname
     const database = createD1Database(binding, schema)
     if (path === '/search-large') {
-        const core = createSiteAdmin({ config, database, authorize: () => ({ id: 'probe', roles: ['admin'] }) })
+        const core = createRuntime({ config, database, authorize: () => ({ id: 'probe', roles: ['admin'] }) })
         const marker = 'A😀B%_[]C'
         const title = 'İ'.repeat(65_528) + marker + 'İ'.repeat(634_472)
         const entry = await core.createEntry('posts', { data: { title, slug: 'large-local-probe' } })
@@ -27,7 +27,7 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
         const counts: number[] = []
         for (const q of [marker, 'i\u0307'.repeat(100) + marker + 'i\u0307'.repeat(100), 'A😀B%_[]X', 'İ'.repeat(256)])
             counts.push((await storage.pageEntries({ models: ['posts'], q }, { limit: 1, offset: 0 })).total)
-        await database.atomic([{ sql: "DELETE FROM site_admin_meta WHERE key LIKE 'content_search:v1:%'" }])
+        await database.atomic([{ sql: "DELETE FROM liti_meta WHERE key LIKE 'content_search:v1:%'" }])
         counts.push((await storage.pageEntries({ models: ['posts'], q: marker }, { limit: 1, offset: 0 })).total)
         const rejected: string[] = []
         for (const q of ['a'.repeat(513), '😀'.repeat(513), 'İ'.repeat(257)]) {
@@ -45,7 +45,7 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
         const unchanged =
             before === JSON.stringify(await storage.revisions(entry.id)) &&
             (await core.getEntry(entry.id)).data.title === title
-        const sizes = await database.query('SELECT length(CAST(value AS BLOB)) AS bytes FROM site_admin_search')
+        const sizes = await database.query('SELECT length(CAST(value AS BLOB)) AS bytes FROM liti_search')
         await core.deleteEntry(entry.id, { expectedVersion: entry.version })
         return Response.json({ counts, unchanged, sizes, rejected, status: response.status })
     }
@@ -55,19 +55,19 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
         )
         await database.atomic([
             {
-                sql: "INSERT INTO site_admin_entries(id,model,default_locale,version,created_at,updated_at) SELECT json_extract(value,'$.id'),'posts','',1,'2026-10-09','2026-10-09' FROM json_each(?)",
+                sql: "INSERT INTO liti_entries(id,model,default_locale,version,created_at,updated_at) SELECT json_extract(value,'$.id'),'posts','',1,'2026-10-09','2026-10-09' FROM json_each(?)",
                 params: [candidates],
             },
             {
-                sql: "INSERT INTO site_admin_revisions(id,entry_id,created_at) SELECT json_extract(value,'$.id')||'-r',json_extract(value,'$.id'),'2026-10-09' FROM json_each(?)",
+                sql: "INSERT INTO liti_revisions(id,entry_id,created_at) SELECT json_extract(value,'$.id')||'-r',json_extract(value,'$.id'),'2026-10-09' FROM json_each(?)",
                 params: [candidates],
             },
             {
-                sql: "INSERT INTO site_admin_content_posts(revision_id,field_title) SELECT json_extract(value,'$.id')||'-r',json_extract(value,'$.title') FROM json_each(?)",
+                sql: "INSERT INTO liti_content_posts(revision_id,field_title) SELECT json_extract(value,'$.id')||'-r',json_extract(value,'$.title') FROM json_each(?)",
                 params: [candidates],
             },
             {
-                sql: "UPDATE site_admin_entries SET current_revision_id=id||'-r' WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?))",
+                sql: "UPDATE liti_entries SET current_revision_id=id||'-r' WHERE id IN (SELECT json_extract(value,'$.id') FROM json_each(?))",
                 params: [candidates],
             },
         ])
@@ -75,9 +75,9 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
     }
     if (path === '/search-cold/rebuild') return Response.json(await database.bind(config).rebuildSearch())
     if (path === '/search-cold/state') {
-        const heads = await database.query("SELECT * FROM site_admin_entries WHERE id LIKE 'cold-probe-%' ORDER BY id")
+        const heads = await database.query("SELECT * FROM liti_entries WHERE id LIKE 'cold-probe-%' ORDER BY id")
         const revisions = await database.query(
-            "SELECT r.*,c.* FROM site_admin_revisions r JOIN site_admin_content_posts c ON c.revision_id=r.id WHERE r.entry_id LIKE 'cold-probe-%' ORDER BY r.id",
+            "SELECT r.*,c.* FROM liti_revisions r JOIN liti_content_posts c ON c.revision_id=r.id WHERE r.entry_id LIKE 'cold-probe-%' ORDER BY r.id",
         )
         return Response.json({ heads, revisions })
     }
@@ -113,7 +113,7 @@ export async function searchProbe(request: Request, binding: AnyD1Database, sche
     })
     const freshDatabase = createD1Database(limited, schema)
     for (let index = 0; index < 10; index++) await freshDatabase.query('SELECT 1')
-    const fresh = createSiteAdmin({
+    const fresh = createRuntime({
         config,
         database: freshDatabase,
         authorize: () => ({ id: 'local-reader', roles: ['admin'] }),

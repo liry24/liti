@@ -1,9 +1,9 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
 import {
     array,
-    defineSiteAdminConfig,
+    defineLitiConfig,
     file,
     image,
     images,
@@ -11,13 +11,13 @@ import {
     object,
     text,
     url,
-    type InferSiteAdminFormModels,
-} from '../packages/site-admin/src'
-import { presentSiteAdminData, serializeSiteAdminData } from '../packages/site-admin/src/management-assets'
-import { useEntryForm } from '../packages/site-admin/src/form'
+    type InferLitiFormModels,
+} from '../packages/liti/src'
+import { presentLitiData, serializeLitiData } from '../packages/liti/src/management-assets'
+import { useEntryForm } from '../packages/vue/src/form'
 import { modelFixture } from './model-fixture'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         posts: {
             displayFields: { description: 'summary', title: 'title' },
@@ -41,8 +41,8 @@ const config = defineSiteAdminConfig({
         },
     },
 })
-const descriptor = createSiteAdminDescriptor(config).models.posts!
-type Data = InferSiteAdminFormModels<typeof config>['posts']
+const descriptor = createLitiDescriptor(config).models.posts!
+type Data = InferLitiFormModels<typeof config>['posts']
 describe('schema-aware management assets', () => {
     it('round-trips nested image/file/images/arrays, preserving metadata and ordinary URLs', () => {
         const raw = {
@@ -52,11 +52,11 @@ describe('schema-aware management assets', () => {
             gallery: ['one', { id: 'two', caption: 'Two' }],
             sections: [{ asset: { id: 'nested', alt: 'Nested' }, href: 'https://example.com' }],
         }
-        const presented = presentSiteAdminData<Data>(descriptor, raw, (id) => '/manage/' + encodeURIComponent(id))
+        const presented = presentLitiData<Data>(descriptor, raw, (id) => '/manage/' + encodeURIComponent(id))
         expect(presented.image?.url).toBe('/manage/cover')
         expect(presented.gallery?.[1]).toEqual({ id: 'two', caption: 'Two', url: '/manage/two' })
         expect(presented.sections?.[0]?.asset?.url).toBe('/manage/nested')
-        expect(serializeSiteAdminData(descriptor, presented)).toEqual({
+        expect(serializeLitiData(descriptor, presented)).toEqual({
             ...raw,
             image: { id: 'cover' },
             gallery: [{ id: 'one' }, { id: 'two', caption: 'Two' }],
@@ -116,7 +116,7 @@ it.each([
     editor.form.setFieldValue('sections', [{ asset: { id: 'existing' } }])
     expect(await editor.upload(path, new File(['x'], 'x.png'))).toBeUndefined()
     expect(request).not.toHaveBeenCalled()
-    expect(fixture.state.error.value?.data?.code).toBe('SITE_ADMIN_INVALID_INPUT')
+    expect(fixture.state.error.value?.data?.code).toBe('LITI_INVALID_INPUT')
     expect(editor.draft.snapshot().draft.sections).toEqual([{ asset: { id: 'existing' } }])
 })
 
@@ -139,7 +139,7 @@ it.each(['remove', 'move', 'replace'] as const)(
         reply.resolve(Response.json({ id: 'wrong-row' }))
         expect(await upload).toBeUndefined()
         expect(editor.draft.snapshot()).toEqual(unchanged)
-        expect(fixture.state.error.value?.data?.code).toBe('SITE_ADMIN_CONFLICT')
+        expect(fixture.state.error.value?.data?.code).toBe('LITI_CONFLICT')
         expect(editor.operation.value).toBeNull()
     },
 )

@@ -10,12 +10,15 @@ import * as Vue from 'vue'
 import type { MaybeRefOrGetter, Ref } from 'vue'
 
 import {
-    createSiteAdminClient,
-    createSiteAdminManagementClient,
-    SiteAdminClientError,
+    createPublicClient,
+    createLitiManagementClient,
+    LitiClientError,
     type PublicEntry,
-} from '../packages/site-admin/src/client'
-import { siteAdminNuxtClientTemplate } from '../packages/site-admin/src/nuxt/client-templates'
+} from '../packages/liti/src/client'
+import { normalizeLitiQuery } from '../packages/liti/src/query'
+import { projectQuery, queryTotal } from '../packages/vue/src/query'
+import { litiModelError } from '../packages/vue/src/model'
+import { litiNuxtClientTemplate } from '../packages/nuxt/src/nuxt/client-templates'
 
 type State<Data> = PromiseLike<unknown> & {
     data: Ref<Data>
@@ -73,7 +76,7 @@ it.each(['completed', 'during', 'transition'] as const)(
             })
             const document = {
                 data: {
-                    _siteAdmin: { id: slug, model: 'posts', slug, locale },
+                    _liti: { id: slug, model: 'posts', slug, locale },
                     title: key,
                     slug,
                     body: { nodes: [['p', {}, 'Body']], frontmatter: {}, meta: {} },
@@ -97,9 +100,11 @@ it.each(['completed', 'during', 'transition'] as const)(
             const nativeSource = nativeRuntimeSource(await readNuxtSource('composables/asyncData.js'), {
                 asyncData: true,
             })
-            const client = createSiteAdminClient({ origin, basePath: '/content' })
+            const client = createPublicClient({ origin, basePath: '/content' })
             const initial = await client.get('posts', 'ssr', { locale: 'ja' })
-            const key = 'site-admin:' + JSON.stringify([origin, '/content', 'entry', 'posts', 'ssr', 'ja'])
+            const key =
+                'liti:' +
+                JSON.stringify([origin, '/content', 'entry', 'posts', 'ssr', 'ja', { scope: '[null,null,null]' }])
             const app = {
                 _asyncData: Vue.shallowReactive({}),
                 _asyncDataPromises: {},
@@ -118,16 +123,16 @@ it.each(['completed', 'during', 'transition'] as const)(
                 `${nativeSource}; return { useAsyncData, clearNuxtData }`,
             )(...Object.values(environment)) as { useAsyncData: unknown; clearNuxtData: (key: string) => void }
             const generated = generatedRuntimeSource(
-                siteAdminNuxtClientTemplate({ basePath: '/content', managementBase: '/api/_admin', origin }),
+                litiNuxtClientTemplate({ basePath: '/content', managementBase: '/api/_admin', origin }),
                 { asyncData: true },
             )
             const initialize = new Function(
                 'useState',
                 'useRoute',
-                'siteAdminAsyncData',
-                'createSiteAdminClient',
-                'createSiteAdminManagementClient',
-                'SiteAdminClientError',
+                'litiAsyncData',
+                'createPublicClient',
+                'createLitiManagementClient',
+                'LitiClientError',
                 'computed',
                 'shallowRef',
                 'toValue',
@@ -136,15 +141,21 @@ it.each(['completed', 'during', 'transition'] as const)(
                 'onScopeDispose',
                 'queuePostFlushCb',
                 'clearNuxtData',
-                `${generated}; return { entry: (model, slug, options) => useContent(model, { ...options, id: slug }), list: useContent }`,
+                'normalizeLitiQuery',
+                'projectQuery',
+                'queryTotal',
+                'ref',
+                'useRequestURL',
+                'litiModelError',
+                `${generated}; return { entry: (model, slug, options) => useLitiQuery(model, { ...options, mode: 'one', id: slug }), list: useLitiQuery }`,
             ) as (...dependencies: unknown[]) => Helpers
             const helpers = initialize(
                 () => Vue.ref(null),
                 () => ({ path: '/' }),
                 nativeRuntime.useAsyncData,
-                createSiteAdminClient,
-                createSiteAdminManagementClient,
-                SiteAdminClientError,
+                createPublicClient,
+                createLitiManagementClient,
+                LitiClientError,
                 Vue.computed,
                 Vue.shallowRef,
                 Vue.toValue,
@@ -153,6 +164,12 @@ it.each(['completed', 'during', 'transition'] as const)(
                 Vue.onScopeDispose,
                 Vue.queuePostFlushCb,
                 nativeRuntime.clearNuxtData,
+                normalizeLitiQuery,
+                projectQuery,
+                queryTotal,
+                Vue.ref,
+                () => new URL(origin),
+                litiModelError,
             )
             const slug = Vue.ref('ssr')
             const locale = Vue.ref('ja')
@@ -221,7 +238,7 @@ it.each(['completed', 'during', 'transition'] as const)(
             await entry.refresh()
             expect(counts['fast:en']).toBe(2)
             entry.clear()
-            expect(entry.data.value).toBeUndefined()
+            expect(entry.data.value).toBeNull()
             expect(entry.status.value).toBe('idle')
             await entry.execute()
             expect(counts['fast:en']).toBe(3)

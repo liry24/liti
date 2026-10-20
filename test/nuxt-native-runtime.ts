@@ -34,22 +34,19 @@ export const nativeRuntimeSource = (source: string, { serverRuntime = false, asy
 }
 
 export const generatedRuntimeSource = (source: string, { serverFetch = false, asyncData = false } = {}) => {
-    if (source.includes('createSiteAdminComposables(')) {
-        const runtime = readFileSync(
-            new URL('../packages/site-admin/src/runtime/composables.ts', import.meta.url),
-            'utf8',
-        )
+    if (source.includes('createLitiComposables(')) {
+        const runtime = readFileSync(new URL('../packages/nuxt/src/runtime/composables.ts', import.meta.url), 'utf8')
         source =
             'function defineUseFetchAddon(addon) { return addon }\n' +
             runtime +
             '\n' +
             source.replace(
-                'createUseFetch(siteAdminAiFetchOptions)',
-                "(typeof createUseFetch === 'function' ? createUseFetch(siteAdminAiFetchOptions) : undefined)",
+                'createUseFetch(litiAiFetchOptions)',
+                "(typeof createUseFetch === 'function' ? createUseFetch(litiAiFetchOptions) : undefined)",
             )
     }
     const script = stripRuntimeImports(stripTypeScriptTypes(source))
-    return (asyncData ? script.replace(/^export const siteAdminAsyncData = createUseAsyncData\(\)\s*$/gmu, '') : script)
+    return (asyncData ? script.replace(/^export const litiAsyncData = createUseAsyncData\(\)\s*$/gmu, '') : script)
         .replace(/^export /gmu, '')
         .replaceAll('import.meta.server', String(serverFetch))
 }

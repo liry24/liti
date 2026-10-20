@@ -5,19 +5,19 @@ import { stopProcess as stop } from './stop-process.ts'
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join, resolve as resolvePath } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 
-import { verifyStandalone } from './standalone-consumer.mjs'
 import { verifyPeerDependencies } from './owned-dependency-consumer.mjs'
 import { verifyPublicDataConsumer } from './public-data-consumer.mjs'
 import { assertAiOmitted } from './assert-ai-omitted.mjs'
-import { consumerDependencies } from './consumer-dependencies.mjs'
+import { consumerDependencies, stableVue } from './consumer-dependencies.mjs'
+import { archiveDependencies, archiveOverrides, consumerPackages } from './consumer-packages.mjs'
 
-const workspace = fileURLToPath(new URL('../', import.meta.url))
-const packageManager = process.env.SITE_ADMIN_PACKAGE_MANAGER || 'bun'
-if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown SITE_ADMIN_PACKAGE_MANAGER.')
-const integrations = !process.env.SITE_ADMIN_PACKAGE_MANAGER || packageManager === 'pnpm'
+import { addDependency, installDependencies } from 'nypm'
+const packageManager = process.env.LITI_PACKAGE_MANAGER || 'bun'
+if (!['bun', 'npm', 'pnpm'].includes(packageManager)) throw new Error('Unknown LITI_PACKAGE_MANAGER.')
+const integrations = !process.env.LITI_PACKAGE_MANAGER || packageManager === 'pnpm'
 const ogImage = JSON.parse(
     await readFile(new URL('../node_modules/nuxt-og-image/package.json', import.meta.url), 'utf8'),
 )
@@ -27,7 +27,7 @@ const renderers = Object.fromEntries(
         return [name, ogImage.peerDependencies[name]]
     }),
 )
-const temporary = await mkdtemp(join(tmpdir(), 'site-admin-consumers-'))
+const temporary = await mkdtemp(join(tmpdir(), 'liti-consumers-'))
 const run = (command, args, cwd = temporary, env = process.env) => {
     console.log(`Consumer: ${command} ${args[0] ?? ''} (${cwd})`)
     const result = spawnSync(command, args, {
@@ -41,38 +41,18 @@ const run = (command, args, cwd = temporary, env = process.env) => {
     return result.stdout.trim()
 }
 const install = async (cwd = temporary, production = false) => {
-    if (packageManager === 'npm') {
-        // The fixture tests prereleases outside upstream stable peer ranges. Nitro emits a new manifest.
-        const path = join(cwd, 'package.json')
-        const manifest = JSON.parse(await readFile(path, 'utf8'))
-        manifest.overrides = Object.fromEntries(
-            ['vue', 'drizzle-orm'].filter((name) => manifest.dependencies?.[name]).map((name) => [name, `$${name}`]),
-        )
-        // npm otherwise selects Prisma 8 RC for Drizzle's wildcard optional peer, outside Better Auth's range.
-        manifest.overrides.prisma = '^7.0.0'
-        await writeFile(path, JSON.stringify(manifest))
-        // npm cannot reify Nitro's traced links; install the generated production manifest into a clean tree.
-        if (production) await rm(join(cwd, 'node_modules'), { force: true, recursive: true })
-    }
-    const result = run(
-        packageManager,
-        [
-            'install',
-            ...(production ? [packageManager === 'npm' ? '--omit=dev' : '--production'] : []),
-            ...(packageManager === 'pnpm' ? ['--no-frozen-lockfile'] : []),
-        ],
-        cwd,
-    )
-    return result
+    // npm cannot reify Nitro's traced links; its production manifest contains no development dependencies.
+    if (packageManager === 'npm' && production) await rm(join(cwd, 'node_modules'), { force: true, recursive: true })
+    await installDependencies({ cwd, packageManager, silent: true, corepack: false })
 }
-const exec = (args, cwd = temporary) =>
-    run(
-        packageManager,
-        packageManager === 'bun'
-            ? ['x', '--no-install', ...args]
-            : ['exec', ...(packageManager === 'npm' ? ['--'] : []), ...args],
-        cwd,
-    )
+const exec = ([name, ...args], cwd = temporary) => {
+    const local = createRequire(join(temporary, 'package.json'))
+    const packageName = name === 'tsc' ? 'typescript' : name
+    const path = local.resolve(`${packageName}/package.json`)
+    const manifest = local(path)
+    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin[name]
+    return run(process.execPath, [join(dirname(path), bin), ...args], cwd)
+}
 const reservePort = () =>
     new Promise((resolve, reject) => {
         const server = createServer()
@@ -129,21 +109,10 @@ const filesUnder = async (directory) => {
 }
 
 try {
-    let tarball = process.env.SITE_ADMIN_TARBALL ? resolvePath(process.env.SITE_ADMIN_TARBALL) : undefined
-    if (!tarball) {
-        run(
-            'bun',
-            ['pm', 'pack', '--destination', temporary, '--ignore-scripts'],
-            join(workspace, 'packages/site-admin'),
-        )
-        const tarballName = (await readdir(temporary)).find((name) => name.endsWith('.tgz'))
-        if (!tarballName) throw new Error('Package tarball was not created.')
-        tarball = join(temporary, tarballName)
-    }
-    if (!(await stat(tarball)).isFile()) throw new Error('SITE_ADMIN_TARBALL must be a package file.')
+    const packages = await consumerPackages(temporary, run)
+    const tarball = packages.liti
     console.log(`Testing ${tarball} with ${packageManager}`)
     if (packageManager === 'npm') {
-        await verifyStandalone(tarball)
         await verifyPublicDataConsumer(tarball)
     }
     await verifyPeerDependencies(tarball, packageManager)
@@ -151,11 +120,11 @@ try {
     await writeFile(
         join(temporary, 'package.json'),
         JSON.stringify({
+            ...archiveOverrides(packages, packageManager),
             dependencies: {
-                '@liria24/site-admin': `file:${tarball.replaceAll('\\', '/')}`,
+                ...archiveDependencies(packages, ['liti', '@litijs/sqlite', '@litijs/void']),
                 ...consumerDependencies([
                     'better-auth',
-                    'ai',
                     'comark',
                     'nuxt-files-sdk',
                     'files-sdk',
@@ -174,34 +143,31 @@ try {
                     'nuxt',
                     'nitropack',
                     'typescript',
-                    'vue',
+                    '@types/node',
                 ]),
+                // Vite 8's optional peer must not resolve to Drizzle Kit's older esbuild.
+                esbuild: '^0.28.0',
+                vue: stableVue,
                 ...(!integrations ? renderers : {}),
-                // Select Vite's optional compiler at the root; Drizzle Kit keeps its older compiler nested.
-                ...(packageManager === 'npm' ? { esbuild: '^0.28.2' } : {}),
             },
             private: true,
-            overrides: { vue: consumerDependencies(['vue']).vue },
-            pnpm: { overrides: { vue: consumerDependencies(['vue']).vue } },
             type: 'module',
         }),
     )
     await writeFile(
         join(temporary, 'core.ts'),
-        `import { defineSiteAdminConfig, image, text, type InferSiteAdminPublicModels } from '@liria24/site-admin'
-import { createSiteAdminClient, managementAssetUrl, type PublicAsset } from '@liria24/site-admin/internal/client'
-import { createSiteAdmin } from '@liria24/site-admin/internal/server'
-const config = defineSiteAdminConfig({ models: { posts: { fields: { cover: image(), title: text({ required: true }) } } } })
-const data = { title: 'Public', cover: { id: 'asset', url: '/api/content/_assets/asset' } } satisfies InferSiteAdminPublicModels<typeof config>['posts']['data']
-const cover: PublicAsset = data.cover
-if (managementAssetUrl(cover.id, '/manage/') !== '/manage/assets/asset/content') throw new Error('management asset helper invalid')
-if (!config.models.posts || typeof createSiteAdmin !== 'function' || typeof createSiteAdminClient !== 'function') throw new Error('core exports missing')
+        `import { defineLitiConfig, image, text, type InferLitiPublicModels } from 'liti'
+import { createLitiClient } from 'liti/client'
+import { createLiti } from 'liti/server'
+const config = defineLitiConfig({ models: { posts: { fields: { cover: image(), title: text({ required: true }) } } } })
+const data = { title: 'Public', cover: { id: 'asset', url: '/api/content/_assets/asset' } } satisfies InferLitiPublicModels<typeof config>['posts']['data']
+if (!data.cover || !config.models.posts || typeof createLiti !== 'function' || typeof createLitiClient !== 'function') throw new Error('core exports missing')
 `,
     )
     await writeFile(
         join(temporary, 'form.ts'),
-        `import { useEntryForm } from '@liria24/site-admin/internal/form'
-if (typeof useEntryForm !== 'function') throw new Error('form export missing')
+        `import { useForm } from 'liti/vue'
+if (typeof useForm !== 'function') throw new Error('form export missing')
 `,
     )
     await writeFile(
@@ -211,7 +177,7 @@ if (typeof useEntryForm !== 'function') throw new Error('form export missing')
                 module: 'Preserve',
                 moduleResolution: 'Bundler',
                 noEmit: true,
-                skipLibCheck: true,
+                skipLibCheck: false,
                 strict: true,
                 target: 'ES2024',
             },
@@ -223,17 +189,19 @@ if (typeof useEntryForm !== 'function') throw new Error('form export missing')
         join(temporary, 'server/nuxt.config.ts'),
         `import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
-  modules: ['@liria24/site-admin/nuxt'],
+  modules: ['liti/nuxt'],
   ...{ files: false },
+  liti: { auth: true, i18n: true, llms: true, ogImage: true, robots: true, schemaOrg: true, seo: true, sitemap: true },
   i18n: { locales: ['en'], defaultLocale: 'en' },
   llms: { domain: 'http://localhost', title: 'Packed' },
 })
 `,
     )
     await writeFile(
-        join(temporary, 'server/site-admin.config.ts'),
-        `import { defineSiteAdminConfig, text } from '@liria24/site-admin'
-export default defineSiteAdminConfig({ authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
+        join(temporary, 'server/liti.config.ts'),
+        `import { defineLitiConfig, text } from 'liti'
+import { voidAdapter } from '@litijs/void'
+export default defineLitiConfig({ adapter: voidAdapter(), authorization: { roles: { user: {} } }, models: { posts: { fields: { title: text() } } } })
 `,
     )
     await mkdir(join(temporary, 'server/app/components/OgImage'), { recursive: true })
@@ -250,12 +218,12 @@ export default defineSiteAdminConfig({ authorization: { roles: { user: {} } }, m
     await writeFile(
         join(temporary, 'remote/nuxt.config.ts'),
         `import { defineNuxtConfig } from 'nuxt/config'
-export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ files: false }, siteAdmin: { ${disabled}, client: { origin: ${JSON.stringify(remoteOrigin)} }, server: { enabled: false } } })
+export default defineNuxtConfig({ modules: ['liti/nuxt'], ...{ files: false }, liti: { ${disabled}, client: { origin: ${JSON.stringify(remoteOrigin)} }, server: { enabled: false } } })
 `,
     )
     await writeFile(
         join(temporary, 'remote/app.vue'),
-        `<script setup>const route = useRoute(); const { data: entry } = await useContent('posts', { path: () => route.path })</script><template><div>{{ entry?.data?.title || 'remote empty' }}</div></template>`,
+        `<script setup>const route = useRoute(); const { data: entry } = await useLitiQuery('posts', { mode: 'one', path: () => route.path })</script><template><div>{{ entry?.data?.title || 'remote empty' }}</div></template>`,
     )
 
     for (const name of ['server', 'remote'])
@@ -265,7 +233,7 @@ export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ fi
         )
     await writeFile(
         join(temporary, 'server/void.config.ts'),
-        "export default { inference: { bindings: { db: true } }, cloudflare: { name: 'packed-site-admin', compatibility_flags: ['nodejs_compat'] } }",
+        "export default { inference: { bindings: { db: true } }, cloudflare: { name: 'packed-liti', compatibility_flags: ['nodejs_compat'] } }",
     )
     await install()
     exec(['tsc', '--noEmit'])
@@ -273,7 +241,7 @@ export default defineNuxtConfig({ modules: ['@liria24/site-admin/nuxt'], ...{ fi
     run(process.execPath, [
         '--input-type=module',
         '-e',
-        `import { readFileSync } from 'node:fs'; const meta = JSON.parse(readFileSync(new URL(import.meta.resolve('@liria24/site-admin/module.json')))); const pkg = JSON.parse(readFileSync(new URL(import.meta.resolve('@liria24/site-admin/package.json')))); if (meta.name !== pkg.name || meta.configKey !== 'siteAdmin' || meta.version !== pkg.version) throw new Error('Invalid module metadata')`,
+        `import { readFileSync } from 'node:fs'; const meta = JSON.parse(readFileSync(new URL(import.meta.resolve('liti/module.json')))); const pkg = JSON.parse(readFileSync(new URL(import.meta.resolve('liti/package.json')))); if (meta.name !== pkg.name || meta.configKey !== 'liti' || meta.version !== pkg.version) throw new Error('Invalid module metadata')`,
     ])
     run(process.execPath, [
         '--input-type=module',
@@ -285,13 +253,13 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === 'ai' || specifier.startsWith('ai/') || specifier.startsWith('@ai-sdk/') || specifier.startsWith('workers-ai-provider')) throw new Error('Core eagerly imported AI: ' + specifier)
   return next(specifier, context)
 } })
-await import('@liria24/site-admin')
-await import('@liria24/site-admin/internal/client')
-await import('@liria24/site-admin/internal/server')
-await import('@liria24/site-admin/internal/adapter')
+await import('liti')
+await import('liti/client')
+await import('liti/server')
+await import('liti/adapter')
 for (const module of ['assets', 'content', 'document', 'plugins']) {
   try {
-    import.meta.resolve('@liria24/site-admin/markdown/' + module)
+    import.meta.resolve('liti/markdown/' + module)
     throw new Error('Internal Markdown module became a public export: ' + module)
   } catch (error) {
     if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error
@@ -309,40 +277,29 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === 'comark' || specifier.startsWith('comark/') || specifier.startsWith('markdown-exit') || specifier.startsWith('mdurl') || specifier.startsWith('linkify-it')) throw new Error('Form imported Markdown parser: ' + specifier)
   return next(specifier, context)
 } })
-await import('@liria24/site-admin/internal/form')
+await import('liti/vue')
 `,
     ])
-    exec(['site-admin', 'generate', '--config', 'server/site-admin.config.ts', '--out', 'server/db/schema.ts'])
+    exec(['liti', 'generate', '--cwd', 'server', '--schema-only'])
+    await mkdir(join(temporary, 'server/server'), { recursive: true })
     await writeFile(
-        join(temporary, 'server/auth.config.ts'),
+        join(temporary, 'server/server/auth.config.ts'),
         `import { defineServerAuth } from '@nuxtjs/better-auth/config'
 export default defineServerAuth({
   emailAndPassword: { enabled: true },
 })
 `,
     )
-    exec([
-        'site-admin',
-        'generate',
-        '--config',
-        'server/site-admin.config.ts',
-        '--out',
-        'server/db/schema.ts',
-        '--auth',
-        'server/auth.config.ts',
-    ])
-    await mkdir(join(temporary, 'server/server'), { recursive: true })
-    await writeFile(join(temporary, 'server/server/auth.config.ts'), `export { default } from '../auth.config'`)
-    run(
-        process.execPath,
-        [join(temporary, 'node_modules/void/dist/cli/cli.mjs'), 'db', 'generate'],
-        join(temporary, 'server'),
+    exec(['liti', 'generate', '--cwd', 'server'])
+    const migrationFiles = (await readdir(join(temporary, 'server/db/migrations'))).filter((name) =>
+        name.endsWith('.sql'),
     )
+    if (migrationFiles.length !== 1) throw new Error('Void must generate one baseline migration from the packed schema')
     await mkdir(join(temporary, 'server/.data'), { recursive: true })
     await writeFile(
         join(temporary, 'server/.data/wrangler.json'),
         JSON.stringify({
-            name: 'packed-site-admin',
+            name: 'packed-liti',
             main: '../.output/server/index.mjs',
             compatibility_date: '2026-10-15',
             compatibility_flags: ['nodejs_compat'],
@@ -354,7 +311,10 @@ export default defineServerAuth({
                     migrations_dir: '../db/migrations',
                 },
             ],
-            vars: { NUXT_BETTER_AUTH_SECRET: 'packed-consumer-test-secret-000000000000000' },
+            vars: {
+                NUXT_BETTER_AUTH_SECRET: 'packed-consumer-test-secret-000000000000000',
+                NUXT_APP_SECRET: 'packed-consumer-test-app-secret-000000000000000',
+            },
         }),
     )
     run(
@@ -381,7 +341,7 @@ export default defineServerAuth({
         join(temporary, 'server/server/types.ts'),
         `import { useServerHooks } from 'nuxt/server'
 export default () => {
-  useServerHooks().hook('site-admin:authorize', (context) => {
+  useServerHooks().hook('liti:authorize', (context) => {
     const request: Request = context.event.req
     context.event.res.headers.set('x-native-probe', '1')
     // @ts-expect-error Native events do not expose Node.
@@ -390,12 +350,22 @@ export default () => {
     context.request
     void request
   })
-  // @ts-expect-error Unknown Site Admin hook.
-  useServerHooks().hook('site-admin:missing', () => {})
+  // @ts-expect-error Unknown liti hook.
+  useServerHooks().hook('liti:missing', () => {})
 }
-const admin: ReturnType<typeof import('@liria24/site-admin/server').useAdmin> = useAdmin()
+const admin: ReturnType<typeof import('liti/nuxt/server').useAdmin> = useAdmin()
 void admin
 `,
+    )
+    await mkdir(join(temporary, 'server/server/api'), { recursive: true })
+    await writeFile(
+        join(temporary, 'server/server/api/__runtime.get.ts'),
+        `import { defineEventHandler } from 'nuxt/server'
+import { useLitiRuntime } from 'liti/internal/nuxt/server'
+export default defineEventHandler(async (event) => {
+  try { const runtime = useLitiRuntime(); await runtime.getLiti(event); return { ready: true } }
+  catch (error) { return { message: String(error), stack: error instanceof Error ? error.stack : undefined } }
+})`,
     )
     await writeFile(
         join(temporary, 'server/app/types.ts'),
@@ -406,10 +376,10 @@ const impersonatedBy: NonNullable<typeof nativeSession.session.value>['impersona
 const invalidRole: NonNullable<typeof nativeSession.user.value>['role'] = 1
 // @ts-expect-error Native session inference must retain its field type.
 const invalidImpersonatedBy: NonNullable<typeof nativeSession.session.value>['impersonatedBy'] = 1
-const client = useAdminClient()
+const { data: models } = useLitiModels()
 const route = useRoute()
 // @ts-expect-error No such public client method.
-client.missing()
+models.value.missing()
 void route
 void role
 void impersonatedBy
@@ -424,7 +394,7 @@ void invalidImpersonatedBy
                 [
                     '--input-type=module',
                     '-e',
-                    `import { loadNuxt } from 'nuxt/kit'; const nuxt = await loadNuxt({ cwd: '.', dev: ${dev}, ready: true }); try { if (!nuxt.options.alias['#auth/server']?.endsWith('site-admin/better-auth-server-config.ts')) throw new Error('Native module ordering lost the Site Admin auth wrapper'); } finally { await nuxt.close() }`,
+                    `import { loadNuxt } from 'nuxt/kit'; const nuxt = await loadNuxt({ cwd: '.', dev: ${dev}, ready: true }); try { if (!nuxt.options.alias['#auth/server']?.endsWith('liti/better-auth-server-config.ts')) throw new Error('Native module ordering lost the liti auth wrapper'); } finally { await nuxt.close() }`,
                 ],
                 join(temporary, 'server'),
                 {
@@ -454,22 +424,25 @@ void invalidImpersonatedBy
         if ((await readFile(join(temporary, 'package.json'), 'utf8')) !== manifestBefore)
             throw new Error('Build mutated dependencies.')
         // Noninteractive builds require application-owned renderer dependencies.
-        const consumer = JSON.parse(await readFile(join(temporary, 'package.json'), 'utf8'))
-        Object.assign(consumer.dependencies, renderers)
-        await writeFile(join(temporary, 'package.json'), JSON.stringify(consumer))
-        await install()
+        await addDependency(
+            Object.entries(renderers).map(([name, version]) => `${name}@${version}`),
+            {
+                cwd: temporary,
+                packageManager,
+                corepack: false,
+                silent: true,
+            },
+        )
         setupNuxt(true)
         setupNuxt(false)
         const nativeConfigPath = join(temporary, 'server/nuxt.config.ts')
         const nativeConfig = await readFile(nativeConfigPath, 'utf8')
-        for (const modules of [
-            "['@liria24/site-admin/nuxt', '@nuxtjs/better-auth']",
-            "['@nuxtjs/better-auth', '@liria24/site-admin/nuxt']",
-        ]) {
-            await writeFile(nativeConfigPath, nativeConfig.replace("['@liria24/site-admin/nuxt']", modules))
+        for (const modules of ["['liti/nuxt', '@nuxtjs/better-auth']", "['@nuxtjs/better-auth', 'liti/nuxt']"]) {
+            await writeFile(nativeConfigPath, nativeConfig.replace("['liti/nuxt']", modules))
             setupNuxt(false)
         }
         await writeFile(nativeConfigPath, nativeConfig)
+        const consumer = JSON.parse(await readFile(join(temporary, 'package.json'), 'utf8'))
         if (!consumer.dependencies['nuxt-og-image'])
             throw new Error('Consumer must install its enabled OG module peer.')
         const takumiPath = join(temporary, 'server/app/components/OgImage/Default.takumi.vue')
@@ -494,7 +467,7 @@ void invalidImpersonatedBy
         await Promise.all(serverFiles.map((file) => readFile(file).catch(() => Buffer.alloc(0))))
     ).join('\n')
     if (!serverBundle.includes('management-handler')) throw new Error('Default auth integration was not bundled.')
-    for (const forbidden of ['devframe', '@nuxt/devtools-kit', '__site-admin-devtools']) {
+    for (const forbidden of ['devframe', '@nuxt/devtools-kit', '__liti-devtools']) {
         if (serverBundle.includes(forbidden))
             throw new Error(`Development-only code leaked into production server: ${forbidden}`)
     }
@@ -514,7 +487,7 @@ void invalidImpersonatedBy
         const body = await response.text()
         if (!response.ok || body !== '[]') {
             throw new Error(
-                `Packed server runtime probe failed (${response.status}): ${body}\n${local.output.join('')}`,
+                `Packed server runtime probe failed (${response.status}): ${body}\n${await fetch(`${local.origin}/api/__runtime`).then((result) => result.text())}\n${local.output.join('')}`,
             )
         }
     } finally {
@@ -537,7 +510,7 @@ void invalidImpersonatedBy
             'drizzle-kit',
             'nuxt-og-image',
             'nuxt-schema-org',
-            'site-admin.ai',
+            'liti.ai',
         ]) {
             const leaked = remoteContents.filter(([, content]) => content.includes(forbidden)).map(([file]) => file)
             if (leaked.length > 0) {
@@ -575,5 +548,6 @@ void invalidImpersonatedBy
         }
     }
 } finally {
-    await rm(temporary, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
+    if (!process.env.LITI_KEEP_CONSUMER)
+        await rm(temporary, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
 }

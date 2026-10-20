@@ -1,0 +1,360 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { MarkdownDocument, MergePluginMeta, Node, ParserOptions } from 'comark'
+import type summary from 'comark/plugins/summary'
+import type { LitiTaskOptions } from './tasks'
+import type { Localized, ModelMeta, PresentationContext } from './presentation'
+import type { LitiAdapter, LitiPlugin, PluginActions, PluginModels } from './plugins'
+
+import type {
+    AnyField,
+    ArrayField,
+    FieldRecord,
+    InferField,
+    InferFields,
+    ObjectField,
+    PublicAsset,
+    RelationField,
+} from './fields'
+import type { PublicEntry, PublicEntrySeo, PublicEntrySeoValue } from './server/types'
+import type { LitiRouteRules } from './seo'
+import type { LitiAsset } from './management-assets'
+import { LitiError } from './errors'
+import type { ModelPreparation } from './preparation'
+
+export type LitiSeoOptions = Localized<PublicEntrySeo>
+
+/** Resolvers run synchronously on the server's public projection, before Markdown parsing. */
+export type ModelSeoOptions<Fields extends FieldRecord = FieldRecord> =
+    | PublicEntrySeo
+    | {
+          resolve(
+              entry: PublicEntry<
+                  string extends keyof Fields
+                      ? Record<string, unknown>
+                      : PublicFields<Fields, Record<string, ModelDefinition>, false>
+              >,
+              context: PresentationContext,
+          ): PublicEntrySeo
+      }['resolve']
+
+export interface ModelRouteOptions {
+    /** Parameters reference model fields; `:id` references entry identity. Defaults to `/<model>/:id`. */
+    path?: string
+    /** Redirect to the URL stored in this field instead of serving a page. */
+    redirect?: string
+    /** Exclude this route from llms.txt while keeping it publicly routable. */
+    llms?: boolean
+    /** Exclude this route from the sitemap while keeping it publicly routable. */
+    sitemap?: boolean
+    status?: 301 | 302 | 307 | 308
+}
+
+export interface ModelDisplayFields {
+    description?: string
+    image?: string
+    title?: string
+}
+
+export interface ModelOptions<Fields extends FieldRecord = FieldRecord> {
+    fields: Fields
+    meta?: Localized<Partial<ModelMeta>>
+    displayFields?: ModelDisplayFields
+    /** `false` makes saves immediately public. */
+    publishing?: boolean
+    scheduling?: boolean
+    revisions?: boolean
+    /** Public projection is independent from whether the model owns routes. */
+    public?: boolean
+    route?: boolean | ModelRouteOptions | string
+    seo?: ModelSeoOptions<Fields>
+    sortable?: boolean
+    /** Unique non-null scalar tuples among current entries, checked atomically at commit. */
+    unique?: readonly (readonly Extract<keyof Fields, string>[])[]
+    validate?: StandardSchemaV1<unknown, InferFields<Fields>>
+    /** Runs once per locale while preparing a new revision; never during a public read. */
+    prepare?: ModelPreparation<InferFields<Fields>>
+    /** Only a publish/schedule request with a draft may generate new publication values. */
+    preparePublication?: ModelPreparation<InferFields<Fields>>
+    /** Checks a publication candidate without changing its immutable values. */
+    validatePublication?: ModelPreparation<InferFields<Fields>>
+    /** Pure, JSON-only metadata shared by every public projection. */
+    publicMeta?: (entry: PublicEntry) => Record<string, PublicEntrySeoValue>
+    /** Serializable options for the selected form extensions. */
+    editor?: Record<string, PublicEntrySeoValue>
+}
+
+export type ModelDefinition<Fields extends FieldRecord = FieldRecord> = ModelOptions<Fields>
+
+export type InferLitiMeta<Config extends { models: Record<string, unknown> }> = {
+    [Name in keyof Config['models']]: ModelMeta &
+        (Config['models'][Name] extends { meta: infer Meta }
+            ? Meta extends (...args: never[]) => infer Value
+                ? Value
+                : Meta
+            : {})
+}
+
+export interface LitiLifecycleEvent {
+    version?: number
+    actorId?: string
+    data?: Record<string, unknown>
+    entryId: string
+    model: string
+    revisionId?: string
+    type: 'create' | 'delete' | 'publish' | 'restore' | 'schedule' | 'cancelSchedule' | 'sort' | 'unpublish' | 'update'
+}
+
+export type LitiModelAction =
+    | 'create'
+    | 'delete'
+    | 'publish'
+    | 'prune'
+    | 'readDraft'
+    | 'restore'
+    | 'schedule'
+    | 'sort'
+    | 'update'
+
+export type LitiAssetAction = 'delete' | 'gc' | 'read' | 'upload'
+export type LitiSystemAction = 'diagnostics' | 'publishDue' | 'rebuildSearch'
+
+export interface LitiRoleDefinition {
+    /** Names of permitted registered actions; '*' permits every configured action. */
+    actions?: readonly string[]
+    assets?: readonly LitiAssetAction[]
+    models?: Readonly<Record<string, readonly LitiModelAction[]>>
+    system?: readonly LitiSystemAction[]
+}
+
+export interface LitiAuthorization {
+    roles: Readonly<Record<string, LitiRoleDefinition>>
+}
+
+export interface LitiConfig<Models extends Record<string, ModelDefinition> = Record<string, ModelDefinition>> {
+    adapter?: LitiAdapter
+    plugins?: readonly LitiPlugin[]
+    assets?: {
+        maxUploadSize?: number
+        operationLeaseSeconds?: number
+        cleanup?: { minimumAge?: number }
+        /** Keep originals in private `draft` storage. */
+        separateDrafts?: boolean
+        /** Logical storage name, defaulting to the selected provider's default storage. */
+        storage?: string
+    }
+    authorization?: LitiAuthorization
+    markdown?: {
+        plugins?: ParserOptions['plugins']
+        summary?: {
+            delimiter?: string
+            enabled?: boolean
+            inlineTags?: readonly string[]
+        }
+    }
+    modelDefaults?: {
+        historicalRedirectStatus?: 301 | 302 | 307 | 308
+    }
+    models: Models
+    /** Published route options matched against actual localized paths, from broad to specific. */
+    routeRules?: LitiRouteRules
+    /** Shared page defaults. Model resolvers are server-only and are never exposed as configuration. */
+    seo?: LitiSeoOptions
+    /** Explicit opt-in: true permits manual invocation; a cron string also schedules the task. */
+    tasks?: LitiTaskOptions
+}
+
+type OpaqueConfigPath =
+    | readonly ['adapter', PropertyKey]
+    | readonly ['seo', 'image']
+    | readonly ['models', PropertyKey, 'seo', 'image']
+    | readonly ['routeRules', PropertyKey, 'seo', 'image']
+
+type EnvironmentOverride<Value, Path extends readonly PropertyKey[] = []> = Path extends OpaqueConfigPath
+    ? Value
+    : Value extends (...args: never[]) => unknown
+      ? Value
+      : Value extends readonly unknown[]
+        ? Value
+        : Value extends object
+          ? { [Key in keyof Value]?: EnvironmentOverride<Value[Key], [...Path, Key]> }
+          : Value
+
+export type LitiConfigInput<Models extends Record<string, ModelDefinition> = Record<string, ModelDefinition>> =
+    LitiConfig<Models> & {
+        $development?: EnvironmentOverride<LitiConfig<Models>>
+        $production?: EnvironmentOverride<LitiConfig<Models>>
+        $test?: EnvironmentOverride<LitiConfig<Models>>
+        $prerender?: EnvironmentOverride<LitiConfig<Models>>
+        $env?: Record<string, EnvironmentOverride<LitiConfig<Models>>>
+    }
+
+type ConfigProperty<Value, Key extends PropertyKey> = Key extends keyof Value ? Value[Key] : unknown
+
+type ConfigModels<Fields extends Record<string, FieldRecord>> = {
+    [Name in keyof Fields]: ModelOptions<Fields[Name]>
+}
+
+export const defineLitiConfig = <const Fields extends Record<string, FieldRecord>, const Config extends object>(
+    config: Config &
+        Omit<LitiConfigInput, 'models'> & {
+            models?: ConfigModels<Fields>
+        },
+): Config & { models: Config extends { models: unknown } ? ConfigModels<Fields> : {} } => {
+    if (Object.hasOwn(config.authorization?.roles ?? {}, 'admin'))
+        throw new LitiError('LITI_INVALID_INPUT', 'The built-in admin role cannot be overridden.')
+    return {
+        ...config,
+        models: config.models ?? {},
+    } as Config & {
+        models: Config extends { models: unknown } ? ConfigModels<Fields> : {}
+    }
+}
+
+type MergeEnvironment<Base, Override, Path extends readonly PropertyKey[] = []> = Path extends OpaqueConfigPath
+    ? Override
+    : Override extends (...args: never[]) => unknown
+      ? Override
+      : Override extends readonly unknown[]
+        ? Override
+        : Override extends object
+          ? Base extends object
+              ? Omit<Base, keyof Override> & {
+                    [Key in keyof Override]: Key extends keyof Base
+                        ? MergeEnvironment<Base[Key], Override[Key], [...Path, Key]>
+                        : Override[Key]
+                }
+              : Override
+          : Override
+
+type EnvironmentBranch<Config, Name extends string> =
+    ConfigProperty<Config, `$${Name}`> extends infer Branch ? (Branch extends object ? Branch : {}) : {}
+type NamedEnvironmentBranch<Config, Name extends string> =
+    ConfigProperty<Config, '$env'> extends infer Environments
+        ? ConfigProperty<NonNullable<Environments>, Name> extends infer Branch
+            ? Branch extends object
+                ? Branch
+                : {}
+            : {}
+        : {}
+type ResolveEnvironments<Config, Environments extends readonly string[]> = Environments extends readonly [
+    infer Name extends string,
+    ...infer Rest extends readonly string[],
+]
+    ? ResolveEnvironments<
+          MergeEnvironment<
+              MergeEnvironment<Config, EnvironmentBranch<Config, Name>>,
+              NamedEnvironmentBranch<Config, Name>
+          >,
+          Rest
+      >
+    : { [Key in keyof Config as Key extends `$${string}` ? never : Key]: Config[Key] }
+
+/** Model/client/schema types follow the environment selected by the Nuxt build. */
+export type ResolvedLitiConfig<Config extends LitiConfigInput, Environments extends readonly string[]> =
+    ResolveEnvironments<Config, Environments> extends infer Resolved extends LitiConfig
+        ? Resolved & {
+              models: Resolved['models'] & PluginModels<Resolved>
+              actions: PluginActions<Resolved>
+          }
+        : never
+
+export type InferModelData<Model extends ModelDefinition> = InferFields<Model['fields']>
+
+export type InferLitiModels<Config extends LitiConfig> = {
+    [Name in keyof Config['models']]: InferModelData<Config['models'][Name]>
+}
+
+type FormField<F extends AnyField> = F extends { kind: 'image' | 'file' }
+    ? LitiAsset
+    : F extends { kind: 'images' }
+      ? LitiAsset[]
+      : F extends { kind: 'object'; fields: FieldRecord }
+        ? FormFields<F['fields']>
+        : F extends { kind: 'array'; item: AnyField }
+          ? Array<FormField<F['item']> | (F['item'] extends { required: true } ? never : null)>
+          : InferField<F>
+
+type DeclaredFormFields<Fields extends FieldRecord> = {
+    [Key in keyof Fields as string extends Key ? never : Key]: Fields[Key]
+}
+
+type FormFields<Fields extends FieldRecord, Declared extends FieldRecord = DeclaredFormFields<Fields>> = {
+    [Key in keyof InferFields<Declared>]: Key extends keyof Declared
+        ? FormField<Declared[Key]> | (null extends InferFields<Declared>[Key] ? null : never)
+        : never
+}
+
+/** Management UI values keep Markdown source and relation IDs, and expose authenticated asset URLs. */
+export type InferLitiFormModels<Config extends LitiConfig> = {
+    [Name in keyof Config['models']]: FormFields<Config['models'][Name]['fields']>
+}
+
+/** Native summary AST or a bounded paragraph fallback; absent when disabled or without eligible paragraphs. */
+export type LitiMarkdownDocument = MarkdownDocument<
+    Record<string, unknown> & Partial<MergePluginMeta<[ReturnType<typeof summary>]>>,
+    Record<string, unknown>
+>
+
+/** Rendering document for a list summary: no body source, frontmatter or arbitrary plugin metadata. */
+export interface LitiMarkdownSummary {
+    nodes: Node[]
+    frontmatter: Record<string, never>
+    meta: { summary?: Node[] }
+}
+
+type PublicField<
+    F extends AnyField,
+    Models extends Record<string, ModelDefinition>,
+    ParseMarkdown extends boolean | 'summary',
+> = F['kind'] extends 'file' | 'image'
+    ? PublicAsset
+    : F['kind'] extends 'images'
+      ? PublicAsset[]
+      : F['kind'] extends 'markdown'
+        ? ParseMarkdown extends 'summary'
+            ? LitiMarkdownSummary
+            : ParseMarkdown extends true
+              ? LitiMarkdownDocument
+              : InferField<F>
+        : F extends RelationField<infer Name>
+          ? Name extends keyof Models
+              ? // The content parser treats relation projections as opaque objects.
+                PublicEntry<
+                    Partial<
+                        InferPublicModelData<Models[Name], Models, ParseMarkdown extends 'summary' ? 'summary' : false>
+                    >
+                > | null
+              : PublicEntry | null
+          : F extends ObjectField<infer Fields>
+            ? PublicFields<Fields, Models, ParseMarkdown>
+            : F extends ArrayField<infer Item>
+              ? Array<PublicField<Item, Models, ParseMarkdown> | (Item extends { required: true } ? never : null)>
+              : InferField<F>
+
+type PublicFields<
+    Fields extends FieldRecord,
+    Models extends Record<string, ModelDefinition>,
+    ParseMarkdown extends boolean | 'summary',
+> = {
+    [Key in keyof InferFields<Fields>]: Key extends keyof Fields
+        ? PublicField<Fields[Key], Models, ParseMarkdown> | (null extends InferFields<Fields>[Key] ? null : never)
+        : never
+}
+
+/** Public content HTTP responses parse this model's Markdown fields into Comark documents. */
+export type InferPublicModelData<
+    Model extends ModelDefinition,
+    Models extends Record<string, ModelDefinition> = Record<string, ModelDefinition>,
+    ParseMarkdown extends boolean | 'summary' = true,
+> = PublicFields<Model['fields'], Models, ParseMarkdown>
+
+export type InferLitiPublicModels<Config extends LitiConfig, ParseMarkdown extends boolean | 'summary' = true> = {
+    [Name in keyof Config['models'] as Config['models'][Name] extends { public: false } ? never : Name]: PublicEntry<
+        InferPublicModelData<Config['models'][Name], Config['models'], ParseMarkdown>
+    > &
+        (Config['models'][Name] extends { publicMeta: (...args: never[]) => infer Meta } ? { meta: Meta } : {})
+}
+
+export type InferLitiModelExtensions<Config extends LitiConfig> = {
+    [Name in keyof Config['models']]: Config['models'][Name] extends { editor: infer Editor } ? Editor : {}
+}

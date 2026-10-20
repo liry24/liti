@@ -1,0 +1,19 @@
+{
+    "name": "@liti-internal/nuxt",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@nuxt/devtools-kit": "4.0.0-beta.5",
+        "@nuxt/kit": "^4.6.2",
+        "@nuxt/schema": "^4.6.2",
+        "devframe": "1.2.6",
+        "h3": "^1.15.11",
+        "jiti": "^2.7.0",
+        "nitropack": "2.13.5",
+        "nuxt": "4.6.2",
+        "vue": "3.6.0-rc.12"
+    }
+}

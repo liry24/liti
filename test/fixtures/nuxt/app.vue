@@ -1,3 +1,3 @@
 <template>
-    <main>Site Admin composition fixture</main>
+    <main>liti composition fixture</main>
 </template>

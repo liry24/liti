@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { nextTick } from 'vue'
-import { useEntryForm } from '../packages/site-admin/src/form'
+import { useEntryForm } from '../packages/vue/src/form'
 import { modelEntry, modelFixture } from './model-fixture'
 
 it('does not create a different entry when an existing resource has not loaded', async () => {
@@ -11,7 +11,7 @@ it('does not create a different entry when an existing resource has not loaded',
     })
     fixture.state.data.value = undefined
     await expect(fixture.resource.save({ slug: 'one', title: 'Draft' })).rejects.toMatchObject({
-        data: { code: 'SITE_ADMIN_INVALID_INPUT' },
+        data: { code: 'LITI_INVALID_INPUT' },
     })
     expect(calls).toBe(0)
 })
@@ -61,21 +61,21 @@ it('rejects a mutation response with a stale version without replacing the draft
     const formState = useEntryForm(fixture.resource)
     formState.form.setFieldValue('title', 'Keep me')
     await formState.form.handleSubmit()
-    expect(fixture.resource.error.value?.data).toMatchObject({ code: 'SITE_ADMIN_INVALID_RESPONSE', committed: true })
+    expect(fixture.resource.error.value?.data).toMatchObject({ code: 'LITI_INVALID_RESPONSE', committed: true })
     expect(formState.form.state.values.title).toBe('Keep me')
     expect(formState.draft.snapshot().version).toBe(1)
 })
 
 it('restores sortable items after a failed reorder, including a UI that already moved its items', async () => {
     const fixture = modelFixture(async () =>
-        Response.json({ error: { code: 'SITE_ADMIN_CONFLICT', message: 'Changed' } }, { status: 409 }),
+        Response.json({ error: { code: 'LITI_CONFLICT', message: 'Changed' } }, { status: 409 }),
     )
     const one = modelEntry('one'),
         two = modelEntry('two')
     fixture.state.data.value = { items: [one, two], total: 2, limit: 2, offset: 0 }
     await nextTick()
     await expect(fixture.resource.reorder([two, one])).rejects.toMatchObject({
-        data: { code: 'SITE_ADMIN_CONFLICT' },
+        data: { code: 'LITI_CONFLICT' },
     })
     await nextTick()
     expect(

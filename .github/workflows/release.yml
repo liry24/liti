@@ -41,7 +41,7 @@ jobs:
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   prerelease: ${{ inputs.prerelease }}
-                  packages: packages/site-admin
+                  packages: 'packages/*'
 
     release:
         if: |
@@ -61,7 +61,7 @@ jobs:
             - uses: danielroe/uppt/release@6ec27140623aa835e362f866d8ab0018ab057f4d # v0.6.11
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
-                  packages: packages/site-admin
+                  packages: 'packages/*'
 
     pack:
         if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
@@ -101,15 +101,22 @@ jobs:
               with:
                   checkout: false
                   install: false
-                  packages: packages/site-admin
+                  packages: 'packages/*'
 
             - name: Verify the exact release artifact
               env:
                   PACKED_FILES: ${{ steps.pack.outputs.files }}
               run: |
                   set -euo pipefail
-                  tarball=$(jq -er 'if length == 1 then .[0] else error("Expected one release tarball") end' <<< "$PACKED_FILES")
-                  SITE_ADMIN_TARBALL="$RUNNER_TEMP/uppt-pack/$tarball" bun run test:packed
+                  export LITI_TARBALLS=$(jq -ec --arg root "$RUNNER_TEMP/uppt-pack/" 'map($root + .)' <<< "$PACKED_FILES")
+                  node scripts/release-manifest.mjs
+                  CHROMIUM_PATH=google-chrome bun run test:packed
+            - name: Preserve the verified release manifest
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+              with:
+                  name: release-manifest
+                  path: release-manifest.json
+                  if-no-files-found: error
 
     publish:
         if: |
@@ -122,10 +129,24 @@ jobs:
             group: publish-${{ github.ref }}
             cancel-in-progress: false
         permissions:
+            contents: read
+            actions: read
             id-token: write
         environment: npm
         steps:
-            - uses: danielroe/uppt/publish@6ec27140623aa835e362f866d8ab0018ab057f4d # v0.6.11
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  files: ${{ needs.pack.outputs.files }}
+                  persist-credentials: false
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version: '24'
+            - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+              with:
+                  name: release-manifest
+            - id: pending
+              run: node scripts/release-pending.ts
+            - uses: danielroe/uppt/publish@6ec27140623aa835e362f866d8ab0018ab057f4d # v0.6.11
+              if: steps.pending.outputs.files != '[]'
+              with:
+                  files: ${{ steps.pending.outputs.files }}
                   npm-tag: ${{ inputs.npm-tag }}

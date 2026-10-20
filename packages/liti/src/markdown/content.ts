@@ -1,0 +1,118 @@
+import { comarkContent, type Source, type JsonSchema, type ContentFile } from 'comark-content'
+import json from 'comark-content/plugins/json'
+import markdownFields, { markdownField } from 'comark-content/plugins/markdown-fields'
+import type { ModelDefinition, LitiConfig } from '../config'
+import type { AnyField, FieldRecord } from '../fields'
+import type { PublicEntry } from '../server/types'
+import { LitiError } from '../errors'
+import type { AssetUrlResolver } from './assets'
+import { markdownPlugins } from './plugins'
+
+const fieldSchema = (field: AnyField): JsonSchema => {
+    switch (field.kind) {
+        case 'markdown':
+            return markdownField()
+        case 'text':
+        case 'textarea':
+        case 'url':
+        case 'datetime':
+        case 'select':
+            return { type: 'string' }
+        case 'number':
+            return { type: field.integer ? 'integer' : 'number' }
+        case 'boolean':
+            return { type: 'boolean' }
+        case 'object':
+            return fieldsSchema(field.fields)
+        case 'array':
+            return { items: fieldSchema(field.item), type: 'array' }
+        case 'images':
+            return { items: { type: 'object' }, type: 'array' }
+        case 'file':
+        case 'image':
+        case 'relation':
+            return { type: 'object' }
+    }
+    throw new LitiError('LITI_SCHEMA_INCOMPATIBLE', 'Unsupported field type.')
+}
+
+const fieldsSchema = (fields: FieldRecord): JsonSchema => ({
+    properties: Object.fromEntries(Object.entries(fields).map(([name, field]) => [name, fieldSchema(field)])),
+    type: 'object',
+})
+
+export const createMarkdownContent = async (
+    modelName: string,
+    definition: ModelDefinition,
+    entries: PublicEntry[],
+    options: LitiConfig['markdown'],
+    resolve: AssetUrlResolver,
+    parsed?: (id: string) => ContentFile | undefined,
+) => {
+    const items = new Map(
+        entries.map((entry) => [
+            `${entry.id}.json`,
+            {
+                ...entry.data,
+                _liti: {
+                    ...(entry.alternates ? { alternates: entry.alternates } : {}),
+                    ...(entry.localeParams ? { localeParams: entry.localeParams } : {}),
+                    id: entry.id,
+                    locale: entry.locale,
+                    defaultLocale: entry.defaultLocale,
+                    model: entry.model,
+                    path: entry.path,
+                    publishedAt: entry.publishedAt,
+                    firstPublishedAt: entry.firstPublishedAt,
+                    updatedAt: entry.updatedAt,
+                    revisionId: entry.revisionId,
+                    ...(entry.seo ? { seo: entry.seo } : {}),
+                    ...(entry.meta ? { meta: entry.meta } : {}),
+                },
+            },
+        ]),
+    )
+    const source: Source = {
+        prefix: `/${modelName}`,
+        schema: {
+            ...fieldsSchema(definition.fields),
+            properties: {
+                ...fieldsSchema(definition.fields).properties,
+                _liti: { type: 'object' },
+            },
+        },
+        keys: async () => [...items.keys()],
+        getItem: async (key) => JSON.stringify(items.get(key)),
+        getItemRaw: async (key) => items.get(key),
+    }
+    const hasMarkdown = (field: AnyField): boolean =>
+        field.kind === 'markdown' ||
+        (field.kind === 'object' && Object.values(field.fields).some(hasMarkdown)) ||
+        (field.kind === 'array' && hasMarkdown(field.item))
+    const plugins = Object.values(definition.fields).some(hasMarkdown) ? await markdownPlugins(options, resolve) : []
+    const contentOptions = {
+        markdown: { plugins },
+        onError: 'throw' as const,
+        plugins: [json(), markdownFields()],
+        source,
+    }
+    const raw = comarkContent(modelName, contentOptions)
+    if (!parsed) return raw
+    // A parsed provider exposes the complete source index. update() before init would
+    // persist an incomplete manifest containing only the reused detail documents.
+    const content = comarkContent(modelName, {
+        ...contentOptions,
+        source: {
+            parsed: true,
+            schema: source.schema!,
+            keys: source.keys,
+            get: async (key) => {
+                const item = items.get(key)
+                if (!item) return null
+                return parsed(item['_liti'].id) ?? raw.get(key)
+            },
+        },
+    })
+    raw.hooks.hook('file:parsed', (context) => content.hooks.callHook('file:parsed', context))
+    return content
+}

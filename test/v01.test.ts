@@ -1,3 +1,4 @@
+import { createFilesStorage } from '../packages/void/src/storage'
 import { createMigratedTestAdmin, testAdapter } from './migrate'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from 'db0'
@@ -5,8 +6,8 @@ import nodeSqlite from 'db0/connectors/node-sqlite'
 import { Files } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
 
-import { defineSiteAdminConfig, file, relation, text } from '../packages/site-admin/src'
-import { handleManagementRequest, handlePublicRequest } from '../packages/site-admin/src/server'
+import { defineLitiConfig, file, relation, text } from '../packages/liti/src'
+import { handleManagementRequest, handlePublicRequest } from '../packages/liti/src/server'
 import { queryRow, runAtomic } from './sqlite-queries'
 
 const databases: Database[] = []
@@ -38,7 +39,7 @@ const measure = async (size: number): Promise<{ cold: number; warm: number }> =>
     }
     const db = raw
     const admin = await createMigratedTestAdmin({
-        config: defineSiteAdminConfig({
+        config: defineLitiConfig({
             models: { posts: { fields: { slug: text(), title: text() }, publishing: false } },
         }),
         database: db,
@@ -48,7 +49,7 @@ const measure = async (size: number): Promise<{ cold: number; warm: number }> =>
         {
             params: [size],
             sql: `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
-                  INSERT INTO site_admin_entries(
+                  INSERT INTO liti_entries(
                       id, model, default_locale, current_revision_id, published_revision_id,
                       version, created_at, updated_at, published_at
                   ) SELECT 'entry-' || n, 'posts', '', 'revision-' || n, 'revision-' || n,
@@ -57,12 +58,12 @@ const measure = async (size: number): Promise<{ cold: number; warm: number }> =>
         {
             params: [size],
             sql: `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < ?)
-                  INSERT INTO site_admin_revisions(id, entry_id, created_at)
+                  INSERT INTO liti_revisions(id, entry_id, created_at)
                   SELECT 'revision-' || n, 'entry-' || n, '2026-01-01'
                   FROM seq`,
         },
         {
-            sql: "INSERT INTO site_admin_content_posts(revision_id, field_title, field_slug) SELECT id, 'Post', 's-' || substr(entry_id, 3) FROM site_admin_revisions",
+            sql: "INSERT INTO liti_content_posts(revision_id, field_title, field_slug) SELECT id, 'Post', 's-' || substr(entry_id, 3) FROM liti_revisions",
         },
     ])
     queries = 0
@@ -85,7 +86,7 @@ describe('v0.1 publication contract', () => {
 
     it('reconciles route and Model policy changes and invalidates required public relations', async () => {
         const db = database()
-        const initial = defineSiteAdminConfig({
+        const initial = defineLitiConfig({
             models: {
                 authors: { fields: { slug: text(), name: text({ required: true }) } },
                 posts: {
@@ -102,7 +103,7 @@ describe('v0.1 publication contract', () => {
         const generation = await first.publicGeneration()
 
         const moved = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     authors: initial.models.authors,
                     posts: { ...initial.models.posts, route: '/articles/:slug' },
@@ -115,7 +116,7 @@ describe('v0.1 publication contract', () => {
         expect(await moved.resolvePath('/posts/policy')).toMatchObject({ kind: 'redirect', target: '/articles/policy' })
 
         const changed = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     authors: { fields: { slug: text(), name: text({ required: true }) }, public: false },
                     posts: initial.models.posts,
@@ -128,7 +129,7 @@ describe('v0.1 publication contract', () => {
         expect(await changed.resolvePath('/posts/policy')).toBeNull()
         expect(await changed.publicGeneration()).toBeGreaterThan(generation)
 
-        const removed = await createMigratedTestAdmin({ config: defineSiteAdminConfig({ models: {} }), database: db })
+        const removed = await createMigratedTestAdmin({ config: defineLitiConfig({ models: {} }), database: db })
         await removed.initialize()
         expect(await removed.routeSnapshot()).toEqual([])
     })
@@ -137,7 +138,7 @@ describe('v0.1 publication contract', () => {
         const db = database()
         let now = Date.parse('2026-01-01T00:00:00.000Z')
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: { posts: { fields: { slug: text(), title: text() }, route: '/posts/:slug', sortable: true } },
             }),
             database: db,
@@ -156,14 +157,16 @@ describe('v0.1 publication contract', () => {
         expect(await admin.publicGeneration()).toBe(generation)
         now += 1_000
         const sorted = await admin.setSortOrder(draft.id, 2, edited.version)
-        expect(sorted.publishedAt).toBe('2026-01-01T00:00:02.000Z')
+        expect(sorted.publishedAt).toBe(published.publishedAt)
+        expect(sorted.firstPublishedAt).toBe(published.firstPublishedAt)
+        expect(sorted.updatedAt).toBe(edited.updatedAt)
         expect(await admin.publicGeneration()).toBe(generation + 1)
         expect(await admin.getPublicEntry('posts', draft.id)).toMatchObject({ data: { title: 'One' } })
     })
 
     it('persists Standard Schema transforms and rejects stale or implicitly changed revisions', async () => {
         const db = database()
-        const v1 = defineSiteAdminConfig({
+        const v1 = defineLitiConfig({
             models: {
                 posts: {
                     fields: {
@@ -184,7 +187,7 @@ describe('v0.1 publication contract', () => {
         expect(entry.data).toEqual({ title: 'TRANSFORMED' })
 
         const changedTransform = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     posts: {
                         ...v1.models.posts,
@@ -198,7 +201,7 @@ describe('v0.1 publication contract', () => {
         })
         await expect(changedTransform.publishEntry(entry.id, { expectedVersion: entry.version })).rejects.toMatchObject(
             {
-                code: 'SITE_ADMIN_SCHEMA_MIGRATION_REQUIRED',
+                code: 'LITI_SCHEMA_MIGRATION_REQUIRED',
             },
         )
     })
@@ -208,7 +211,7 @@ describe('v0.1 publication contract', () => {
         let id = 0
         let time = Date.parse('2026-01-01T00:00:00.000Z')
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     authors: { fields: { slug: text(), name: text() } },
                     posts: { fields: { slug: text(), author: relation('authors'), title: text() } },
@@ -244,7 +247,7 @@ describe('v0.1 publication contract', () => {
     it('stores locale routes independently and filters sitemap/llms options', async () => {
         const db = database()
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 models: {
                     pages: {
                         fields: { slug: text({ i18n: true }), title: text({ i18n: true }) },
@@ -286,7 +289,7 @@ describe('v0.1 publication contract', () => {
 describe('v0.1 authorization and assets', () => {
     it('grants only explicit roles and filters descriptors', async () => {
         const db = database()
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             authorization: {
                 roles: {
                     editor: { models: { posts: ['create', 'readDraft'] } },
@@ -301,11 +304,11 @@ describe('v0.1 authorization and assets', () => {
         const requestAs = async (roles: string[]) =>
             await createMigratedTestAdmin({ authorize: () => ({ id: 'user', roles }), config, database: db })
         const editor = await requestAs(['editor'])
-        const descriptor = await handleManagementRequest(editor, new Request('http://localhost/api/site-admin/models'))
+        const descriptor = await handleManagementRequest(editor, new Request('http://localhost/api/liti/models'))
         expect(Object.keys(((await descriptor.json()) as { models: object }).models)).toEqual(['posts'])
         const created = await handleManagementRequest(
             editor,
-            new Request('http://localhost/api/site-admin/entries/posts', {
+            new Request('http://localhost/api/liti/entries/posts', {
                 body: JSON.stringify({ data: { title: 'Allowed' } }),
                 headers: { 'content-type': 'application/json' },
                 method: 'POST',
@@ -314,7 +317,7 @@ describe('v0.1 authorization and assets', () => {
         expect(created.status).toBe(201)
         const denied = await handleManagementRequest(
             await requestAs(['user']),
-            new Request('http://localhost/api/site-admin/entries/posts', {
+            new Request('http://localhost/api/liti/entries/posts', {
                 body: JSON.stringify({ data: { title: 'Denied' } }),
                 headers: { 'content-type': 'application/json' },
                 method: 'POST',
@@ -334,12 +337,12 @@ describe('v0.1 authorization and assets', () => {
             },
         })
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 assets: { storage: 'current' },
                 models: { downloads: { fields: { slug: text(), attachment: file() }, publishing: false } },
             }),
             database: db,
-            getFiles: async () => files,
+            getStorage: createFilesStorage(async () => files),
         })
         const asset = await admin.uploadAsset({
             body: '<html>unsafe</html>',
@@ -379,12 +382,12 @@ describe('v0.1 authorization and assets', () => {
         })
         let now = Date.parse('2026-01-01T00:00:00.000Z')
         const admin = await createMigratedTestAdmin({
-            config: defineSiteAdminConfig({
+            config: defineLitiConfig({
                 assets: { operationLeaseSeconds: 1, cleanup: { minimumAge: 0 }, storage: 'content' },
                 models: {},
             }),
             database: db,
-            getFiles: async () => files,
+            getStorage: createFilesStorage(async () => files),
             now: () => new Date(now),
         })
         await admin.initialize()
@@ -396,7 +399,7 @@ describe('v0.1 authorization and assets', () => {
         for (let attempt = 0; attempt < 50 && !row; attempt += 1) {
             row = await queryRow(
                 await testAdapter(db, { models: {} }),
-                "SELECT id, key FROM site_admin_assets WHERE state = 'uploading'",
+                "SELECT id, key FROM liti_assets WHERE state = 'uploading'",
             )
             if (!row) await new Promise((resolve) => setTimeout(resolve, 1))
         }
@@ -404,15 +407,13 @@ describe('v0.1 authorization and assets', () => {
         now += 1_001
         expect(await admin.runAssetGC()).toEqual({ deleted: [row!.id], failed: [] })
         release()
-        await expect(upload).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+        await expect(upload).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
         expect(await files.exists(row!.key)).toBe(false)
     })
 
     it('keeps token guards inside the D1/SQLite atomic mutation', async () => {
         const db = database()
-        await (
-            await createMigratedTestAdmin({ config: defineSiteAdminConfig({ models: {} }), database: db })
-        ).initialize()
+        await (await createMigratedTestAdmin({ config: defineLitiConfig({ models: {} }), database: db })).initialize()
         await runAtomic(await testAdapter(db, { models: {} }), [
             {
                 params: [
@@ -428,7 +429,7 @@ describe('v0.1 authorization and assets', () => {
                     'now',
                     'now',
                 ],
-                sql: `INSERT INTO site_admin_assets(
+                sql: `INSERT INTO liti_assets(
                     id, storage, key, content_type, size, metadata, state, operation_token, lease_expires_at, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             },
@@ -439,9 +440,9 @@ describe('v0.1 authorization and assets', () => {
                     expectRow: true,
                     params: ['asset', 'old'],
                     query: true,
-                    sql: "UPDATE site_admin_assets SET state = 'ready' WHERE id = ? AND operation_token = ? RETURNING id",
+                    sql: "UPDATE liti_assets SET state = 'ready' WHERE id = ? AND operation_token = ? RETURNING id",
                 },
             ]),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+        ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
     })
 })

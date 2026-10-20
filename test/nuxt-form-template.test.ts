@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { createSSRApp, getCurrentInstance, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { useEntryForm } from '../packages/site-admin/src/form'
+import { useEntryForm } from '../packages/vue/src/form'
 import { modelFixture } from './model-fixture'
 
 it('creates the native form synchronously in its owning component without another descriptor request', async () => {

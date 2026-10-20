@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
-import { useEntryForm } from '../packages/site-admin/src/form'
+import { useEntryForm } from '../packages/vue/src/form'
 import { formDescriptor, modelEntry, modelFixture } from './model-fixture'
 
 it('retains a clean new draft identity after preparation failure and clears it after final success', async () => {

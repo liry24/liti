@@ -4,17 +4,10 @@ import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computed, effectScope, getCurrentScope, nextTick, reactive, ref, toValue, watch, type EffectScope } from 'vue'
 
-import {
-    createSiteAdminRouteResolver,
-    mergeSiteAdminSeo,
-    type SiteAdminRouteRules,
-} from '../packages/site-admin/src/seo'
-import type { PublicEntrySeo } from '../packages/site-admin/src/server/types'
-import { siteAdminNuxtSeoTemplate } from '../packages/site-admin/src/nuxt/client-templates'
-import {
-    siteAdminNuxtMetadataTemplate,
-    siteAdminNuxtRouteTemplate,
-} from '../packages/site-admin/src/nuxt/route-templates'
+import { createLitiRouteResolver, mergeLitiSeo, type LitiRouteRules } from '../packages/liti/src/seo'
+import type { PublicEntrySeo } from '../packages/liti/src/server/types'
+import { litiNuxtSeoTemplate } from '../packages/nuxt/src/nuxt/client-templates'
+import { litiNuxtMetadataTemplate, litiNuxtRouteTemplate } from '../packages/nuxt/src/nuxt/route-templates'
 
 type Input = PublicEntrySeo | null | undefined
 interface ServerHead {
@@ -34,7 +27,7 @@ afterEach(() => scopes.splice(0).forEach((scope) => scope.stop()))
 
 const initialize = (
     ogImage: boolean,
-    config: { seo?: PublicEntrySeo; routeRules?: SiteAdminRouteRules } = {},
+    config: { seo?: PublicEntrySeo; routeRules?: LitiRouteRules } = {},
     head?: ServerHead,
     seo = true,
 ) => {
@@ -65,9 +58,9 @@ const initialize = (
         return ['/generated.png']
     })
     const source = (
-        readFileSync(new URL('../packages/site-admin/src/runtime/seo.ts', import.meta.url), 'utf8') +
+        readFileSync(new URL('../packages/nuxt/src/runtime/seo.ts', import.meta.url), 'utf8') +
         '\n' +
-        siteAdminNuxtSeoTemplate({ ogImage, seo })
+        litiNuxtSeoTemplate({ ogImage, seo })
     ).replace(/^import .*\n/gmu, '')
     const compiled = stripTypeScriptTypes(source).replace(/^export /gmu, '')
     const create = new Function(
@@ -84,15 +77,15 @@ const initialize = (
         'getCurrentScope',
         'ref',
         'watch',
-        'createSiteAdminRouteResolver',
-        'mergeSiteAdminSeo',
-        `${compiled}\nreturn { useSeo: useSiteAdminSeoMetadata, useSiteAdminSeoMetadata }`,
+        'createLitiRouteResolver',
+        'mergeLitiSeo',
+        `${compiled}\nreturn { useSeo: useLitiSeoMetadata, useLitiSeoMetadata }`,
     ) as (...dependencies: unknown[]) => {
         useSeo: (
             input?: Input | ReturnType<typeof ref<Input>> | (() => Input),
             override?: Input | ReturnType<typeof ref<Input>> | (() => Input),
         ) => void
-        useSiteAdminSeoMetadata: (input?: Input | (() => Input)) => void
+        useLitiSeoMetadata: (input?: Input | (() => Input)) => void
     }
     const scope = effectScope()
     scopes.push(scope)
@@ -100,7 +93,7 @@ const initialize = (
         useHead,
         useSeoMeta,
         () => route,
-        () => ({ public: { siteAdmin: config } }),
+        () => ({ public: { liti: config } }),
         () => new URL('https://example.test/page'),
         () => ({
             runWithContext: (callback: () => unknown) => {
@@ -120,12 +113,12 @@ const initialize = (
         getCurrentScope,
         ref,
         watch,
-        createSiteAdminRouteResolver,
-        mergeSiteAdminSeo,
+        createLitiRouteResolver,
+        mergeLitiSeo,
     )
     const useSeo = (...args: Parameters<typeof helper.useSeo>) => scope.run(() => helper.useSeo(...args))
-    const useMetadata = (...args: Parameters<typeof helper.useSiteAdminSeoMetadata>) =>
-        scope.run(() => helper.useSiteAdminSeoMetadata(...args))
+    const useMetadata = (...args: Parameters<typeof helper.useLitiSeoMetadata>) =>
+        scope.run(() => helper.useLitiSeoMetadata(...args))
     const meta = () =>
         Object.fromEntries(
             useSeoMeta.mock.calls.flatMap(([input]) =>
@@ -153,12 +146,12 @@ describe('automatic Nuxt SEO metadata', () => {
         const middleware = new Function(
             'defineNuxtRouteMiddleware',
             'useState',
-            'createSiteAdminClient',
-            'siteAdminPublicClientOptions',
+            'createPublicClient',
+            'litiPublicClientOptions',
             'navigateTo',
             'useRequestURL',
             'useNuxtApp',
-            siteAdminNuxtRouteTemplate({ i18n: false }, { supported: [], strategy: 'no_prefix' })
+            litiNuxtRouteTemplate({ i18n: false }, { supported: [], strategy: 'no_prefix' })
                 .replace(/^import .*\n/gmu, '')
                 .replace('export default ', 'return '),
         )(
@@ -180,11 +173,11 @@ describe('automatic Nuxt SEO metadata', () => {
         const plugin = new Function(
             'defineNuxtPlugin',
             'useState',
-            'useSiteAdminSeoMetadata',
+            'useLitiSeoMetadata',
             'useHead',
             'useRoute',
             'computed',
-            siteAdminNuxtMetadataTemplate({ seo: true, ogImage: false, schemaOrg: false })
+            litiNuxtMetadataTemplate({ seo: true, ogImage: false, schemaOrg: false })
                 .replace(/^import .*\n/gmu, '')
                 .replace('export default ', 'return '),
         )(
@@ -423,7 +416,7 @@ describe('automatic Nuxt SEO metadata', () => {
     })
 
     it('keeps URL and false image metadata usable without optional OG component code', () => {
-        const source = siteAdminNuxtSeoTemplate({ ogImage: false })
+        const source = litiNuxtSeoTemplate({ ogImage: false })
         expect(source).not.toContain('defineOgImage')
         expect(source).not.toContain('NativeOgImage')
         const { useSeo, meta, defineOgImage } = initialize(false)

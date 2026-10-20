@@ -21,15 +21,15 @@ registerHooks({
     },
 })
 await assert.rejects(import('drizzle-orm'), /Optional ORM peer was loaded/u)
-const { generateSiteAdminSchema } = await createJiti(import.meta.url, { fsCache: false, moduleCache: false })
+const { generateLitiSchema } = await createJiti(import.meta.url, { fsCache: false, moduleCache: false })
     .import(process.argv[1])
-const schema = generateSiteAdminSchema({ models: { posts: { fields: { title: { kind: 'text', required: true } } } } })
-assert.match(schema, /site_admin_content_posts/u)
+const schema = generateLitiSchema({ models: { posts: { fields: { title: { kind: 'text', required: true } } } } })
+assert.match(schema, /liti_content_posts/u)
 assert.match(schema, /text\\("field_title"\\)\\.notNull\\(\\)/u)
-assert.throws(() => generateSiteAdminSchema({ models: { posts: { fields: { revisionId: { kind: 'text' } } } } }), /reserved field/u)
+assert.throws(() => generateLitiSchema({ models: { posts: { fields: { revisionId: { kind: 'text' } } } } }), /reserved field/u)
 console.log('Content schema generated without optional ORM peers.')
 `,
-            resolve('packages/site-admin/src/generate.ts'),
+            resolve('packages/void/src/tooling.ts'),
         ],
         { encoding: 'utf8' },
     )

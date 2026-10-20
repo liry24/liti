@@ -42,7 +42,7 @@ jobs:
               env:
                   CLOUDFLARE_ACCOUNT_ID: ''
                   CLOUDFLARE_API_TOKEN: ''
-              run: bun x wrangler d1 migrations apply SITE_ADMIN_DB --remote --config test/fixtures/cloudflare/wrangler.temporary.jsonc
+              run: bun x wrangler d1 migrations apply LITI_DB --remote --config test/fixtures/cloudflare/wrangler.temporary.jsonc
             - name: Probe CRUD, publish, conflict and rollback
               env:
                   DEPLOY_URL: ${{ steps.deploy.outputs.url }}

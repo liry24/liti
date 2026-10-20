@@ -5,19 +5,19 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 
-import { siteAdminNuxtSeoTemplate } from '../packages/site-admin/src/nuxt/client-templates'
+import { litiNuxtSeoTemplate } from '../packages/nuxt/src/nuxt/client-templates'
 
 it('accepts shared reactive DTOs and validates native second overrides without requiring OG generation', async () => {
     await mkdir('.tmp', { recursive: true })
     const directory = await mkdtemp(resolve('.tmp/seo-types-'))
-    await writeFile(join(directory, 'enabled.ts'), siteAdminNuxtSeoTemplate({ ogImage: true }))
-    await writeFile(join(directory, 'disabled.ts'), siteAdminNuxtSeoTemplate({ ogImage: false }))
+    await writeFile(join(directory, 'enabled.ts'), litiNuxtSeoTemplate({ ogImage: true }))
+    await writeFile(join(directory, 'disabled.ts'), litiNuxtSeoTemplate({ ogImage: false }))
     await writeFile(
         join(directory, 'imports.d.ts'),
         `declare module '#app' { export * from '#imports' }
 declare module '#imports' {
   export const useRequestURL: () => URL
-  export const useRuntimeConfig: () => { public: { siteAdmin?: unknown } }
+  export const useRuntimeConfig: () => { public: { liti?: unknown } }
   export const useRoute: () => { path: string }
   export const useNuxtApp: () => { runWithContext: <Value>(callback: () => Value) => Value }
   export const tryUseNuxtApp: () => ReturnType<typeof useNuxtApp> | null
@@ -29,9 +29,9 @@ declare module '#imports' {
     await writeFile(
         join(directory, 'consumer.ts'),
         `import { computed, ref } from 'vue'
-import type { PublicEntrySeo } from '@liria24/site-admin'
-import { useSiteAdminSeoMetadata as useSeo } from './enabled'
-import { useSiteAdminSeoMetadata as useSeoWithoutOg } from './disabled'
+import type { PublicEntrySeo } from 'liti'
+import { useLitiSeoMetadata as useSeo } from './enabled'
+import { useLitiSeoMetadata as useSeoWithoutOg } from './disabled'
 const dto = ref<PublicEntrySeo>()
 useSeo(dto)
 useSeo(() => dto.value, { titleTemplate: null, robots: 'noindex, follow', image: false })
@@ -57,9 +57,9 @@ useSeoWithoutOg(dto, { image: { component: 'Default.takumi' } })
             extends: resolve('tsconfig.json'),
             compilerOptions: {
                 paths: {
-                    '@liria24/site-admin': [resolve('packages/site-admin/src/index.ts')],
-                    '@liria24/site-admin/internal/seo': [resolve('packages/site-admin/src/seo.ts')],
-                    '@liria24/site-admin/internal/runtime/seo': [resolve('packages/site-admin/src/runtime/seo.ts')],
+                    liti: [resolve('packages/liti/src/index.ts')],
+                    'liti/internal/seo': [resolve('packages/liti/src/seo.ts')],
+                    'liti/internal/runtime/seo': [resolve('packages/nuxt/src/runtime/seo.ts')],
                     vue: [resolve('node_modules/vue/dist/vue.d.ts')],
                     '@unhead/vue': [requireNuxt.resolve('@unhead/vue')],
                 },

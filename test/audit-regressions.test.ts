@@ -1,12 +1,13 @@
+import { createFilesStorage } from '../packages/void/src/storage'
 import { createHash } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import { Files, type Body, type FileInfo, type UploadOptions } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
-import { defineSiteAdminConfig, text } from '../packages/site-admin/src'
-import { createSiteAdmin, handleManagementRequest, handlePublicRequest } from '../packages/site-admin/src/server'
-import { prepareUpload } from '../packages/site-admin/src/server/upload'
+import { defineLitiConfig, text } from '../packages/liti/src'
+import { createRuntime, handleManagementRequest, handlePublicRequest } from '../packages/liti/src/server'
+import { prepareUpload } from '../packages/liti/src/server/upload'
 import { createMigratedTestAdmin, migrateTestDatabase, testAdapter } from './migrate'
 
 const databases: Database[] = []
@@ -21,7 +22,7 @@ const setup = async (maxUploadSize?: number) => {
     const files = new Files({ adapter: memory() })
     const admin = await createMigratedTestAdmin({
         authorize: () => ({ id: 'admin', roles: ['admin'] }),
-        config: defineSiteAdminConfig({
+        config: defineLitiConfig({
             assets: { storage: 'content', ...(maxUploadSize === undefined ? {} : { maxUploadSize }) },
             models: {
                 posts: {
@@ -34,7 +35,7 @@ const setup = async (maxUploadSize?: number) => {
             },
         }),
         database,
-        getFiles: async () => files,
+        getStorage: createFilesStorage(async () => files),
         locales: { defaultLocale: 'en', supported: ['en', 'ja'] },
     })
     return { admin, files }
@@ -50,14 +51,14 @@ it('rejects cross-origin mutations and non-JSON bodies, while permitting same-or
     ]) {
         const response = await handleManagementRequest(
             admin,
-            new Request('https://example.com/api/site-admin/tasks/asset-gc', { method: 'POST', headers }),
+            new Request('https://example.com/api/liti/tasks/asset-gc', { method: 'POST', headers }),
         )
         expect(response.status).toBe(403)
     }
     for (const headers of [{ origin: 'https://example.com' }, { 'sec-fetch-site': 'same-origin' }, {}]) {
         const response = await handleManagementRequest(
             admin,
-            new Request('https://example.com/api/site-admin/entries/posts', {
+            new Request('https://example.com/api/liti/entries/posts', {
                 method: 'POST',
                 headers: { ...headers, 'content-type': 'application/json; charset=utf-8' },
                 body: JSON.stringify({ data: { title: crypto.randomUUID() } }),
@@ -73,7 +74,7 @@ it('rejects cross-origin mutations and non-JSON bodies, while permitting same-or
             (
                 await handleManagementRequest(
                     admin,
-                    new Request('https://example.com/api/site-admin/entries/posts', {
+                    new Request('https://example.com/api/liti/entries/posts', {
                         method: 'POST',
                         headers: { 'content-type': type! },
                         body: body!,
@@ -87,7 +88,7 @@ it('rejects cross-origin mutations and non-JSON bodies, while permitting same-or
         (
             await handleManagementRequest(
                 admin,
-                new Request('https://example.com/api/site-admin/assets', {
+                new Request('https://example.com/api/liti/assets', {
                     method: 'POST',
                     body: file,
                     headers: { 'x-filename': encodeURIComponent(file.name), 'x-upload-size': String(file.size) },
@@ -102,7 +103,7 @@ it('validates direct view arguments and rejects unsupported route locales', asyn
     const entry = await admin.createEntry('posts', { data: { slug: 'safe', title: 'safe' } })
     for (const view of ["current' || (SELECT name FROM sqlite_master) || '", 'invalid'])
         await expect(admin.referencesTo(entry.id, { view: view as 'current' })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_INVALID_INPUT',
+            code: 'LITI_INVALID_INPUT',
         })
     expect(await admin.referencesTo(entry.id, { view: 'published' })).toEqual([])
     for (let index = 0; index < 70; index++)
@@ -124,12 +125,12 @@ it('reorders atomically with conflicts, wrong models and duplicate IDs', async (
     const generation = await admin.publicGeneration()
     await expect(
         admin.setSortOrders('posts', [items[0]!, { ...items[1]!, expectedVersion: 99 }]),
-    ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+    ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
     expect(await admin.publicGeneration()).toBe(generation)
     expect((await admin.getEntry(entries[0]!.id)).version).toBe(entries[0]!.version)
-    await expect(admin.setSortOrders('private', items)).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+    await expect(admin.setSortOrders('private', items)).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
     await expect(admin.setSortOrders('posts', [items[0]!, items[0]!])).rejects.toMatchObject({
-        code: 'SITE_ADMIN_INVALID_INPUT',
+        code: 'LITI_INVALID_INPUT',
     })
     const sorted = await admin.setSortOrders('posts', items)
     expect(sorted.map((entry) => entry.sortOrder)).toEqual([0, 1])
@@ -216,12 +217,12 @@ it('rejects inaccurate lengths, aborted streams and explicit caps, and cleans fa
 it('evicts public snapshots and routes after 64 locale keys without a locale whitelist', async () => {
     const database = createDatabase(nodeSqlite({ name: ':memory:' }))
     databases.push(database)
-    const config = defineSiteAdminConfig({
+    const config = defineLitiConfig({
         models: { posts: { localized: true, fields: { slug: text(), title: text() }, route: '/posts/:slug' } },
     })
     await migrateTestDatabase(database, config)
     const storage = (await testAdapter(database, config)).bind(config)
-    const admin = createSiteAdmin({
+    const admin = createRuntime({
         config,
         database: { bind: () => storage },
         locales: { defaultLocale: 'locale-0', supported: Array.from({ length: 65 }, (_, i) => 'locale-' + i) },

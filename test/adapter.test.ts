@@ -1,34 +1,58 @@
+import { createFilesStorage } from '../packages/void/src/storage'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDatabase } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import cloudflareD1 from 'db0/connectors/cloudflare-d1'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import type { SiteAdminDatabase, SiteAdminStorage } from '../packages/site-admin/src/adapter'
-import type { SiteAdminConfig } from '../packages/site-admin/src/config'
+import type { LitiDatabase, LitiStorage } from '../packages/liti/src/adapter'
+import type { LitiConfig } from '../packages/liti/src/config'
 import { Files } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
-import { createSiteAdmin, handleManagementRequest } from '../packages/site-admin/src/server'
-import { defineSiteAdminConfig, text, file, relation, array, object } from '../packages/site-admin/src'
+import { createRuntime, handleManagementRequest } from '../packages/liti/src/server'
+import { defineLitiConfig, text, file, relation, array, object } from '../packages/liti/src'
 import { migrateTestDatabase, testAdapter } from './migrate'
 import { createMemoryDatabase } from './memory-storage'
-import type { DrizzleSiteAdminDatabase } from '../packages/site-admin/src/adapters/database'
+import type { SqliteDatabase } from '../packages/sqlite/src/connection'
+import { createNativeSqliteDatabase } from '../packages/sqlite/src/native'
+import { createDrizzleDatabase, connectDrizzle } from '../packages/drizzle/src/runtime'
 import { queryRows, runAtomic } from './sqlite-queries'
-import { createSiteAdminManagementClient } from '../packages/site-admin/src/client'
+import { createLitiManagementClient } from '../packages/liti/src/client'
 
 const cleanup: Array<() => Promise<void>> = []
+it('rejects unsupported unique declarations instead of silently dropping their protection', () => {
+    for (const unique of [[], ['missing'], ['title', 'title'], ['translated'], ['details']]) {
+        expect(() =>
+            createRuntime({
+                database: createMemoryDatabase(),
+                config: {
+                    models: {
+                        records: {
+                            fields: {
+                                title: text(),
+                                translated: text({ i18n: true }),
+                                details: object({ title: text() }),
+                            },
+                            unique: [unique],
+                        },
+                    },
+                },
+            }),
+        ).toThrow('unique constraints')
+    }
+})
 type BatchControls = {
     beforeBatch?: (queries: readonly string[]) => Promise<void>
-    otherConnection?: () => Promise<SiteAdminDatabase>
+    otherConnection?: () => Promise<LitiDatabase>
     calls?: number
     maxCalls?: number
     maxValueBytes?: number
     trace?: string[]
 }
-const batchControls = new WeakMap<SiteAdminDatabase, BatchControls>()
+const batchControls = new WeakMap<LitiDatabase, BatchControls>()
 afterEach(async () => {
     await Promise.all(cleanup.splice(0).map((close) => close()))
 })
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     assets: { storage: 'content' },
     authorization: { roles: { reader: { models: { posts: ['readDraft'] } } } },
     models: {
@@ -54,16 +78,19 @@ const config = defineSiteAdminConfig({
         secrets: { fields: { slug: text(), title: text() }, public: false },
     },
 })
-async function backend(
-    kind: 'memory' | 'sqlite' | 'd1',
-    definition: SiteAdminConfig = config,
-): Promise<SiteAdminDatabase> {
+type Backend = 'memory' | 'sqlite' | 'd1' | 'drizzle-d1' | 'drizzle-bun'
+async function backend(kind: Backend, definition: LitiConfig = config): Promise<LitiDatabase> {
     if (kind === 'memory') return createMemoryDatabase()
-    const database = createDatabase(nodeSqlite({ name: ':memory:' }))
+    const connector =
+        process.versions.bun && (kind === 'sqlite' || kind === 'drizzle-bun')
+            ? (await import('db0/connectors/bun-sqlite')).default
+            : nodeSqlite
+    const database = createDatabase(connector({ name: ':memory:' }))
     cleanup.push(() => database.dispose())
-    await migrateTestDatabase(database, definition)
-    if (kind === 'sqlite') return testAdapter(database, definition)
+    const schema = await migrateTestDatabase(database, definition, kind.startsWith('drizzle') ? 'drizzle' : 'void')
     const native = (await database.getInstance()) as DatabaseSync
+    if (kind === 'sqlite') return createNativeSqliteDatabase(native)
+    if (kind === 'drizzle-bun') return createDrizzleDatabase(createNativeSqliteDatabase(native), schema)
     const controls: BatchControls = {}
     const queryCall = (sql: string) => {
         controls.calls = (controls.calls ?? 0) + 1
@@ -115,20 +142,41 @@ async function backend(
         Object.assign(globalThis, { __env__: { CONFORMANCE_DB: binding, CONFORMANCE_WRITER_DB: separate } })
         const other = createDatabase(cloudflareD1({ bindingName: 'CONFORMANCE_WRITER_DB' }))
         cleanup.push(() => other.dispose())
-        return testAdapter(other, definition)
+        return kind === 'drizzle-d1'
+            ? connectDrizzle(
+                  { connection: { driver: 'd1', binding: 'CONTENT_DB' } },
+                  {
+                      projectRoot: process.cwd(),
+                      environment: [],
+                      platformContext: { env: { CONTENT_DB: separate } },
+                      loadModule: async () => schema,
+                  },
+              )
+            : testAdapter(other, definition)
     }
     const d1 = createDatabase(cloudflareD1({ bindingName: 'CONFORMANCE_DB' }))
     cleanup.push(() => d1.dispose())
-    const adapter = await testAdapter(d1, definition)
+    const adapter =
+        kind === 'drizzle-d1'
+            ? await connectDrizzle(
+                  { connection: { driver: 'd1', binding: 'CONTENT_DB' } },
+                  {
+                      projectRoot: process.cwd(),
+                      environment: [],
+                      platformContext: { env: { CONTENT_DB: binding } },
+                      loadModule: async () => schema,
+                  },
+              )
+            : await testAdapter(d1, definition)
     batchControls.set(adapter, controls)
     return adapter
 }
-async function setup(kind: 'memory' | 'sqlite' | 'd1') {
+async function setup(kind: Backend) {
     const database = await backend(kind),
         storage = database.bind(config)
     let clock = new Date('2026-10-09T10:00:00Z'),
         id = 0
-    const core = createSiteAdmin({
+    const core = createRuntime({
         config,
         database: { bind: () => storage },
         id: () => `id-${++id}`,
@@ -146,7 +194,7 @@ async function setup(kind: 'memory' | 'sqlite' | 'd1') {
         },
     }
 }
-async function graph(storage: SiteAdminStorage) {
+async function graph(storage: LitiStorage) {
     const entries = await storage.entries()
     return {
         entries,
@@ -158,8 +206,101 @@ async function graph(storage: SiteAdminStorage) {
         ),
     }
 }
-for (const kind of ['memory', 'sqlite', 'd1'] as const)
+for (const kind of [
+    'memory',
+    'sqlite',
+    'd1',
+    'drizzle-d1',
+    ...(process.versions.bun ? (['drizzle-bun'] as const) : []),
+] as const)
     describe(`${kind} domain storage conformance`, () => {
+        it('enforces current-entry unique tuples atomically across creates, updates, publication and restore', async () => {
+            const definition = defineLitiConfig({
+                models: {
+                    records: {
+                        route: false,
+                        unique: [['group', 'code']],
+                        fields: { group: text(), code: text() },
+                    },
+                },
+            })
+            const database = await backend(kind, definition)
+            const core = createRuntime({ config: definition, database })
+            await core.initialize()
+            const input = { data: { group: 'a', code: 'collision' } }
+            const attempts = await Promise.allSettled([
+                core.createEntry('records', { ...input, id: 'first' }),
+                core.createEntry('records', { ...input, id: 'second' }),
+            ])
+            expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+            expect(attempts.find((result) => result.status === 'rejected')).toMatchObject({
+                reason: { code: 'LITI_CONFLICT' },
+            })
+            let entry = (await core.listEntries('records'))[0]!
+            const original = entry.currentRevisionId
+            const other = await core.createEntry('records', { data: { group: 'b', code: 'collision' } })
+            await expect(
+                core.updateEntry(other.id, { expectedVersion: other.version, data: { group: 'a' } }),
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+            expect(await core.listRevisions(other.id)).toHaveLength(1)
+            entry = await core.updateEntry(entry.id, { expectedVersion: entry.version, data: { code: 'free' } })
+            const replacement = await core.createEntry('records', input)
+            for (const attempt of [
+                () => core.restoreRevision(entry.id, original, { expectedVersion: entry.version }),
+                () => core.publishEntry(entry.id, { expectedVersion: entry.version, draft: input }),
+                () =>
+                    core.schedulePublish(entry.id, {
+                        expectedVersion: entry.version,
+                        draft: input,
+                        at: '2099-01-01T00:00:00Z',
+                    }),
+            ])
+                await expect(attempt()).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+            expect(await core.getEntry(entry.id)).toMatchObject({
+                version: entry.version,
+                data: { code: 'free' },
+                publishedRevisionId: null,
+                scheduledRevisionId: null,
+            })
+            expect(await core.listRevisions(entry.id)).toHaveLength(2)
+            await core.deleteEntry(replacement.id, { expectedVersion: replacement.version })
+            expect(await core.restoreRevision(entry.id, original, { expectedVersion: entry.version })).toMatchObject({
+                data: input.data,
+            })
+            await core.createEntry('records', { data: { group: 'a' } })
+            await core.createEntry('records', { data: { group: 'a', code: null } })
+        })
+        it('records first publication only after commit and preserves it across restore and republish', async () => {
+            const { core, tick } = await setup(kind)
+            let entry = await core.createEntry('posts', { data: { slug: 'dated', title: 'Original' } })
+            const revision = entry.currentRevisionId!
+            const createdAt = entry.updatedAt
+            tick()
+            entry = await core.schedulePublish(entry.id, {
+                expectedVersion: entry.version,
+                at: '2026-10-09T12:00:00Z',
+            })
+            expect(entry.firstPublishedAt).toBeNull()
+            await core.publishDue(new Date('2026-10-09T13:00:00Z'))
+            entry = await core.getEntry(entry.id)
+            const first = entry.firstPublishedAt
+            expect(first).toBe('2026-10-09T10:00:01.000Z')
+            expect(entry.updatedAt).toBe(createdAt)
+            tick()
+            entry = await core.unpublishEntry(entry.id, { expectedVersion: entry.version })
+            entry = await core.updateEntry(entry.id, {
+                expectedVersion: entry.version,
+                data: { title: 'Edited' },
+            })
+            entry = await core.restoreRevision(entry.id, revision, { expectedVersion: entry.version })
+            entry = await core.publishEntry(entry.id, { expectedVersion: entry.version })
+            expect(entry.firstPublishedAt).toBe(first)
+            const conflict = await core.createEntry('posts', { data: { slug: 'dated', title: 'Conflict' } })
+            await expect(core.publishEntry(conflict.id, { expectedVersion: conflict.version })).rejects.toMatchObject({
+                code: 'LITI_ROUTE_CONFLICT',
+            })
+            expect((await core.getEntry(conflict.id)).firstPublishedAt).toBeNull()
+        })
         it('guards all commit effects with the public generation, including the initial generation', async () => {
             const { core, storage } = await setup(kind)
             await storage.commit({ conditions: [{ kind: 'publicGeneration', generation: 0 }], publicGeneration: true })
@@ -173,7 +314,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     updates: [{ id: entry.id, patch: { publishedRevisionId: null } }],
                     publicGeneration: true,
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
         })
         it('audit: retries route reconciliation after two interleaved publications', async () => {
@@ -206,7 +347,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 }
                 return result
             }
-            const restarted = createSiteAdmin({
+            const restarted = createRuntime({
                 config,
                 database: { bind: () => storage },
                 locales: { defaultLocale: 'en', supported: ['en', 'ja'] },
@@ -225,9 +366,9 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
         })
         it('audit: stores revisions under the requested model when definitions are shared', async () => {
             const shared = { fields: { title: text({ required: true }) } }
-            const definition = defineSiteAdminConfig({ models: { a: shared, b: shared } })
+            const definition = defineLitiConfig({ models: { a: shared, b: shared } })
             const storage = (await backend(kind, definition)).bind(definition)
-            const core = createSiteAdmin({ config: definition, database: { bind: () => storage } })
+            const core = createRuntime({ config: definition, database: { bind: () => storage } })
             const models: string[] = [],
                 commit = storage.commit.bind(storage)
             storage.commit = async (input) => {
@@ -278,11 +419,11 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             await expect(
                 core.restoreRevision(entry.id, original, { expectedVersion: entry.version }),
             ).rejects.toMatchObject({
-                code: 'SITE_ADMIN_CONFLICT',
+                code: 'LITI_CONFLICT',
             })
             expect(await core.listRevisions(entry.id)).toHaveLength(3)
             await expect(core.publishEntry(entry.id, { expectedVersion: restored.version })).rejects.toMatchObject({
-                code: 'SITE_ADMIN_RELATION_BLOCKED',
+                code: 'LITI_RELATION_BLOCKED',
             })
         })
         for (const [path, fields, data] of [
@@ -299,37 +440,37 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             ],
         ] as const) {
             it(`audit: checks the target model of numeric relation field ${path}`, async () => {
-                const definition = defineSiteAdminConfig({
+                const definition = defineLitiConfig({
                     models: {
                         posts: { fields },
                         parents: { fields: { slug: text() } },
                         other: { fields: { slug: text() } },
                     },
                 })
-                const core = createSiteAdmin({ config: definition, database: await backend(kind, definition) })
+                const core = createRuntime({ config: definition, database: await backend(kind, definition) })
                 const wrong = await core.createEntry('other', { data: {} })
                 await expect(core.createEntry('posts', { data: data(wrong.id) })).rejects.toMatchObject({
-                    code: 'SITE_ADMIN_INVALID_INPUT',
+                    code: 'LITI_INVALID_INPUT',
                     issues: [{ path, message: 'Expected a parents entry.' }],
                 })
                 expect(await core.listEntries('posts')).toEqual([])
             })
             it(`audit: requires publication of numeric relation field ${path}`, async () => {
-                const definition = defineSiteAdminConfig({
+                const definition = defineLitiConfig({
                     models: { posts: { fields }, parents: { fields: { slug: text() } } },
                 })
-                const core = createSiteAdmin({ config: definition, database: await backend(kind, definition) })
+                const core = createRuntime({ config: definition, database: await backend(kind, definition) })
                 let parent = await core.createEntry('parents', { data: {} })
                 const entry = await core.createEntry('posts', { data: data(parent.id) })
                 await expect(core.publishEntry(entry.id, { expectedVersion: entry.version })).rejects.toMatchObject({
-                    code: 'SITE_ADMIN_RELATION_BLOCKED',
+                    code: 'LITI_RELATION_BLOCKED',
                     issues: [{ path }],
                 })
                 parent = await core.publishEntry(parent.id, { expectedVersion: parent.version })
                 await core.publishEntry(entry.id, { expectedVersion: entry.version })
                 await expect(core.unpublishEntry(parent.id, { expectedVersion: parent.version })).rejects.toMatchObject(
                     {
-                        code: 'SITE_ADMIN_RELATION_BLOCKED',
+                        code: 'LITI_RELATION_BLOCKED',
                     },
                 )
             })
@@ -342,12 +483,12 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             const controls = batchControls.get(database)
             if (controls) controls.trace = []
             for (const q of ['a'.repeat(513), '😀'.repeat(513), 'İ'.repeat(257)]) {
-                await expect(storage.entries({ q })).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+                await expect(storage.entries({ q })).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
                 await expect(storage.pageEntries({ q }, { limit: 1, offset: 0 })).rejects.toMatchObject({
-                    code: 'SITE_ADMIN_INVALID_INPUT',
+                    code: 'LITI_INVALID_INPUT',
                 })
                 await expect(core.pageEntries({ q }, { limit: 1, offset: 0 })).rejects.toMatchObject({
-                    code: 'SITE_ADMIN_INVALID_INPUT',
+                    code: 'LITI_INVALID_INPUT',
                 })
                 const response = await handleManagementRequest(
                     core,
@@ -355,13 +496,13 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     '/manage',
                 )
                 expect(response.status).toBe(400)
-                expect(await response.json()).toMatchObject({ error: { code: 'SITE_ADMIN_INVALID_INPUT' } })
+                expect(await response.json()).toMatchObject({ error: { code: 'LITI_INVALID_INPUT' } })
             }
             if (controls) expect(controls.trace).toEqual([])
         })
         it('synchronizes public changes and a scheduled batch once while preserving each lifecycle hook', async () => {
             const events: string[] = []
-            const definition = defineSiteAdminConfig({
+            const definition = defineLitiConfig({
                 assets: { storage: 'content', separateDrafts: true },
                 models: {
                     posts: { fields: { slug: text(), title: text() }, route: '/posts/:slug' },
@@ -371,13 +512,13 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             })
             const storage = (await backend(kind, definition)).bind(definition)
             const stores = { draft: new Files({ adapter: memory() }), content: new Files({ adapter: memory() }) }
-            const core = createSiteAdmin({
+            const core = createRuntime({
                 config: definition,
                 afterCommit: (event) => {
                     events.push(event.type)
                 },
                 database: { bind: () => storage },
-                getFiles: async (name) => (name === 'draft' ? stores.draft : stores.content),
+                getStorage: createFilesStorage(async (name) => (name === 'draft' ? stores.draft : stores.content)),
                 now: () => new Date('2026-10-09T10:00:00Z'),
             })
             await core.initialize()
@@ -428,7 +569,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             expect(entry.data.slug).toBe('')
             expect((await core.listRevisions(entry.id))[0]?.data.slug).toBe('')
             await expect(core.publishEntry(entry.id, { expectedVersion: entry.version })).rejects.toMatchObject({
-                code: 'SITE_ADMIN_INVALID_INPUT',
+                code: 'LITI_INVALID_INPUT',
             })
             entry = await core.publishEntry(entry.id, {
                 expectedVersion: entry.version,
@@ -449,7 +590,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     expectedVersion: 0,
                     draft: { data: { slug: 'stale', title: 'Stale', parent: parent.id } },
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
             expect(await core.resolvePath('/posts/stale', 'en')).toBeNull()
         })
@@ -464,7 +605,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     expectedVersion: second.version,
                     draft: { data: { slug: 'taken', title: 'Rejected' } },
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_ROUTE_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_ROUTE_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
         })
         it('rejects a missing update target before applying any independent candidate', async () => {
@@ -489,7 +630,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     updates: [{ id: 'missing', patch: {} }],
                     publicGeneration: true,
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
         })
         it.each([false, true])(
@@ -513,7 +654,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     publicGeneration: true,
                 })
                 if (stale) {
-                    await expect(pending).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+                    await expect(pending).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
                     expect(await graph(storage)).toEqual(before)
                 } else {
                     await pending
@@ -525,8 +666,8 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 if (kind !== 'memory')
                     expect(
                         await queryRows(
-                            database as DrizzleSiteAdminDatabase,
-                            "SELECT key FROM site_admin_meta WHERE key LIKE 'content_commit:%'",
+                            database as SqliteDatabase,
+                            "SELECT key FROM liti_meta WHERE key LIKE 'content_commit:%'",
                         ),
                     ).toEqual([])
             },
@@ -548,7 +689,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     'posts',
                     items.map((item, index) => (index === 44 ? { ...item, expectedVersion: 0 } : item)),
                 ),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
             const sorted = await core.setSortOrders('posts', items)
             expect(sorted.map(({ sortOrder }) => sortOrder)).toEqual(items.map(({ sortOrder }) => sortOrder))
@@ -647,13 +788,13 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 for (let index = 0; index < 65; index++)
                     await core.createEntry('posts', { data: { title: 'École ' + index } })
                 await core.createEntry('secrets', { data: { title: 'Private' } })
-                const physical = database as DrizzleSiteAdminDatabase
-                await runAtomic(physical, [{ sql: 'DELETE FROM site_admin_search' }])
+                const physical = database as SqliteDatabase
+                await runAtomic(physical, [{ sql: 'DELETE FROM liti_search' }])
                 const before = await graph(storage)
                 await expect(
                     storage.pageEntries({ models: ['posts'], q: 'école' }, { limit: 1, offset: 64 }),
-                ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
-                expect(await queryRows(physical, 'SELECT * FROM site_admin_search')).toEqual([])
+                ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
+                expect(await queryRows(physical, 'SELECT * FROM liti_search')).toEqual([])
                 expect(await core.rebuildSearch()).toEqual({ indexed: 66 })
                 const result = await storage.pageEntries({ models: ['posts'], q: 'école' }, { limit: 1, offset: 64 })
                 expect(result.total).toBe(65)
@@ -664,23 +805,23 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             })
 
             it('keeps old/new projections separate and updates, restores, prunes and deletes search values atomically', async () => {
-                const original = defineSiteAdminConfig({
+                const original = defineLitiConfig({
                     models: { posts: { fields: { slug: text(), title: text(), excerpt: text() } } },
                 })
-                const current = defineSiteAdminConfig({
+                const current = defineLitiConfig({
                     models: { posts: { fields: { slug: text(), title: text() } } },
                 })
                 const database = await backend(kind, original)
-                const old = createSiteAdmin({ config: original, database })
+                const old = createRuntime({ config: original, database })
                 const first = await old.createEntry('posts', {
                     data: { slug: 'école', title: 'École', excerpt: 'RetiredSecret' },
                 })
-                const active = createSiteAdmin({ config: current, database })
+                const active = createRuntime({ config: current, database })
                 const storage = database.bind(current)
-                const physical = database as DrizzleSiteAdminDatabase
+                const physical = database as SqliteDatabase
                 await expect(
                     storage.pageEntries({ models: ['posts'], q: 'RetiredSecret' }, { limit: 1, offset: 0 }),
-                ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
+                ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
                 await active.rebuildSearch()
                 expect(
                     (await storage.pageEntries({ models: ['posts'], q: 'RetiredSecret' }, { limit: 1, offset: 0 }))
@@ -710,10 +851,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 expect((await old.listRevisions(first.id)).find(({ id }) => id === first.revisionId)).toEqual(
                     historical[0],
                 )
-                const indexed = await queryRows(
-                    physical,
-                    'SELECT * FROM site_admin_search ORDER BY revision_id,locale,part',
-                )
+                const indexed = await queryRows(physical, 'SELECT * FROM liti_search ORDER BY revision_id,locale,part')
                 await expect(
                     storage.commit({
                         conditions: [{ kind: 'entryVersion', id: entry.id, version: entry.version - 1 }],
@@ -732,14 +870,14 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                         ],
                         updates: [{ id: entry.id, patch: { currentRevisionId: 'conflict-revision' } }],
                     }),
-                ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
-                expect(
-                    await queryRows(physical, 'SELECT * FROM site_admin_search ORDER BY revision_id,locale,part'),
-                ).toEqual(indexed)
+                ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
+                expect(await queryRows(physical, 'SELECT * FROM liti_search ORDER BY revision_id,locale,part')).toEqual(
+                    indexed,
+                )
                 await active.pruneRevisions(entry.id, 0)
-                expect(await queryRows(physical, 'SELECT * FROM site_admin_search')).toHaveLength(2)
+                expect(await queryRows(physical, 'SELECT * FROM liti_search')).toHaveLength(2)
                 await active.deleteEntry(entry.id, { expectedVersion: entry.version })
-                expect(await queryRows(physical, 'SELECT * FROM site_admin_search')).toEqual([])
+                expect(await queryRows(physical, 'SELECT * FROM liti_search')).toEqual([])
             })
         }
 
@@ -748,29 +886,26 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 const { core, storage, database } = await setup(kind)
                 for (let index = 0; index < 257; index++)
                     await core.createEntry('posts', { data: { title: 'École ' + index } })
-                const physical = database as DrizzleSiteAdminDatabase
-                const before = await queryRows(
-                    physical,
-                    'SELECT * FROM site_admin_search ORDER BY revision_id,locale,part',
-                )
+                const physical = database as SqliteDatabase
+                const before = await queryRows(physical, 'SELECT * FROM liti_search ORDER BY revision_id,locale,part')
                 const result = await storage.pageEntries({ models: ['posts'], q: 'école' }, { limit: 1, offset: 256 })
                 expect(result.total).toBe(257)
                 expect(result.items).toHaveLength(1)
-                expect(
-                    await queryRows(physical, 'SELECT * FROM site_admin_search ORDER BY revision_id,locale,part'),
-                ).toEqual(before)
+                expect(await queryRows(physical, 'SELECT * FROM liti_search ORDER BY revision_id,locale,part')).toEqual(
+                    before,
+                )
             })
 
         if (kind !== 'memory')
             it('preserves a D1-sized canonical value whose lowercase metadata exceeds the native row limit', async () => {
-                const definition = defineSiteAdminConfig({
+                const definition = defineLitiConfig({
                     models: { posts: { fields: { slug: text(), title: text() } } },
                 })
                 const database = await backend(kind, definition),
-                    physical = database as DrizzleSiteAdminDatabase
+                    physical = database as SqliteDatabase
                 const controls = batchControls.get(database)
                 if (controls) controls.maxValueBytes = 2_000_000
-                const core = createSiteAdmin({ config: definition, database }),
+                const core = createRuntime({ config: definition, database }),
                     storage = database.bind(definition)
                 // The JSON prefix plus case expansion places the literal marker across a chunk boundary.
                 const marker = 'A😀B%_[]C'
@@ -805,11 +940,11 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 ).toBe(0)
                 const sizes = await queryRows<{ bytes: number }>(
                     physical,
-                    'SELECT length(CAST(value AS BLOB)) AS bytes FROM site_admin_search WHERE part>=0',
+                    'SELECT length(CAST(value AS BLOB)) AS bytes FROM liti_search WHERE part>=0',
                 )
                 expect(sizes.length).toBeGreaterThan(2)
                 expect(sizes.every(({ bytes }) => bytes < 2_000_000)).toBe(true)
-                await runAtomic(physical, [{ sql: 'DELETE FROM site_admin_search' }])
+                await runAtomic(physical, [{ sql: 'DELETE FROM liti_search' }])
                 await core.rebuildSearch()
                 expect(
                     (await storage.pageEntries({ models: ['posts'], q: 'i\u0307' }, { limit: 1, offset: 0 })).total,
@@ -818,7 +953,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 expect(await graph(storage)).toEqual(before)
             }, 20_000)
 
-        if (kind === 'd1')
+        if (kind === 'd1' || kind === 'drizzle-d1')
             it('executes a standard indexed D1 search in one bounded read-only request', async () => {
                 const { core, database } = await setup(kind)
                 for (let index = 0; index < 110; index++)
@@ -828,7 +963,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 controls.maxCalls = 50
                 controls.trace = []
                 let requests = 0
-                const client = createSiteAdminManagementClient({
+                const client = createLitiManagementClient({
                     basePath: '/manage',
                     fetch: (input, init) => {
                         requests++
@@ -846,21 +981,21 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                 delete controls.maxCalls
             }, 30_000)
 
-        if (kind === 'd1')
+        if (kind === 'd1' || kind === 'drizzle-d1')
             it('rejects an incomplete index from the same read snapshot as its page', async () => {
                 const { core, database, storage } = await setup(kind)
                 await core.createEntry('posts', { data: { title: 'École' } })
                 const controls = batchControls.get(database)!
-                const physical = (await batchControls.get(database)!.otherConnection!()) as DrizzleSiteAdminDatabase
+                const physical = (await batchControls.get(database)!.otherConnection!()) as SqliteDatabase
                 let injected = false
                 controls.beforeBatch = async (queries) => {
                     if (injected || !queries.some((sql) => sql.includes('fingerprint.key'))) return
                     injected = true
-                    await runAtomic(physical, [{ sql: 'DELETE FROM site_admin_search' }])
+                    await runAtomic(physical, [{ sql: 'DELETE FROM liti_search' }])
                 }
                 await expect(
                     storage.pageEntries({ models: ['posts'], q: 'école' }, { limit: 1, offset: 0 }),
-                ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
+                ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
                 expect(injected).toBe(true)
             })
 
@@ -913,7 +1048,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             expect((await core.getEntry(entry.id)).publishedRevisionId).toBe(pinned)
             expect((await core.getPublicEntry('posts', entry.id, 'en'))?.data.title).toBe('Scheduled')
             await expect(core.deleteEntry(parent.id, { expectedVersion: parent.version })).rejects.toMatchObject({
-                code: 'SITE_ADMIN_RELATION_BLOCKED',
+                code: 'LITI_RELATION_BLOCKED',
             })
             entry = await core.getEntry(entry.id)
             await core.deleteEntry(entry.id, { expectedVersion: entry.version })
@@ -938,7 +1073,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
             }
             const generation = await core.publicGeneration()
             await expect(core.publishEntry(entry.id, { expectedVersion: entry.version })).rejects.toMatchObject({
-                code: 'SITE_ADMIN_CONFLICT',
+                code: 'LITI_CONFLICT',
             })
             expect(await core.getEntry(entry.id)).toEqual(entry)
             expect(await core.listRevisions(entry.id)).toHaveLength(1)
@@ -994,7 +1129,7 @@ for (const kind of ['memory', 'sqlite', 'd1'] as const)
                     expectedVersion: entry.version,
                     data: { slug: entry.data.slug, title: 'After', attachment: { id: 'asset' } },
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_CONFLICT' })
+            ).rejects.toMatchObject({ code: 'LITI_CONFLICT' })
             expect(await graph(storage)).toEqual(before)
             expect(await storage.hasAssetReferences('asset')).toBe(false)
         })

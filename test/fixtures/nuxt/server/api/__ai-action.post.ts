@@ -1,3 +1,3 @@
 import { defineEventHandler } from 'nuxt/server'
-import { useAdmin } from '@liria24/site-admin/server'
-export default defineEventHandler((event) => useAdmin(event).ai.run('proofread', { content: 'Server helper' }))
+import { useAdmin } from 'liti/nuxt/server'
+export default defineEventHandler((event) => useAdmin(event).actions.run('proofread', { content: 'Server helper' }))

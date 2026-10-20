@@ -1,8 +1,8 @@
-import { defineSiteAdminConfig, image, markdown, number, object, text } from '../packages/site-admin/src'
-import type { PublicEntrySeo } from '../packages/site-admin/src/server/types'
-import type { SiteAdminRouteRule } from '../packages/site-admin/src/seo'
+import { defineLitiConfig, image, markdown, number, object, text } from '../packages/liti/src'
+import type { PublicEntrySeo } from '../packages/liti/src/server/types'
+import type { LitiRouteRule } from '../packages/liti/src/seo'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     seo: { titleTemplate: '%s | Site', type: 'website' },
     routeRules: { '/posts/**': { seo: { titleTemplate: null, image: false }, sitemap: false, llms: true } },
     models: {
@@ -46,5 +46,5 @@ const dataSeo: PublicEntrySeo = {
 // @ts-expect-error DTO image props must remain JSON-only.
 const invalidSeo: PublicEntrySeo = { image: { component: 'PostOg', props: { callback: () => 'secret' } } }
 // @ts-expect-error Route sitemap switches are boolean.
-const invalidRule: SiteAdminRouteRule = { sitemap: 'yes' }
+const invalidRule: LitiRouteRule = { sitemap: 'yes' }
 void [required, privateModel, globalType, ruleTemplate, ruleImage, ruleSitemap, dataSeo, invalidSeo, invalidRule]

@@ -1,23 +1,16 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
 import { effectScope, nextTick } from 'vue'
-import {
-    array,
-    defineSiteAdminConfig,
-    object,
-    select,
-    text,
-    type InferSiteAdminModels,
-} from '../packages/site-admin/src'
-import { createSiteAdminManagementClient } from '../packages/site-admin/src/client'
+import { array, defineLitiConfig, object, select, text, type InferLitiModels } from '../packages/liti/src'
+import { createLitiManagementClient } from '../packages/liti/src/client'
 import { modelFixture } from './model-fixture'
-import { useEntryForm } from '../packages/site-admin/src/form'
-import { createSiteAdmin, handleManagementRequest } from '../packages/site-admin/src/server'
+import { useEntryForm } from '../packages/vue/src/form'
+import { createRuntime, handleManagementRequest } from '../packages/liti/src/server'
 import { migrateTestDatabase, testAdapter } from './migrate'
 
-const original = defineSiteAdminConfig({
+const original = defineLitiConfig({
     models: {
         posts: {
             route: '/posts/:slug',
@@ -31,7 +24,7 @@ const original = defineSiteAdminConfig({
         },
     },
 })
-const current = defineSiteAdminConfig({
+const current = defineLitiConfig({
     models: {
         posts: {
             route: '/posts/:slug',
@@ -50,7 +43,7 @@ const fixture = async (oldMapping: boolean) => {
     const db = createDatabase(nodeSqlite({ name: ':memory:' }))
     databases.push(db)
     await migrateTestDatabase(db, original)
-    const legacy = createSiteAdmin({ config: original, database: await testAdapter(db, original) })
+    const legacy = createRuntime({ config: original, database: await testAdapter(db, original) })
     const created = await legacy.createEntry('posts', {
         data: {
             slug: 'synthetic',
@@ -61,16 +54,16 @@ const fixture = async (oldMapping: boolean) => {
         },
     })
     const entry = await legacy.publishEntry(created.id, { expectedVersion: created.version })
-    const admin = createSiteAdmin({
+    const admin = createRuntime({
         config: current,
         database: await testAdapter(db, oldMapping ? original : current),
         authorize: () => ({ id: 'synthetic-admin', roles: ['admin'] }),
     })
-    const client = createSiteAdminManagementClient<InferSiteAdminModels<typeof current>>({
+    const client = createLitiManagementClient<InferLitiModels<typeof current>>({
         origin: 'http://fixture.test',
         fetch: (input, init) => handleManagementRequest(admin, new Request(input, init)),
     })
-    const history = () => db.prepare('SELECT * FROM site_admin_content_posts WHERE revision_id=?').get(entry.revisionId)
+    const history = () => db.prepare('SELECT * FROM liti_content_posts WHERE revision_id=?').get(entry.revisionId)
     return { db, admin, client, entry, history }
 }
 
@@ -99,7 +92,7 @@ describe('trusted stored management snapshots', () => {
                     (input, init) => handleManagementRequest(admin, new Request(input, init)),
                     raw,
                     {},
-                    { model: 'posts', descriptor: createSiteAdminDescriptor(current).models.posts! },
+                    { model: 'posts', descriptor: createLitiDescriptor(current).models.posts! },
                 )
                 session.state.refresh = async () => {
                     session.state.data.value = await admin.getEntry(entry.id)
@@ -150,7 +143,7 @@ describe('trusted stored management snapshots', () => {
             const request = (method: string, suffix: string, body: object) =>
                 handleManagementRequest(
                     admin,
-                    new Request('http://fixture.test/api/site-admin/' + suffix, {
+                    new Request('http://fixture.test/api/liti/' + suffix, {
                         method,
                         headers: { 'content-type': 'application/json' },
                         body: JSON.stringify(body),
@@ -161,7 +154,7 @@ describe('trusted stored management snapshots', () => {
                 await request('PATCH', 'entries/' + entry.id, { expectedVersion: entry.version, data }),
             ]) {
                 expect(response.status).toBe(400)
-                expect(await response.json()).toMatchObject({ error: { code: 'SITE_ADMIN_INVALID_INPUT' } })
+                expect(await response.json()).toMatchObject({ error: { code: 'LITI_INVALID_INPUT' } })
             }
         }
         await expect(
@@ -180,7 +173,7 @@ describe('trusted stored management snapshots', () => {
     ])('does not launder invalid active stored values: %s %j', async (name, value) => {
         const { db, admin, client, entry, history } = await fixture(false)
         await db
-            .prepare('UPDATE site_admin_content_posts SET field_' + name + '=? WHERE revision_id=?')
+            .prepare('UPDATE liti_content_posts SET field_' + name + '=? WHERE revision_id=?')
             .bind(JSON.stringify(value), entry.revisionId)
             .run()
         const before = await admin.getEntry(entry.id)

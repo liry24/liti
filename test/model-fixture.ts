@@ -1,16 +1,16 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { ref, shallowRef } from 'vue'
-import { defineSiteAdminConfig, image, images, object, select, text } from '../packages/site-admin/src'
-import { createSiteAdminManagementClient, type SiteAdminEntry } from '../packages/site-admin/src/client'
+import { defineLitiConfig, image, images, object, select, text } from '../packages/liti/src'
+import { createLitiManagementClient, type LitiEntry, type LitiClientOptions } from '../packages/liti/src/client'
 import {
-    createSiteAdminModel,
-    type SiteAdminModelState,
-    type SiteAdminSessionDraft,
+    createLitiModel,
+    type LitiModelState,
+    type LitiSessionDraft,
     type EntryPrepareContext,
-} from '../packages/site-admin/src/model'
-import type { ModelDescriptor } from '../packages/site-admin/src/descriptor'
+} from '../packages/vue/src/model'
+import type { ModelDescriptor } from '../packages/liti/src/descriptor'
 
-export const formConfig = defineSiteAdminConfig({
+export const formConfig = defineLitiConfig({
     models: {
         posts: {
             sortable: true,
@@ -25,12 +25,12 @@ export const formConfig = defineSiteAdminConfig({
         },
     },
 })
-export const formDescriptor = createSiteAdminDescriptor(formConfig).models.posts!
+export const formDescriptor = createLitiDescriptor(formConfig).models.posts!
 export const modelEntry = (
     id = 'one',
     version = 1,
     data: Record<string, unknown> = { title: 'Initial' },
-): SiteAdminEntry => ({
+): LitiEntry => ({
     id,
     version,
     model: 'posts',
@@ -44,14 +44,15 @@ export const modelEntry = (
     revisionId: 'revision',
     publishedRevisionId: null,
     publishedAt: null,
+    firstPublishedAt: null,
     scheduledAt: null,
     scheduledRevisionId: null,
     sortOrder: null,
 })
 export const modelFixture = (
-    request: typeof fetch,
-    initial: SiteAdminEntry | null = modelEntry(),
-    drafts: Record<string, SiteAdminSessionDraft> = {},
+    request: NonNullable<LitiClientOptions['fetch']>,
+    initial: LitiEntry | null = modelEntry(),
+    drafts: Record<string, LitiSessionDraft> = {},
     options: {
         model: string
         descriptor: ModelDescriptor
@@ -61,21 +62,23 @@ export const modelFixture = (
 ) => {
     const identity = ref('alice:posts:' + (initial?.id ?? 'new'))
     const id = ref(initial?.id ?? null)
-    const state: SiteAdminModelState<Record<string, unknown>> = {
+    const state: LitiModelState<Record<string, unknown>> = {
         data: shallowRef(initial),
         status: ref('success'),
         error: shallowRef(),
         refresh: async () => {},
     }
-    const client = createSiteAdminManagementClient<Record<string, Record<string, unknown>>>({
+    const client = createLitiManagementClient<Record<string, Record<string, unknown>>>({
         origin: 'http://site.test',
         fetch: request,
     })
-    const actions = createSiteAdminModel(state, {
+    const actions = createLitiModel(state, {
         model: options.model,
         ...(options.defaultLocale ? { defaultLocale: options.defaultLocale } : {}),
         id,
         identity,
+        group: identity,
+        scope: 'alice',
         descriptor: shallowRef(options.descriptor),
         locale: ref(undefined),
         client,

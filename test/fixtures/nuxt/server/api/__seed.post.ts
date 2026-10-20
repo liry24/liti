@@ -1,10 +1,10 @@
-import { useSiteAdminRuntime } from '@liria24/site-admin/internal/nuxt/server'
-import { withSiteAdminContext } from '@liria24/site-admin/internal/runtime/context'
+import { useLitiRuntime } from 'liti/internal/nuxt/server'
+import { withLitiContext } from 'liti/internal/runtime/context'
 import { defineEventHandler } from 'nuxt/server'
 
 export default defineEventHandler((event) =>
-    withSiteAdminContext(event.context, async () => {
-        const admin = await useSiteAdminRuntime().getSiteAdmin(event)
+    withLitiContext(event.context, async () => {
+        const admin = await useLitiRuntime().getLiti(event)
         if ((await admin.listEntries('posts')).length === 0) {
             const en = await admin.createEntry('posts', {
                 data: {
@@ -20,6 +20,15 @@ export default defineEventHandler((event) =>
             await admin.createEntry('links', {
                 data: { slug: 'external', destination: 'https://example.com/destination', title: 'External' },
             })
+            const article = await admin.createEntry('articles', {
+                data: {
+                    title: 'Article',
+                    content: 'Article body.',
+                    slug: 'manual',
+                    authoredAt: '2026-01-01T00:00:00Z',
+                },
+            })
+            await admin.publishEntry(article.id, { expectedVersion: article.version })
         }
         return { seeded: true }
     }),

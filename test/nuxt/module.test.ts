@@ -5,34 +5,34 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { $fetch, setup, getServerLogs, startServer, useTestContext, url } from '@nuxt/test-utils/e2e'
 import { beforeAll, expect, it } from 'vitest'
-import { generateSiteAdminSchema } from '../../packages/site-admin/src/generate'
-import { text } from '../../packages/site-admin/src/fields'
+import { generateLitiSchema } from '../../packages/void/src/tooling'
+import { text } from '../../packages/liti/src/fields'
 
 const workspace = fileURLToPath(new URL('../../', import.meta.url))
 await mkdir(join(workspace, '.tmp'), { recursive: true })
 const fixture = await mkdtemp(join(workspace, '.tmp/nuxt-module-'))
 const lifecycleFile = `${fixture}-lifecycle.jsonl`
-const config = (title: string, aiChanged = false) => `import { defineSiteAdminConfig, text } from '@liria24/site-admin'
+const config = (title: string, aiChanged = false) => `import { defineLitiConfig, text } from 'liti'
+import { voidAdapter } from '@litijs/void'
+import { ai, createTextAction } from '@litijs/ai'
 import { required } from '#policy'
 import { z } from 'zod'
-export default defineSiteAdminConfig({ ai: { actions: ${aiChanged ? "{ suggest: { type: 'text-generation', input: z.object({}), prompt: () => 'AI server sentinel' } }" : '{}'} }, storage: { adapter: 'memory' }, assets: {}, models: { posts: { fields: { title: text({ required, default: ${JSON.stringify(title)} }) } } } })`
+export default defineLitiConfig({ adapter: voidAdapter(), plugins: [ai({ provider: { id: 'fixture', text: { generate: async () => { throw new Error('No inference during prepare') } } }, actions: ${aiChanged ? "{ suggest: createTextAction({ input: z.object({}), prompt: () => 'AI server sentinel' }) }" : '{}'} })], assets: {}, models: { posts: { fields: { title: text({ required, default: ${JSON.stringify(title)} }) } } } })`
 await mkdir(join(fixture, 'server/api'), { recursive: true })
 await mkdir(join(fixture, 'app'), { recursive: true })
 await mkdir(join(fixture, 'db'), { recursive: true })
 await writeFile(
     join(fixture, 'package.json'),
-    JSON.stringify({ name: 'site-admin-nuxt-test', type: 'module', dependencies: { nuxt: '*' } }),
+    JSON.stringify({ name: 'liti-nuxt-test', type: 'module', dependencies: { nuxt: '*' } }),
 )
-await writeFile(
-    join(fixture, 'db/schema.ts'),
-    generateSiteAdminSchema({ models: { posts: { fields: { title: text() } } } }),
-)
+await writeFile(join(fixture, 'db/schema.ts'), generateLitiSchema({ models: { posts: { fields: { title: text() } } } }))
 await writeFile(join(fixture, 'policy.ts'), 'export const required = true\n')
 await writeFile(
     join(fixture, 'void.config.ts'),
-    `export default { inference: { bindings: { db: true } }, cloudflare: { name: 'site-admin-module-test', compatibility_flags: ['nodejs_compat'] } }`,
+    `export default { inference: { bindings: { db: true } }, cloudflare: { name: 'liti-module-test', compatibility_flags: ['nodejs_compat'] } }`,
 )
-await writeFile(join(fixture, 'site-admin.config.ts'), config('Before'))
+await writeFile(join(fixture, 'liti.config.ts'), config('Before'))
+await writeFile(join(fixture, 'files.config.ts'), "export default { storage: { adapter: 'memory' } }\n")
 await writeFile(
     join(fixture, 'nuxt.config.ts'),
     `import { defineNuxtConfig } from 'nuxt/config'
@@ -46,11 +46,11 @@ export default defineNuxtConfig({
     nuxt.hooks.afterEach(({ name }) => {
       if (name === 'close') trace('nuxt', 'after', name)
     })
-    nuxt.hook('site-admin:config', (config) => { nuxt.options.runtimeConfig.probe.title = String(config.models.posts?.fields.title?.default) }) }, '@liria24/site-admin/nuxt'],
+    nuxt.hook('liti:config', (config) => { nuxt.options.runtimeConfig.probe.title = String(config.models.posts?.fields.title?.default) }) }, 'liti/nuxt'],
   devtools: { enabled: false },
   alias: { '#policy': fileURLToPath(new URL('./policy.ts', import.meta.url)) },
   typescript: { nodeTsConfig: { compilerOptions: { paths: { '#policy': [fileURLToPath(new URL('./policy.ts', import.meta.url))] } } } },
-  siteAdmin: { auth: false, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, ai: true },
+  liti: { auth: false, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false } },
   runtimeConfig: { probe: { title: '', generation: randomUUID() } },
 })`,
 )
@@ -66,41 +66,31 @@ await writeFile(
     join(fixture, 'server/types.ts'),
     `import { useServerHooks } from 'nuxt/server'
 export default () => {
-  useServerHooks().hook('site-admin:authorize', (context) => { const id: string = context.actor.id; void id })
-  // @ts-expect-error Unknown Site Admin hook.
-  useServerHooks().hook('site-admin:missing', () => {})
+  useServerHooks().hook('liti:authorize', (context) => { const id: string = context.actor.id; void id })
+  // @ts-expect-error Unknown liti hook.
+  useServerHooks().hook('liti:missing', () => {})
 }
-const admin: ReturnType<typeof import('@liria24/site-admin/server').useAdmin> = useAdmin()
+const admin: ReturnType<typeof import('liti/nuxt/server').useAdmin> = useAdmin()
 void admin
 `,
 )
 await writeFile(
     join(fixture, 'app/types.ts'),
-    `const client = useAdminClient()
-// @ts-expect-error No such client method.
-client.missing()
-const checkModels = async () => {
-  const { data } = await useContent('posts')
-  const title: string = data.value![0]!.data.title
-  // @ts-expect-error Public model names come from the domain config.
-  await useContent('missing')
-  // @ts-expect-error The public field type is inferred without consumer generics.
-  const invalidTitle: number = data.value![0]!.data.title
-  await client.entries.create('posts', { data: { title: 'Typed' } })
-  // @ts-expect-error Unknown management model.
-  await client.entries.create('missing', {})
-  // @ts-expect-error Required model field is missing.
-  await client.entries.create('posts', {})
-  // @ts-expect-error The management field type is inferred.
-  await client.entries.create('posts', { data: { title: 123 } })
-  const entry = (await client.entries.list('posts')).items[0]!
-  const resource = await useAdminEntry('posts', entry.id)
-  const { form } = await useAdminForm('posts', { id: entry.id })
+    `const checkModels = async () => {
+  const { data } = await useLitiQuery('posts')
+  const title: string = data.value[0]!.data.title
+  // @ts-expect-error Unknown public model.
+  await useLitiQuery('missing')
+  // @ts-expect-error The public field type is inferred.
+  const invalidTitle: number = data.value[0]!.data.title
+  const resource = await useLitiQuery('posts', { view: 'current' })
+  const entry = resource.data.value[0]!
+  const { form } = await useLitiForm('posts', { id: entry.id })
   const formTitle: string = form.state.values.title
-  // @ts-expect-error Unknown model.
-  await useAdminEntry('missing', null)
+  // @ts-expect-error Unknown management model.
+  await useLitiQuery('missing', { view: 'current' })
   // @ts-expect-error Default values retain model field types.
-  useAdminForm('posts', { defaultValues: { title: 123 } })
+  useLitiForm('posts', { defaultValues: { title: 123 } })
   void [title, invalidTitle, formTitle]
 }
 void checkModels
@@ -109,6 +99,8 @@ void checkModels
 
 await setup({
     rootDir: fixture,
+    buildDir: join(fixture, '.nuxt'),
+    nuxtConfig: { typesDir: join(fixture, '.nuxt') },
     dev: true,
     build: true,
     server: false,
@@ -160,7 +152,7 @@ it('reloads aliased domain and AI config and exposes generated Nuxt/Nitro types'
     const before = await $fetch<{ title: string; generation: string; filesReady: boolean }>('/api/probe')
     expect(before.title).toBe('Before')
     expect(before.filesReady).toBe(true)
-    await writeFile(join(fixture, 'site-admin.config.ts'), config('After'))
+    await writeFile(join(fixture, 'liti.config.ts'), config('After'))
     try {
         await expect
             .poll(async () => (await $fetch<{ title: string }>('/api/probe')).title, { timeout: 60_000, interval: 500 })
@@ -169,7 +161,7 @@ it('reloads aliased domain and AI config and exposes generated Nuxt/Nitro types'
         throw new Error(`${await readFile(lifecycleFile, 'utf8')}\n${getServerLogs().join('\n')}`, { cause: error })
     }
     const after = await $fetch<{ generation: string }>('/api/probe')
-    await writeFile(join(fixture, 'site-admin.config.ts'), config('After', true))
+    await writeFile(join(fixture, 'liti.config.ts'), config('After', true))
     await expect
         .poll(
             async () => {

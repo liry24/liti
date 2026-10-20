@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const props = defineProps<{ id?: string }>()
-const { data, form } = await useAdminForm('posts', { id: () => props.id, locale: 'en' })
+const { data, form } = await useLitiForm('posts', { id: () => props.id, locale: 'en' })
 const version = computed(() => data.value?.version)
 const entryId = computed(() => data.value?.id)
 </script>

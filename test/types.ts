@@ -1,16 +1,16 @@
 import {
     array,
-    defineSiteAdminConfig,
+    defineLitiConfig,
     image,
     object,
     relation,
     select,
     text,
-    type InferSiteAdminModels,
-    type InferSiteAdminPublicModels,
-} from '../packages/site-admin/src'
+    type InferLitiModels,
+    type InferLitiPublicModels,
+} from '../packages/liti/src'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         authors: { fields: { slug: text(), name: text({ required: true }) } },
         posts: {
@@ -27,11 +27,11 @@ const config = defineSiteAdminConfig({
 const post = {
     sections: [{ author: 'author_id', heading: 'Heading' }],
     title: 'Typed post',
-} satisfies InferSiteAdminModels<typeof config>['posts']
+} satisfies InferLitiModels<typeof config>['posts']
 
 void post
 
-type PublicPost = InferSiteAdminPublicModels<typeof config>['posts']
+type PublicPost = InferLitiPublicModels<typeof config>['posts']
 const publicData = {
     cover: { id: 'asset', url: '/api/content/_assets/asset' },
     sections: [{ author: null, heading: 'Heading' }],
@@ -55,7 +55,7 @@ void nullablePublicItems
 void requireFullRelatedData
 void invalidPublicCover
 
-const requiredConfig = defineSiteAdminConfig({
+const requiredConfig = defineLitiConfig({
     models: {
         required: {
             fields: {
@@ -74,10 +74,10 @@ const required = {
     nested: { value: 'yes' },
     relation: 'author_id',
     status: 'draft',
-} satisfies InferSiteAdminModels<typeof requiredConfig>['required']
+} satisfies InferLitiModels<typeof requiredConfig>['required']
 
 // @ts-expect-error every literal `required: true` field must be present
-const missingRequired: InferSiteAdminModels<typeof requiredConfig>['required'] = { items: [], relation: 'id' }
+const missingRequired: InferLitiModels<typeof requiredConfig>['required'] = { items: [], relation: 'id' }
 
 void required
 void missingRequired

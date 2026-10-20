@@ -1,18 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDatabase, type Database } from 'db0'
 import nodeSqlite from 'db0/connectors/node-sqlite'
-import {
-    array,
-    boolean,
-    defineSiteAdminConfig,
-    markdown,
-    number,
-    object,
-    select,
-    text,
-} from '../packages/site-admin/src'
-import { createSiteAdmin } from '../packages/site-admin/src/server'
-import { generateSiteAdminSchema, generateCombinedSchema } from '../packages/site-admin/src/generate'
+import { array, boolean, defineLitiConfig, markdown, number, object, select, text } from '../packages/liti/src'
+import { createRuntime } from '../packages/liti/src/server'
+import { generateLitiSchema, generateCombinedSchema } from '../packages/void/src/tooling'
 import { createJiti } from 'jiti'
 import { getTableName } from 'drizzle-orm'
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core'
@@ -33,7 +24,7 @@ const authConfig = () => ({
 
 describe('application-owned Drizzle migrations', () => {
     it('generates auth plugins and content in one deterministic, importable schema without a database', async () => {
-        const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+        const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
         const source = await generateCombinedSchema(config, authConfig, { usePlural: true })
         expect(source).toBe(await generateCombinedSchema(config, authConfig, { usePlural: true }))
         const directory = await mkdtemp(resolve('test/.schema-'))
@@ -47,7 +38,7 @@ describe('application-owned Drizzle migrations', () => {
             }>(file)
             expect(getTableName(schema.users)).toBe('users')
             expect(schema.users.role).toBeDefined()
-            expect(getTableName(schema.entries)).toBe('site_admin_entries')
+            expect(getTableName(schema.entries)).toBe('liti_entries')
             expect(schema.usersRelations).toBeDefined()
         } finally {
             await rm(directory, { recursive: true, force: true })
@@ -56,11 +47,11 @@ describe('application-owned Drizzle migrations', () => {
             generateCombinedSchema(config, { ...authConfig(), user: { modelName: 'entries' } }),
         ).rejects.toThrow('Duplicate schema export')
         await expect(
-            generateCombinedSchema(config, { ...authConfig(), user: { modelName: 'site_admin_entries' } }),
+            generateCombinedSchema(config, { ...authConfig(), user: { modelName: 'liti_entries' } }),
         ).rejects.toThrow('Duplicate schema table')
     })
     it('generates configured names and casing without an auth database', async () => {
-        const config = defineSiteAdminConfig({ models: {} })
+        const config = defineLitiConfig({ models: {} })
         const access = vi.fn(() => {
             throw Error('Schema generation must not access a database')
         })
@@ -79,14 +70,14 @@ describe('application-owned Drizzle migrations', () => {
         const db = await testAdapter(database(), { models: {} })
         for (const minimumAge of [0, 0.5, 86400])
             expect(() =>
-                createSiteAdmin({
+                createRuntime({
                     database: db,
                     config: { assets: { storage: 'content', cleanup: { minimumAge } }, models: {} },
                 }),
             ).not.toThrow()
         for (const minimumAge of [-1, NaN, Infinity, '24h'])
             expect(() =>
-                createSiteAdmin({
+                createRuntime({
                     database: db,
                     config: {
                         assets: { storage: 'content', cleanup: { minimumAge: minimumAge as number } },
@@ -97,7 +88,7 @@ describe('application-owned Drizzle migrations', () => {
     })
     it('requires explicit DDL, stores typed columns, and omits absent optional fields', async () => {
         const db = database()
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             models: {
                 posts: {
                     fields: {
@@ -113,13 +104,13 @@ describe('application-owned Drizzle migrations', () => {
             },
         })
         await expect(
-            createSiteAdmin({ config, database: await testAdapter(db, config) }).initialize(),
+            createRuntime({ config, database: await testAdapter(db, config) }).initialize(),
         ).rejects.toMatchObject({
-            code: 'SITE_ADMIN_MIGRATION_REQUIRED',
+            code: 'LITI_MIGRATION_REQUIRED',
         })
         expect(await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()).toEqual([])
         await migrateTestDatabase(db, config)
-        const admin = createSiteAdmin({ config, database: await testAdapter(db, config) })
+        const admin = createRuntime({ config, database: await testAdapter(db, config) })
         const entry = await admin.createEntry('posts', {
             data: { slug: 'typed', title: 'Typed', count: 3, enabled: false, nested: { value: 'nested' } },
         })
@@ -132,54 +123,54 @@ describe('application-owned Drizzle migrations', () => {
         })
         expect(
             await db
-                .prepare('SELECT field_title, field_count, field_enabled, field_nested FROM site_admin_content_posts')
+                .prepare('SELECT field_title, field_count, field_enabled, field_nested FROM liti_content_posts')
                 .get(),
         ).toEqual({ field_title: 'Typed', field_count: 3, field_enabled: 0, field_nested: '{"value":"nested"}' })
-        const columns = (await db.prepare('PRAGMA table_info(site_admin_revisions)').all()) as Array<{ name: string }>
+        const columns = (await db.prepare('PRAGMA table_info(liti_revisions)').all()) as Array<{ name: string }>
         expect(columns.map((column) => column.name)).not.toEqual(expect.arrayContaining(['data', 'schema_version']))
-        const changed = defineSiteAdminConfig({
+        const changed = defineLitiConfig({
             models: { posts: { fields: { ...config.models.posts.fields, added: text() } } },
         })
         const oldSchema = await testAdapter(db, config)
-        expect(() => createSiteAdmin({ config: changed, database: oldSchema })).toThrow('Regenerate')
+        expect(() => createRuntime({ config: changed, database: oldSchema })).toThrow('Regenerate')
         await expect(
-            createSiteAdmin({ config: changed, database: await testAdapter(db, changed) }).initialize(),
+            createRuntime({ config: changed, database: await testAdapter(db, changed) }).initialize(),
         ).rejects.toMatchObject({
-            code: 'SITE_ADMIN_MIGRATION_REQUIRED',
+            code: 'LITI_MIGRATION_REQUIRED',
         })
     })
 
     it('generates deterministic application schema and rejects unsafe identifiers', () => {
-        const config = defineSiteAdminConfig({
+        const config = defineLitiConfig({
             models: { posts: { fields: { slug: text(), title: text({ required: true }) } } },
         })
-        const generated = generateSiteAdminSchema(config)
-        expect(generated).toBe(generateSiteAdminSchema(config))
+        const generated = generateLitiSchema(config)
+        expect(generated).toBe(generateLitiSchema(config))
         expect(generated).toContain('text("field_title").notNull()')
         expect(generated).not.toContain('schemaVersion')
-        expect(generated).not.toContain('@liria24/site-admin/schema')
-        expect(generated).toContain('from "void/schema-d1"')
+        expect(generated).not.toContain('liti/schema')
+        expect(generated).toContain('from "@litijs/void/schema"')
         expect(generated).not.toContain('from "drizzle-orm')
         expect(() =>
-            generateSiteAdminSchema({ models: { posts: { fields: { slug: text(), revisionId: text() } } } }),
+            generateLitiSchema({ models: { posts: { fields: { slug: text(), revisionId: text() } } } }),
         ).toThrow()
     })
 
     it('keeps removed optional columns and historical values with old or regenerated application mappings', async () => {
         const db = database()
-        const original = defineSiteAdminConfig({
+        const original = defineLitiConfig({
             models: { posts: { fields: { slug: text(), title: text({ required: true }), excerpt: text() } } },
         })
-        const current = defineSiteAdminConfig({
+        const current = defineLitiConfig({
             models: { posts: { fields: { slug: text(), title: text({ required: true }) } } },
         })
         await migrateTestDatabase(db, original)
         const oldMapping = await testAdapter(db, original)
-        const previous = await createSiteAdmin({ config: original, database: oldMapping }).createEntry('posts', {
+        const previous = await createRuntime({ config: original, database: oldMapping }).createEntry('posts', {
             data: { slug: 'before', title: 'before', excerpt: 'retained history' },
         })
         for (const adapter of [oldMapping, await testAdapter(db, current)]) {
-            const admin = createSiteAdmin({ config: current, database: adapter })
+            const admin = createRuntime({ config: current, database: adapter })
             await admin.initialize()
             const entry = await admin.getEntry(previous.id)
             expect(entry.data).toEqual({ slug: 'before', title: 'before' })
@@ -192,18 +183,18 @@ describe('application-owned Drizzle migrations', () => {
             expect((await admin.getPublicEntry('posts', edited.id))?.data).toEqual({ slug: 'after', title: 'edited' })
             expect(
                 await db
-                    .prepare('SELECT field_excerpt FROM site_admin_content_posts WHERE revision_id = ?')
+                    .prepare('SELECT field_excerpt FROM liti_content_posts WHERE revision_id = ?')
                     .get(previous.revisionId),
             ).toEqual({ field_excerpt: 'retained history' })
         }
-        const columns = (await db.prepare('PRAGMA table_info(site_admin_content_posts)').all()) as Array<{
+        const columns = (await db.prepare('PRAGMA table_info(liti_content_posts)').all()) as Array<{
             name: string
         }>
         expect(columns.map((column) => column.name)).toContain('field_excerpt')
     })
     it('projects retired nested fields on public reads without rewriting history or loosening writes', async () => {
         const db = database()
-        const original = defineSiteAdminConfig({
+        const original = defineLitiConfig({
             models: {
                 posts: {
                     route: '/posts/:slug',
@@ -218,7 +209,7 @@ describe('application-owned Drizzle migrations', () => {
                 },
             },
         })
-        const current = defineSiteAdminConfig({
+        const current = defineLitiConfig({
             models: {
                 posts: {
                     route: '/posts/:slug',
@@ -235,7 +226,7 @@ describe('application-owned Drizzle migrations', () => {
         })
         await migrateTestDatabase(db, original)
         const oldMapping = await testAdapter(db, original)
-        const legacy = createSiteAdmin({ config: original, database: oldMapping })
+        const legacy = createRuntime({ config: original, database: oldMapping })
         let entry = await legacy.createEntry('posts', {
             data: {
                 slug: 'historical',
@@ -247,24 +238,23 @@ describe('application-owned Drizzle migrations', () => {
             },
         })
         entry = await legacy.publishEntry(entry.id, { expectedVersion: entry.version })
-        const history = () =>
-            db.prepare('SELECT * FROM site_admin_content_posts WHERE revision_id=?').get(entry.revisionId)
+        const history = () => db.prepare('SELECT * FROM liti_content_posts WHERE revision_id=?').get(entry.revisionId)
         const before = await history()
         for (const mapping of [oldMapping, await testAdapter(db, current)]) {
-            const admin = createSiteAdmin({ config: current, database: mapping })
+            const admin = createRuntime({ config: current, database: mapping })
             const publicEntries = await admin.listPublicEntries('posts')
             expect(publicEntries).toHaveLength(1)
             expect(publicEntries[0]?.data.publication).toEqual({ slug: 'manual' })
             expect(publicEntries[0]?.data.sections).toEqual([{ heading: 'Active' }])
             const files = await (await admin.content('posts')).list()
             expect(files).toHaveLength(1)
-            expect(files[0]?.data).toMatchObject({ _siteAdmin: { seo: { description: 'Introduction' } } })
+            expect(files[0]?.data).toMatchObject({ _liti: { seo: { description: 'Introduction' } } })
             expect(JSON.stringify(files)).not.toMatch(/Retired description|Historical secret|"excerpt"/u)
             await expect(
                 admin.createEntry('posts', {
                     data: { slug: 'new', title: 'New', publication: { slug: 'manual', excerpt: 'auto' } },
                 }),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_INVALID_INPUT' })
+            ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
             const latest = await admin.getEntry(entry.id)
             await admin.updateEntry(entry.id, {
                 expectedVersion: latest.version,
@@ -280,99 +270,99 @@ describe('application-owned Drizzle migrations', () => {
             expect(await history()).toEqual(before)
         }
         await db
-            .prepare('UPDATE site_admin_content_posts SET field_publication=? WHERE revision_id=?')
+            .prepare('UPDATE liti_content_posts SET field_publication=? WHERE revision_id=?')
             .bind(JSON.stringify({ slug: 42, excerpt: 'auto' }), entry.revisionId)
             .run()
-        expect(await createSiteAdmin({ config: current, database: oldMapping }).listPublicEntries('posts')).toEqual([])
+        expect(await createRuntime({ config: current, database: oldMapping }).listPublicEntries('posts')).toEqual([])
     })
 
     it('permits retained defaulted columns but rejects required extras that prevent active-column inserts', async () => {
-        const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+        const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
         const db = database()
         await migrateTestDatabase(db, config)
-        await db.exec("ALTER TABLE site_admin_content_posts ADD COLUMN legacy TEXT NOT NULL DEFAULT 'preserved'")
-        const admin = createSiteAdmin({ config, database: await testAdapter(db, config) })
+        await db.exec("ALTER TABLE liti_content_posts ADD COLUMN legacy TEXT NOT NULL DEFAULT 'preserved'")
+        const admin = createRuntime({ config, database: await testAdapter(db, config) })
         await admin.createEntry('posts', { data: { slug: 'new', title: 'new' } })
         await admin.createEntry('posts', { data: { slug: 'second', title: 'second' } })
-        expect(await db.prepare('SELECT legacy FROM site_admin_content_posts').get()).toEqual({ legacy: 'preserved' })
+        expect(await db.prepare('SELECT legacy FROM liti_content_posts').get()).toEqual({ legacy: 'preserved' })
 
         const blocked = database()
         await migrateTestDatabase(blocked, {
             models: { posts: { fields: { slug: text(), title: text(), excerpt: text({ required: true }) } } },
         })
         await expect(
-            createSiteAdmin({ config, database: await testAdapter(blocked, config) }).initialize(),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
+            createRuntime({ config, database: await testAdapter(blocked, config) }).initialize(),
+        ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
 
         const constrained = database()
         await migrateTestDatabase(constrained, {
             models: { posts: { fields: { slug: text(), title: text({ required: true }) } } },
         })
         await expect(
-            createSiteAdmin({ config, database: await testAdapter(constrained, config) }).initialize(),
-        ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
+            createRuntime({ config, database: await testAdapter(constrained, config) }).initialize(),
+        ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
     })
 
     it.each(['NULL', '(NULL)', '((null))', '( ( NULL ) )'])(
         'rejects retained NOT NULL DEFAULT %s before any writes',
         async (value) => {
-            const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+            const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
             const db = database()
             await migrateTestDatabase(db, config)
-            await db.exec(`ALTER TABLE site_admin_content_posts ADD COLUMN legacy TEXT NOT NULL DEFAULT ${value}`)
-            const admin = createSiteAdmin({ config, database: await testAdapter(db, config) })
-            await expect(admin.initialize()).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
-            expect(await db.prepare('SELECT COUNT(*) AS count FROM site_admin_entries').get()).toEqual({ count: 0 })
+            await db.exec(`ALTER TABLE liti_content_posts ADD COLUMN legacy TEXT NOT NULL DEFAULT ${value}`)
+            const admin = createRuntime({ config, database: await testAdapter(db, config) })
+            await expect(admin.initialize()).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
+            expect(await db.prepare('SELECT COUNT(*) AS count FROM liti_entries').get()).toEqual({ count: 0 })
         },
     )
 
     it.each(["'constant'", '42', 'TRUE'])(
         'rejects retained UNIQUE constant default %s while retaining history',
         async (value) => {
-            const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+            const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
             const db = database()
             await migrateTestDatabase(db, config)
-            await db.exec(`ALTER TABLE site_admin_content_posts ADD COLUMN legacy TEXT DEFAULT ${value}`)
-            await db.exec('CREATE UNIQUE INDEX retained_unique ON site_admin_content_posts(legacy)')
+            await db.exec(`ALTER TABLE liti_content_posts ADD COLUMN legacy TEXT DEFAULT ${value}`)
+            await db.exec('CREATE UNIQUE INDEX retained_unique ON liti_content_posts(legacy)')
             await expect(
-                createSiteAdmin({ config, database: await testAdapter(db, config) }).initialize(),
-            ).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
-            expect(await db.prepare('SELECT COUNT(*) AS count FROM site_admin_entries').get()).toEqual({ count: 0 })
+                createRuntime({ config, database: await testAdapter(db, config) }).initialize(),
+            ).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
+            expect(await db.prepare('SELECT COUNT(*) AS count FROM liti_entries').get()).toEqual({ count: 0 })
         },
     )
 
     it('permits retained nullable UNIQUE columns and a constant key paired with revision ID', async () => {
-        const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+        const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
         const db = database()
         await migrateTestDatabase(db, config)
-        await db.exec("ALTER TABLE site_admin_content_posts ADD COLUMN legacy TEXT DEFAULT 'NULL'")
-        await db.exec('ALTER TABLE site_admin_content_posts ADD COLUMN optional TEXT DEFAULT (NULL)')
+        await db.exec("ALTER TABLE liti_content_posts ADD COLUMN legacy TEXT DEFAULT 'NULL'")
+        await db.exec('ALTER TABLE liti_content_posts ADD COLUMN optional TEXT DEFAULT (NULL)')
         await db.exec(
-            'CREATE UNIQUE INDEX retained_nullable ON site_admin_content_posts(optional) WHERE optional IS NOT NULL',
+            'CREATE UNIQUE INDEX retained_nullable ON liti_content_posts(optional) WHERE optional IS NOT NULL',
         )
-        await db.exec('CREATE UNIQUE INDEX retained_revision ON site_admin_content_posts(legacy,revision_id)')
-        const admin = createSiteAdmin({ config, database: await testAdapter(db, config) })
+        await db.exec('CREATE UNIQUE INDEX retained_revision ON liti_content_posts(legacy,revision_id)')
+        const admin = createRuntime({ config, database: await testAdapter(db, config) })
         await admin.createEntry('posts', { data: { slug: 'one', title: 'one' } })
         await admin.createEntry('posts', { data: { slug: 'two', title: 'two' } })
-        expect(await db.prepare('SELECT legacy,optional FROM site_admin_content_posts').all()).toEqual([
+        expect(await db.prepare('SELECT legacy,optional FROM liti_content_posts').all()).toEqual([
             { legacy: 'NULL', optional: null },
             { legacy: 'NULL', optional: null },
         ])
     })
 
     it.each([false, true])('rejects retained partial UNIQUE columns with old mapping: %s', async (oldMapping) => {
-        const config = defineSiteAdminConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
-        const previous = defineSiteAdminConfig({
+        const config = defineLitiConfig({ models: { posts: { fields: { slug: text(), title: text() } } } })
+        const previous = defineLitiConfig({
             models: { posts: { fields: { slug: text(), title: text(), excerpt: text() } } },
         })
         const db = database()
         await migrateTestDatabase(db, config)
-        await db.exec("ALTER TABLE site_admin_content_posts ADD COLUMN field_excerpt TEXT DEFAULT 'same'")
+        await db.exec("ALTER TABLE liti_content_posts ADD COLUMN field_excerpt TEXT DEFAULT 'same'")
         await db.exec(
-            'CREATE UNIQUE INDEX retained_partial ON site_admin_content_posts(field_excerpt) WHERE field_excerpt IS NOT NULL',
+            'CREATE UNIQUE INDEX retained_partial ON liti_content_posts(field_excerpt) WHERE field_excerpt IS NOT NULL',
         )
-        const admin = createSiteAdmin({ config, database: await testAdapter(db, oldMapping ? previous : config) })
-        await expect(admin.initialize()).rejects.toMatchObject({ code: 'SITE_ADMIN_MIGRATION_REQUIRED' })
-        expect(await db.prepare('SELECT COUNT(*) AS count FROM site_admin_entries').get()).toEqual({ count: 0 })
+        const admin = createRuntime({ config, database: await testAdapter(db, oldMapping ? previous : config) })
+        await expect(admin.initialize()).rejects.toMatchObject({ code: 'LITI_MIGRATION_REQUIRED' })
+        expect(await db.prepare('SELECT COUNT(*) AS count FROM liti_entries').get()).toEqual({ count: 0 })
     })
 })

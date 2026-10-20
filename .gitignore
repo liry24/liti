@@ -1,4 +1,5 @@
 node_modules
+.codex-remote-attachments/
 dist
 .data
 .nuxt
@@ -15,3 +16,4 @@ coverage
 server/middleware/__void-dev-trigger.ts
 test/fixtures/nuxt/db/
 test/fixtures/nuxt-d1/db/
+/packages/*/LICENSE

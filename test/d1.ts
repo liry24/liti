@@ -1,5 +1,5 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import type { DatabaseValue } from '../packages/site-admin/src/adapters/sqlite-statements'
+import type { DatabaseValue } from '../packages/sqlite/src/statements'
 
 /** SQLite-backed D1 fixture. The production path only uses native D1 bindings. */
 export const sqliteD1 = (database: DatabaseSync) => {

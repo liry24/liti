@@ -4,9 +4,11 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
-import { consumerDependencies } from './consumer-dependencies.mjs'
+import { consumerDependencies, stableVue } from './consumer-dependencies.mjs'
 import { stopProcess as stop } from './stop-process.ts'
+import { verifyNuxtDeclarations } from './nuxt-declarations.mjs'
 const wait = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+import { installDependencies } from 'nypm'
 const listen = (server) =>
     new Promise((resolve, reject) => {
         server.once('error', reject)
@@ -215,7 +217,7 @@ export const chromiumProbe = async (origin, directory) => {
         await send('Page.navigate', { url: origin })
         for (let attempt = 0; attempt < 600; attempt++) {
             const result = await send('Runtime.evaluate', {
-                expression: 'window.__siteAdminProbe',
+                expression: 'window.__litiProbe',
                 returnByValue: true,
             })
             if (result.result?.value?.done) return { ...result.result.value, browserDiagnostics: diagnostics }
@@ -230,7 +232,7 @@ export const chromiumProbe = async (origin, directory) => {
 
 /** Real packed Nuxt macro transformation, SSR payloads and Chromium hydration, with synthetic content only. */
 export const verifyPublicDataConsumer = async (tarball, { browser = true } = {}) => {
-    const directory = await mkdtemp(join(tmpdir(), 'site-admin-public-data-consumer-'))
+    const directory = await mkdtemp(join(tmpdir(), 'liti-public-data-consumer-'))
     const run = (command, args) => {
         const result = spawnSync(command, args, {
             cwd: directory,
@@ -267,7 +269,7 @@ export const verifyPublicDataConsumer = async (tarball, { browser = true } = {})
         })
         const document = (name) => ({
             data: {
-                _siteAdmin: {
+                _liti: {
                     id: name,
                     model: 'posts',
                     locale,
@@ -290,7 +292,7 @@ export const verifyPublicDataConsumer = async (tarball, { browser = true } = {})
             }
             if (slug === 'error') {
                 response.statusCode = 500
-                response.end(JSON.stringify({ error: { code: 'SITE_ADMIN_TEST_ERROR', message: 'Synthetic error.' } }))
+                response.end(JSON.stringify({ error: { code: 'LITI_TEST_ERROR', message: 'Synthetic error.' } }))
                 return
             }
             if (slug === 'missing') {
@@ -313,26 +315,26 @@ export const verifyPublicDataConsumer = async (tarball, { browser = true } = {})
                 private: true,
                 type: 'module',
                 dependencies: {
-                    '@liria24/site-admin': `file:${resolvePath(tarball)}`,
-                    ...consumerDependencies(['nuxt', 'typescript', 'vue', '@types/node', 'comark']),
+                    liti: `file:${resolvePath(tarball)}`,
+                    ...consumerDependencies(['nuxt', 'typescript', '@types/node']),
+                    vue: stableVue,
                 },
-                overrides: { vue: '$vue' },
             }),
         )
         console.log('Public data consumer: isolated packed installation')
-        run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'])
+        await installDependencies({ cwd: directory, packageManager: 'npm', silent: true, corepack: false })
         await put(
             'nuxt.config.ts',
             `import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
-  devtools: false, ...{ files: false }, modules: ['@liria24/site-admin/nuxt'],
-  siteAdmin: { auth: false, ai: false, server: { enabled: false }, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, client: { basePath: '/content', origin: ${JSON.stringify(backendOrigin)} } },
+  devtools: false, ...{ files: false }, modules: ['liti/nuxt'],
+  liti: { auth: false, server: { enabled: false }, i18n: false, llms: false, ogImage: false, robots: false, schemaOrg: false, seo: false, sitemap: false, routing: { enabled: false }, client: { basePath: '/content', origin: ${JSON.stringify(backendOrigin)} } },
 })`,
         )
         await put(
-            'site-admin.config.ts',
-            `import { defineSiteAdminConfig, markdown, text } from '@liria24/site-admin'
-export default defineSiteAdminConfig({ models: {
+            'liti.config.ts',
+            `import { defineLitiConfig, markdown, text } from 'liti'
+export default defineLitiConfig({ models: {
   posts: { fields: { title: text({ required: true }), body: markdown({ required: true }) } },
   private: { fields: { secret: text() }, public: false },
 } })`,
@@ -343,17 +345,17 @@ export default defineSiteAdminConfig({ models: {
 const slug = ref('ssr')
 const locale = ref('ja')
 const trigger = ref(0)
-const entry = useContent('posts', { id: slug,  locale, watch: [locale, trigger], dedupe: 'defer'  })
-const duplicate = useContent('posts', { id: () => slug.value,  locale, dedupe: 'defer'  })
-const list = useContent('posts', { locale })
-const transformed = useContent('posts', { locale: 'transformed', transform: (items) => items.map((entry) => entry.data.title), default: () => [] })
-const timeout = useContent('posts', { id: 'timeout',  immediate: false, timeout: 25  })
+const entry = useLitiQuery('posts', { mode: 'one', id: slug,  locale, watch: [locale, trigger], dedupe: 'defer'  })
+const duplicate = useLitiQuery('posts', { mode: 'one', id: () => slug.value,  locale, dedupe: 'defer'  })
+const list = useLitiQuery('posts', { locale })
+const transformed = useLitiQuery('posts', { locale: 'transformed', transform: (items) => items.map((entry) => entry.data.title), default: () => [] })
+const timeout = useLitiQuery('posts', { mode: 'one', id: 'timeout',  immediate: false, timeout: 25  })
 // Direct native control distinguishes adapter behavior from native shared-key ownership.
 const nuxtApp = useNuxtApp()
 const nativeClient = { get: async (_model: string, id: string, options: { signal: AbortSignal; locale: string }) => {
-  const document = await $fetch<{ data: { _siteAdmin: Record<string, unknown>; title: string } }>(${JSON.stringify(backendOrigin)} + '/content/posts/' + encodeURIComponent(id), { query: { locale: options.locale }, signal: options.signal, retry: 0 })
-  const { _siteAdmin, ...data } = document.data
-  return { ..._siteAdmin, data }
+  const document = await $fetch<{ data: { _liti: Record<string, unknown>; title: string } }>(${JSON.stringify(backendOrigin)} + '/content/posts/' + encodeURIComponent(id), { query: { locale: options.locale }, signal: options.signal, retry: 0 })
+  const { _liti, ...data } = document.data
+  return { ..._liti, data }
 } }
 const nativeHandler = (_app: unknown, { signal }: { signal: AbortSignal }) => nativeClient.get('posts', slug.value, { signal, locale: 'native-ja' })
 const nativeControl = useAsyncData(() => 'native-control:' + slug.value, nativeHandler, { dedupe: 'defer' })
@@ -361,14 +363,26 @@ const nativeDuplicate = useAsyncData(() => 'native-control:' + slug.value, nativ
 const nativeSingle = useAsyncData(() => 'native-single:' + slug.value, (_app, { signal }) => nativeClient.get('posts', slug.value, { signal, locale: 'single-ja' }), { dedupe: 'defer' })
 const batchSlug = ref('batch-first')
 const batchLocale = ref('batch-ja')
-const batch = useContent(computed(() => ({
-  catalog: { list: 'posts' }, featured: { entry: 'posts', id: batchSlug }, failed: { entry: 'posts', id: 'error' },
-} as const)), {
-  locale: batchLocale, dedupe: 'defer',
-  transform: (items) => ({ ...items, count: items.catalog.data.length }),
-  default: () => ({ catalog: { data: [], error: null }, featured: { data: null, error: null }, failed: { data: null, error: null }, count: 0 }),
-})
-await Promise.all([entry, duplicate, list, transformed, batch, nativeControl, nativeDuplicate, nativeSingle])
+const catalog = useLitiQuery('posts', { locale: batchLocale })
+const featured = useLitiQuery('posts', { mode: 'one', id: batchSlug, locale: batchLocale })
+const failed = useLitiQuery('posts', { mode: 'one', id: 'error', locale: batchLocale })
+// This test view composes independent public queries; each keeps its own result and error.
+const batch = {
+  data: computed(() => ({
+    catalog: { data: catalog.data.value, error: catalog.error.value },
+    featured: { data: featured.data.value, error: featured.error.value },
+    failed: { data: failed.data.value, error: failed.error.value
+      ? { status: failed.error.value.statusCode, message: failed.error.value.message, code: failed.error.value.data?.code } : null },
+    count: catalog.data.value.length,
+  })),
+  status: computed(() => [catalog, featured, failed].some((query) => query.status.value === 'pending') ? 'pending'
+    : [catalog, featured, failed].every((query) => query.status.value === 'idle') ? 'idle' : 'success'),
+  error: ref<Error>(),
+  refresh: () => Promise.all([catalog.refresh(), featured.refresh(), failed.refresh()]),
+  clear: () => { catalog.clear(); featured.clear(); failed.clear() },
+  execute: () => Promise.all([catalog.execute(), featured.execute(), failed.execute()]),
+}
+await Promise.all([entry, duplicate, list, transformed, catalog, featured, failed, nativeControl, nativeDuplicate, nativeSingle])
 const initial = computed(() => ({ title: entry.data.value?.data.title, body: entry.data.value?.data.body.nodes, list: list.data.value?.length, transformed: transformed.data.value, batch: batch.data.value }))
 onMounted(async () => {
   const checks: Record<string, unknown> = {}
@@ -406,7 +420,7 @@ onMounted(async () => {
     check(entry.data.value?.data.title === 'ssr:ja', 'SSR entry must hydrate.')
     check(transformed.data.value[0] === 'list:transformed', 'SSR transform must hydrate.')
     check(batch.data.value.featured.data?.data.slug === 'batch-first' && batch.data.value.catalog.data.length === 1 && batch.data.value.count === 1, 'One batch state must hydrate named success data and native transform.')
-    check(batch.data.value.failed.error?.status === 500 && batch.data.value.failed.data === null && !batch.error.value, 'Batch item failure must retain successes without a whole-state error.')
+    check(batch.data.value.failed.error?.status === 500 && batch.data.value.failed.error.code === 'LITI_TEST_ERROR' && batch.data.value.failed.data === null && !batch.error.value, 'Query failure must hydrate its status and error code while other queries retain successes.')
     check(!JSON.stringify(batch.data.value).includes('stack') && !JSON.stringify(batch.data.value).includes('cause'), 'Batch error DTO must not serialize stacks/causes.')
     slug.value = 'slow'
     await nextTick()
@@ -426,7 +440,7 @@ onMounted(async () => {
     await entry.refresh()
     check((await getCounts())['fast:en'] === beforeRefresh + 1, 'Refresh must use the native control.')
     entry.clear()
-    check(entry.data.value === undefined && entry.status.value === 'idle' && !entry.error.value, 'Clear must use native default/status/error.')
+    check(entry.data.value === null && entry.status.value === 'idle' && !entry.error.value, 'Clear must use native default/status/error.')
     await entry.execute()
     check(entry.data.value?.data.slug === 'fast', 'Execute must refetch after clear.')
     trigger.value += 1
@@ -455,7 +469,7 @@ onMounted(async () => {
     await batch.refresh()
     const afterBatchRefresh = await getCounts()
     for (const key of ['list:batch-en', 'batch-fast:batch-en', 'error:batch-en']) check(afterBatchRefresh[key] === (beforeBatchRefresh[key] ?? 0) + 1, 'Native batch refresh must refresh every named request: ' + key)
-    check(batch.data.value.failed.error?.status === 500 && batch.data.value.catalog.error === null, 'Refreshed batch must retain named partial-success semantics.')
+    check(batch.data.value.failed.error?.status === 500 && batch.data.value.catalog.error === undefined, 'Refreshed queries must retain independent success and error states.')
     batch.clear()
     check(batch.data.value.count === 0 && batch.data.value.catalog.data.length === 0 && batch.status.value === 'idle', 'Batch clear must use the native default.')
     await batch.execute()
@@ -463,11 +477,11 @@ onMounted(async () => {
     checks.batchCounts = await getCounts()
     checks.stage = 'complete'
     checks.done = true
-    ;(window as Window & { __siteAdminProbe?: unknown }).__siteAdminProbe = { done: true, checks }
+    ;(window as Window & { __litiProbe?: unknown }).__litiProbe = { done: true, checks }
   } catch (error) {
     checks.failureState = state()
     checks.failureCounts = await getCounts().catch((countsError: unknown) => ({ error: String(countsError) }))
-    ;(window as Window & { __siteAdminProbe?: unknown }).__siteAdminProbe = { done: true, error: String(error), checks }
+    ;(window as Window & { __litiProbe?: unknown }).__litiProbe = { done: true, error: String(error), checks }
   }
 })
 </script>
@@ -475,28 +489,27 @@ onMounted(async () => {
         )
         await put(
             'app/types.ts',
-            `const entry = useContent('posts', { id: 'slug' })
+            `const entry = useLitiQuery('posts', { mode: 'one', id: 'slug' })
 const title: string | undefined = entry.data.value?.data.title
 const nodes: import('comark').Node[] | undefined = entry.data.value?.data.body.nodes
-const transformed = useContent('posts', { transform: (items) => items.map((entry) => entry.data.title), default: () => [] })
+const transformed = useLitiQuery('posts', { transform: (items) => items.map((entry) => entry.data.title), default: () => [] })
 const titles: string[] = transformed.data.value
 // @ts-expect-error Unknown model names fail.
-useContent('missing', { slug: 'slug' })
+useLitiQuery('missing', { slug: 'slug' })
 // @ts-expect-error Private models are unavailable.
-useContent('private')
-const batch = useContent({ catalog: { list: 'posts' }, featured: { entry: 'posts', id: 'slug' } }, {
-  transform: (items) => ({ ...items, count: items.catalog.data.length }),
-  default: () => ({ catalog: { data: [], error: null }, featured: { data: null, error: null }, count: 0 }),
-})
-const batchTitle: string | undefined = batch.data.value.featured.data?.data.title
-const batchCount: number = batch.data.value.count
-// @ts-expect-error Unknown batch models are unavailable.
-useContent({ invalid: { list: 'missing' } })
-void [title, nodes, titles, batchTitle, batchCount]`,
+useLitiQuery('private')
+const featured = useLitiQuery('posts', { mode: 'one', id: 'slug' })
+const featuredTitle: string | undefined = featured.data.value?.data.title
+const count: number = useLitiQuery('posts', { pageSize: 20 }).data.value.length
+// @ts-expect-error A one query must have a selector.
+useLitiQuery('posts', { mode: 'one' })
+void [title, nodes, titles, featuredTitle, count]`,
         )
         console.log('Public data consumer: real Nuxt macro build and generated app types')
         run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
+        run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'prepare'])
         run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', '.nuxt/tsconfig.app.json'])
+        await verifyNuxtDeclarations(directory)
         const portServer = createServer()
         const origin = await listen(portServer)
         await close(portServer)
@@ -522,7 +535,7 @@ void [title, nodes, titles, batchTitle, batchCount]`,
         assert.equal(counts['ssr:ja'], 1, 'Identical SSR keys must deduplicate with native defer.')
         assert.equal(counts['list:ja'], 1)
         assert.ok(
-            html.includes('batch-first:batch-ja') && html.includes('SITE_ADMIN_TEST_ERROR'),
+            html.includes('batch-first:batch-ja') && html.includes('LITI_TEST_ERROR'),
             'SSR batch must serialize partial named results.',
         )
         assert.equal(counts['list:batch-ja'], 1)
@@ -586,12 +599,12 @@ void [title, nodes, titles, batchTitle, batchCount]`,
     } finally {
         await stop(server)
         await close(backend)
-        if (process.env.SITE_ADMIN_KEEP_PUBLIC_DATA_CONSUMER !== '1') await removePublicDataConsumer(directory)
+        if (process.env.LITI_KEEP_PUBLIC_DATA_CONSUMER !== '1') await removePublicDataConsumer(directory)
         else console.log(`Public data consumer retained: ${directory}`)
     }
 }
 
-if (process.argv[1]?.endsWith('/public-data-consumer.mjs')) {
-    if (!process.argv[2]) throw new Error('Pass the packed Site Admin tarball path.')
+if (import.meta.main) {
+    if (!process.argv[2]) throw new Error('Pass the packed liti tarball path.')
     await verifyPublicDataConsumer(process.argv[2], { browser: !process.argv.includes('--ssr-only') })
 }

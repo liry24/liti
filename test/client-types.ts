@@ -1,17 +1,17 @@
 import {
-    defineSiteAdminConfig,
+    defineLitiConfig,
     array,
     image,
     markdown,
     object,
     relation,
     text,
-    type InferSiteAdminModels,
-    type InferSiteAdminPublicModels,
-} from '../packages/site-admin/src'
-import { createSiteAdminClient, createSiteAdminManagementClient } from '../packages/site-admin/src/client'
+    type InferLitiModels,
+    type InferLitiPublicModels,
+} from '../packages/liti/src'
+import { createPublicClient, createLitiManagementClient } from '../packages/liti/src/client'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         authors: { fields: { slug: text(), name: text({ required: true }), bio: markdown() } },
         posts: {
@@ -28,15 +28,19 @@ const config = defineSiteAdminConfig({
     },
 })
 
-declare module '../packages/site-admin/src/client' {
-    interface SiteAdminClientRegistry {
-        managementModels: InferSiteAdminModels<typeof config>
-        publicModels: InferSiteAdminPublicModels<typeof config>
+declare module '../packages/liti/src/public-client' {
+    interface LitiClientRegistry {
+        actions: {
+            prepare: { input: { text?: string }; output: { text: string } }
+            proofread: { input: { content: string }; output: { content: string } }
+        }
+        managementModels: InferLitiModels<typeof config>
+        publicModels: InferLitiPublicModels<typeof config>
     }
 }
 
 const checkGeneratedRegistry = async (): Promise<void> => {
-    const publicClient = createSiteAdminClient()
+    const publicClient = createPublicClient()
     const posts = await publicClient.list('posts')
     const title: string = posts[0]!.data.title
     const url: string | undefined = posts[0]!.data.cover?.url
@@ -46,7 +50,7 @@ const checkGeneratedRegistry = async (): Promise<void> => {
     // @ts-expect-error Public content HTTP Markdown is a Comark document, not the stored source string.
     const markdownSource: string | undefined = posts[0]!.data.body
     const managementMarkdownSource: string | null | undefined = (
-        await createSiteAdminManagementClient().listEntries('posts')
+        await createLitiManagementClient().listEntries('posts')
     ).items[0]!.data.body
     void [markdownNodes, nestedMarkdownNodes, relatedMarkdown, markdownSource, managementMarkdownSource]
     const authorName: string | undefined = (await publicClient.get('authors', 'author'))?.data.name
@@ -57,12 +61,12 @@ const checkGeneratedRegistry = async (): Promise<void> => {
     // @ts-expect-error Required public field type is inferred.
     const invalid: number = posts[0]!.data.title
 
-    const explicit = createSiteAdminClient<InferSiteAdminPublicModels<typeof config>>()
+    const explicit = createPublicClient<InferLitiPublicModels<typeof config>>()
     const explicitTitle: string = (await explicit.list('posts'))[0]!.data.title
     // @ts-expect-error Empty public registries do not fall back to accepting every model.
-    await createSiteAdminClient<{}>().list('posts')
+    await createPublicClient<{}>().list('posts')
 
-    const management = createSiteAdminManagementClient()
+    const management = createLitiManagementClient()
     const page = await management.listEntries('posts')
     const managementTitle: string = page.items[0]!.data.title
     const allPosts = await management.listAllEntries('posts', { limit: 25, locale: 'ja', q: 'Title' })
@@ -97,7 +101,7 @@ const checkGeneratedRegistry = async (): Promise<void> => {
     // @ts-expect-error Updates must match one of the configured management model shapes.
     await management.updateEntry('entry', { data: { irrelevant: true }, expectedVersion: 1 })
     // @ts-expect-error Private model is omitted from inferred public map.
-    const privatePublicEntry: InferSiteAdminPublicModels<typeof config>['private'] = {}
+    const privatePublicEntry: InferLitiPublicModels<typeof config>['private'] = {}
     void privatePublicEntry
     void [title, url, authorName, invalid, explicitTitle, managementTitle, assetId]
 }

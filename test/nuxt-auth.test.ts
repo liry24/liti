@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('void', () => ({ voidPlugin: () => [] }))
+
 const kit = vi.hoisted(() => ({
     install: vi.fn(),
     has: vi.fn(() => true),
@@ -31,14 +33,15 @@ vi.mock('nuxt/kit', () => ({
 
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
-import module from '../packages/site-admin/src/nuxt'
+import module from '../packages/nuxt/src/index'
+import voidHost from '../packages/void/src/nuxt'
 
 const consumerModulePath = fileURLToPath(new URL('/consumer/module.mjs', import.meta.url))
 
 const setup = async (
     auth: boolean,
     assets?: { storage: string },
-    onConfig?: (config: import('../packages/site-admin/src/config').SiteAdminConfig) => void,
+    onConfig?: (config: import('../packages/liti/src/config').LitiConfig) => void,
     typescript: Record<string, unknown> = { tsConfig: {} },
     aliases: Record<string, string> = {},
     configuration: Record<string, unknown> = {},
@@ -48,12 +51,48 @@ const setup = async (
         setup: (options: unknown, nuxt: unknown) => Promise<void>
     }
     const hook = vi.fn()
+    const nuxt = {
+        options: {
+            rootDir: process.cwd(),
+            buildDir: resolve('/app/node_modules/.cache/nuxt/.nuxt'),
+            build: { templates: kit.templates },
+            modules: [],
+            i18n: { defaultLocale: 'ja', locales: ['ja', 'en'] },
+            files: { config: './test/fixtures/nuxt/files.config.ts' },
+            modulesDir: [],
+            alias: { liti: `${process.cwd()}/packages/liti/src/index.ts`, ...aliases },
+            typescript,
+            optimization: { keyedComposables: [] },
+            runtimeConfig: { public: kit.publicConfig },
+            nitro: kit.nitro,
+            vite: { plugins: [] },
+            dev: false,
+        },
+        callHook: vi.fn(async (name, value) => {
+            for (const [event, callback] of hook.mock.calls) if (event === name) await callback(value)
+            if (name === 'liti:config') onConfig?.(value)
+        }),
+        hook,
+        hooks: {
+            afterEach: (callback: unknown) => {
+                hook('afterEach', callback)
+                return vi.fn()
+            },
+        },
+    }
+    kit.install.mockImplementation(async (name, options) => {
+        if (name === '@litijs/void/nuxt')
+            await (voidHost as unknown as { setup: (options: unknown, nuxt: unknown) => Promise<void> }).setup(
+                options,
+                nuxt,
+            )
+    })
     await definition.setup(
         {
             ...definition.defaults,
             auth,
             ...(assets ? { assets } : {}),
-            configFile: './test/fixtures/nuxt/site-admin.config.ts',
+            configFile: './test/fixtures/nuxt/liti.config.ts',
             i18n: true,
             seo: false,
             sitemap: false,
@@ -62,31 +101,7 @@ const setup = async (
             schemaOrg: false,
             ...configuration,
         },
-        {
-            options: {
-                rootDir: process.cwd(),
-                buildDir: resolve('/app/node_modules/.cache/nuxt/.nuxt'),
-                build: { templates: kit.templates },
-                modules: [],
-                i18n: { defaultLocale: 'ja', locales: ['ja', 'en'] },
-                files: { config: './test/fixtures/nuxt/files.config.ts' },
-                modulesDir: [],
-                alias: { '@liria24/site-admin': `${process.cwd()}/packages/site-admin/src/index.ts`, ...aliases },
-                typescript,
-                optimization: { keyedComposables: [] },
-                runtimeConfig: { public: kit.publicConfig },
-                nitro: kit.nitro,
-                dev: false,
-            },
-            callHook: vi.fn((_name, config) => onConfig?.(config)),
-            hook,
-            hooks: {
-                afterEach: (callback: unknown) => {
-                    hook('afterEach', callback)
-                    return vi.fn()
-                },
-            },
-        },
+        nuxt,
     )
     return hook
 }
@@ -104,13 +119,13 @@ describe('native Better Auth integration', () => {
         kit.publicConfig = {}
     })
 
-    it('delegates native dependency setup to Nuxt moduleDependencies', async () => {
+    it('loads the selected host and its Files module before generating runtime templates', async () => {
         await setup(false)
-        expect(kit.install).not.toHaveBeenCalled()
+        expect(kit.install.mock.calls.map(([name]) => name)).toEqual(['@litijs/void/nuxt', 'nuxt-files-sdk'])
     })
 
     it('removes database-backed LLMS prerenders after native module registration', async () => {
-        const hook = await setup(false)
+        const hook = await setup(false, undefined, undefined, { tsConfig: {} }, {}, { llms: true })
         const done = hook.mock.calls.find(([name]) => name === 'modules:done')?.[1] as () => void
         done()
         const filter = hook.mock.calls.find(([name]) => name === 'prerender:routes')?.[1] as (context: {
@@ -126,8 +141,8 @@ describe('native Better Auth integration', () => {
             config.authorization = {
                 roles: {
                     admin: { models: { '*': ['update'], posts: ['readDraft'] } },
-                    user: { ai: ['*'] },
-                    editor: { models: { '*': ['readDraft'] }, ai: ['proofread'] },
+                    user: { actions: ['*'] },
+                    editor: { models: { '*': ['readDraft'] }, actions: ['proofread'] },
                 },
             }
         })
@@ -136,7 +151,7 @@ describe('native Better Auth integration', () => {
             stripTypeScriptTypes(kit.templates.find((item) => item.filename === filename)!.getContents())
                 .replace(/^import .*$/gmu, '')
                 .replace('export default ', 'return ')
-        const server = new Function('extendSiteAdminAuth', executable('site-admin/better-auth-server-plugin.ts'))(
+        const server = new Function('extendLitiAuth', executable('liti/better-auth-server-plugin.ts'))(
             (
                 options: unknown,
                 resources: Record<string, string[]>,
@@ -147,7 +162,7 @@ describe('native Better Auth integration', () => {
         const client = new Function(
             'createAccessControl',
             'adminClient',
-            executable('site-admin/better-auth-client-plugin.mjs'),
+            executable('liti/better-auth-client-plugin.mjs'),
         )(
             (statements: unknown) => ({ statements, newRole: (role: unknown) => role }),
             (options: unknown) => options,
@@ -155,15 +170,15 @@ describe('native Better Auth integration', () => {
         expect(client.ac.statements).toEqual(resources)
         expect(client.roles).toEqual(permissions)
         expect(Object.keys(client.roles)).toEqual(['admin', 'user', 'editor'])
-        expect(permissions.admin?.['siteAdmin:model:posts']).toEqual(['update', 'readDraft'])
+        expect(permissions.admin?.['liti:model:posts']).toEqual(['update', 'readDraft'])
         expect(permissions.admin?.user).toEqual([])
-        expect(permissions.user?.['siteAdmin:ai']).toEqual(['proofread', 'plain'])
-        expect(permissions.editor?.['siteAdmin:ai']).toEqual(['proofread'])
+        expect(permissions.user?.['liti:actions']).toEqual(['editorial', 'proofread', 'plain'])
+        expect(permissions.editor?.['liti:actions']).toEqual(['proofread'])
 
         const providerHook = hook.mock.calls.find(([name]) => name === 'better-auth:database:providers')![1]
         const providers: Record<string, { buildDatabaseCode: () => string }> = {}
         providerHook(providers)
-        const providerSource = providers.siteAdmin!.buildDatabaseCode()
+        const providerSource = providers.liti!.buildDatabaseCode()
         const database = { kind: 'better-auth' }
         const context = {}
         const factory = vi.fn(() => database)
@@ -178,19 +193,19 @@ describe('native Better Auth integration', () => {
         expect(createDatabase({ context })).toBe(database)
         expect(factory).toHaveBeenCalledWith({}, {}, context)
 
-        const runtime = kit.templates.find(({ filename }) => filename === 'site-admin/runtime.mjs')!.getContents()
+        const runtime = kit.templates.find(({ filename }) => filename === 'liti/runtime.mjs')!.getContents()
         expect(kit.handlers.some((handler) => 'middleware' in handler && handler.middleware)).toBe(true)
         expect(runtime).toContain('await getRequestSession(getNitroRequest(event))')
         expect(runtime).toContain('if (!session) return null')
-        expect(kit.handlers.some(({ route }) => route === '/api/site-admin/**')).toBe(true)
+        expect(kit.handlers.some(({ route }) => route === '/api/liti/**')).toBe(true)
     })
 
-    it('uses the same Void database for CMS and native auth', async () => {
+    it('delegates content connections to the selected adapter and auth to the Void provider', async () => {
         const hook = await setup(true)
         expect(hook.mock.calls.some(([name]) => name === 'better-auth:database:providers')).toBe(true)
-        const runtime = kit.templates.find(({ filename }) => filename === 'site-admin/runtime.mjs')!.getContents()
-        expect(runtime).toContain('useVoidDatabase(schema)')
-        expect(runtime).not.toContain('domainConfig.database')
+        const runtime = kit.templates.find(({ filename }) => filename === 'liti/runtime.mjs')!.getContents()
+        expect(runtime).toContain('provider.connect')
+        expect(runtime).not.toContain('useVoidDatabase')
     })
 
     it('extends the effective native factory after module setup without adding a second server admin', async () => {
@@ -204,7 +219,7 @@ describe('native Better Auth integration', () => {
         const sources = { server: ['/app/other-plugin.ts'], client: ['/app/client-plugin.ts'] }
         hook.mock.calls.find(([name]) => name === 'better-auth:plugins:extend')![1](sources)
         expect(sources.server).toEqual(['/app/other-plugin.ts'])
-        expect(sources.client).toEqual(['/app/client-plugin.ts', 'site-admin/better-auth-client-plugin.mjs'])
+        expect(sources.client).toEqual(['/app/client-plugin.ts', 'liti/better-auth-client-plugin.mjs'])
         const early = {
             filename: 'types/nuxt-better-auth-endpoints.d.ts',
             getContents: () =>
@@ -213,10 +228,10 @@ describe('native Better Auth integration', () => {
         kit.templates.push(early)
         await hook.mock.calls.find(([name]) => name === 'afterEach')![1]({ name: 'modules:done' })
         expect(await Promise.resolve(early.getContents())).toContain(
-            'import type createServerAuth from "site-admin/better-auth-server-config.ts"',
+            'import type createServerAuth from "liti/better-auth-server-config.ts"',
         )
         expect(await Promise.resolve(early.getContents())).toContain("from 'better-auth/api'")
-        const wrapper = kit.templates.find(({ filename }) => filename === 'site-admin/better-auth-server-config.ts')!
+        const wrapper = kit.templates.find(({ filename }) => filename === 'liti/better-auth-server-config.ts')!
         expect(wrapper.getContents()).toContain('import createAuth from "/app/extended-auth.ts"')
         expect(wrapper.getContents()).toContain('Parameters<typeof createAuth>[0]')
         expect(wrapper.getContents()).toContain('extendAuth(createAuth(context))')
@@ -229,7 +244,7 @@ describe('native Better Auth integration', () => {
         templatesHook({ templates: [template] })
         const rewritten = template.getContents
         expect(await template.getContents()).toContain(
-            'import type createServerAuth from "site-admin/better-auth-server-config.ts"',
+            'import type createServerAuth from "liti/better-auth-server-config.ts"',
         )
         expect(await template.getContents()).toContain("from 'better-auth/db'")
         templatesHook({ templates: [template] })
@@ -240,9 +255,7 @@ describe('native Better Auth integration', () => {
         expect(
             filters.every(
                 (filter) =>
-                    !filter.test(
-                        resolve('/app/node_modules/.cache/nuxt/.nuxt/site-admin/better-auth-server-config.ts'),
-                    ),
+                    !filter.test(resolve('/app/node_modules/.cache/nuxt/.nuxt/liti/better-auth-server-config.ts')),
             ),
         ).toBe(true)
         expect(filters.some((filter) => filter.test('/app/node_modules/better-auth/dist/index.mjs'))).toBe(true)
@@ -250,7 +263,7 @@ describe('native Better Auth integration', () => {
 
     it('does not open a database during unrelated requests or auth initialization', async () => {
         await setup(true)
-        const source = kit.templates.find(({ filename }) => filename === 'site-admin/runtime.mjs')!.getContents()
+        const source = kit.templates.find(({ filename }) => filename === 'liti/runtime.mjs')!.getContents()
         const expression = source.match(/initializeRequest: (.+),\n/u)![1]
         const nativeEvents = new WeakMap()
         const run = new Function('nativeEvents', 'return (' + expression + ')')(nativeEvents)
@@ -267,17 +280,17 @@ describe('native Better Auth integration', () => {
             Object.assign(config.seo, { secret: 'SERVER_ONLY_GLOBAL_SENTINEL', callback: () => 'PRIVATE' })
             Object.assign(config.routeRules['/ja/posts/**']!, { database: 'SERVER_ONLY_RULE_SENTINEL' })
         })
-        expect(kit.publicConfig.siteAdmin).toEqual({
+        expect(kit.publicConfig.liti).toEqual({
             seo: { titleTemplate: '%s | Public', image: false },
             routeRules: { '/ja/posts/**': { seo: { type: 'article' }, sitemap: false } },
         })
         expect(JSON.stringify(kit.publicConfig)).not.toContain('SERVER_ONLY')
     })
 
-    it('enables authentication and i18n by default', () => {
+    it('requires explicit selection of optional authentication and i18n integrations', () => {
         const definition = module as unknown as { defaults: { auth: boolean; i18n: boolean } }
-        expect(definition.defaults.auth).toBe(true)
-        expect(definition.defaults.i18n).toBe(true)
+        expect(definition.defaults.auth).toBe(false)
+        expect(definition.defaults.i18n).toBe(false)
     })
 
     it('leaves app aliases and TypeScript paths alone', async () => {
@@ -286,11 +299,11 @@ describe('native Better Auth integration', () => {
         expect(typescript.tsConfig.compilerOptions.paths).toEqual({ '#ai': ['./app-ai.ts'] })
     })
 
-    it('does not include authentication or management HTTP when disabled', async () => {
+    it('omits native auth while retaining the adapter-authorized management endpoint', async () => {
         await setup(false)
         expect(kit.templates.some(({ filename }) => filename.includes('better-auth'))).toBe(false)
-        expect(kit.handlers.some(({ route }) => route === '/api/site-admin/**')).toBe(false)
-        const runtime = kit.templates.find(({ filename }) => filename === 'site-admin/runtime.mjs')!.getContents()
+        expect(kit.handlers.some(({ route }) => route === '/api/liti/**')).toBe(true)
+        const runtime = kit.templates.find(({ filename }) => filename === 'liti/runtime.mjs')!.getContents()
         expect(runtime).not.toContain('getRequestSession')
         expect(runtime).not.toContain("hooks.hook('request', resolveDatabases)")
     })
@@ -301,7 +314,7 @@ describe('native Better Auth integration', () => {
             expect(config.assets?.maxUploadSize).toBe(123)
             config.assets!.storage = 'hook'
         })
-        const runtime = kit.templates.find(({ filename }) => filename === 'site-admin/runtime.mjs')!.getContents()
+        const runtime = kit.templates.find(({ filename }) => filename === 'liti/runtime.mjs')!.getContents()
         expect(runtime).toContain('"storage":"hook"')
         expect(runtime).toContain('"maxUploadSize":123')
         const plugin = (kit.nitro.rollupConfig!.plugins as Array<unknown>).at(-1) as {
@@ -328,6 +341,6 @@ it('registers automatic SEO when route resolution and legacy metadata are disabl
         {},
         { seo: true, routing: { enabled: false, metadata: false } },
     )
-    expect(kit.templates.some(({ filename }) => filename === 'site-admin/metadata-plugin.mjs')).toBe(true)
-    expect(kit.templates.some(({ filename }) => filename === 'site-admin/route-middleware.mjs')).toBe(false)
+    expect(kit.templates.some(({ filename }) => filename === 'liti/metadata-plugin.mjs')).toBe(true)
+    expect(kit.templates.some(({ filename }) => filename === 'liti/route-middleware.mjs')).toBe(false)
 })

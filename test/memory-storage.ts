@@ -1,8 +1,8 @@
-import { translatedRouteFields } from '../packages/site-admin/src/i18n'
-import type { SiteAdminConfig } from '../packages/site-admin/src/config'
+import { translatedRouteFields } from '../packages/liti/src/i18n'
+import type { LitiConfig } from '../packages/liti/src/config'
 import type {
-    SiteAdminDatabase,
-    SiteAdminStorage,
+    LitiDatabase,
+    LitiStorage,
     StorageAssetCopy,
     StorageAssetSyncLease,
     StorageAssetCopyGuard,
@@ -12,10 +12,10 @@ import type {
     StorageContentCommit,
     StorageCondition,
     StorageEntryFilter,
-} from '../packages/site-admin/src/adapter'
-import type { AssetRecord, EntryRecord, IncomingReference } from '../packages/site-admin/src/server/types'
-import { SiteAdminError } from '../packages/site-admin/src/errors'
-import { searchQuery } from '../packages/site-admin/src/storage'
+} from '../packages/liti/src/adapter'
+import type { AssetRecord, EntryRecord, IncomingReference } from '../packages/liti/src/server/types'
+import { LitiError } from '../packages/liti/src/errors'
+import { searchQuery } from '../packages/liti/src/storage'
 
 /** Deliberately SQL/ORM-free test backend, with domain objects and atomic copy-on-write commits. */
 export function createMemoryDatabase() {
@@ -37,10 +37,10 @@ export function createMemoryDatabase() {
         copies: new Map(),
         generation: 0,
     }
-    let config: SiteAdminConfig = { models: {} }
+    let config: LitiConfig = { models: {} }
     const clone = <T>(value: T): T => structuredClone(value)
     const conflict = () => {
-        throw new SiteAdminError('SITE_ADMIN_CONFLICT', 'The record changed before commit.')
+        throw new LitiError('LITI_CONFLICT', 'The record changed before commit.')
     }
     const materializeEntry = (value: StorageEntryState): EntryRecord => {
         const revision = state.revisions.get(value.currentRevisionId)!
@@ -74,10 +74,7 @@ export function createMemoryDatabase() {
     }
     const allRelations = () =>
         [...state.revisions.values()].flatMap((revision) => revision.relations.map((ref) => ({ revision, ref })))
-    const incoming = (
-        id: string,
-        options: Parameters<SiteAdminStorage['incomingReferences']>[1],
-    ): IncomingReference[] =>
+    const incoming = (id: string, options: Parameters<LitiStorage['incomingReferences']>[1]): IncomingReference[] =>
         allRelations()
             .flatMap(({ revision, ref }) => {
                 const source = state.entries.get(revision.entryId)
@@ -110,6 +107,12 @@ export function createMemoryDatabase() {
         [...state.revisions.values()].some((revision) => revision.assets.some((ref) => ref.id === id))
     const condition = (value: StorageCondition) => {
         switch (value.kind) {
+            case 'uniqueValues':
+                return !entries({ models: [value.model] }).some(
+                    (entry) =>
+                        entry.id !== value.entryId &&
+                        Object.entries(value.values).every(([key, expected]) => entry.data[key] === expected),
+                )
             case 'publicGeneration':
                 return state.generation === value.generation
             case 'entryVersion': {
@@ -138,7 +141,7 @@ export function createMemoryDatabase() {
             state.lease.expiresAt === guard.lease.expiresAt &&
             guard.now < state.lease.expiresAt &&
             (guard.generation === undefined || state.generation === guard.generation))
-    const storage: SiteAdminStorage = {
+    const storage: LitiStorage = {
         assertSchema: async () => {},
         readEntry: async (id) => (state.entries.has(id) ? materializeEntry(state.entries.get(id)!) : undefined),
         entries: async (filter) => entries(filter),
@@ -217,6 +220,8 @@ export function createMemoryDatabase() {
                                           ),
                                       ),
                             publishedAt: entry.publishedAt!,
+                            firstPublishedAt: entry.firstPublishedAt,
+                            updatedAt: revision.createdAt,
                             revisionId: revision.id,
                             data: { ...revision.data },
                         }),
@@ -280,10 +285,7 @@ export function createMemoryDatabase() {
                     if (change.kind === 'put') {
                         const key = change.route.locale + '\0' + change.route.path
                         if (state.routes.has(key))
-                            throw new SiteAdminError(
-                                'SITE_ADMIN_ROUTE_CONFLICT',
-                                'Another public route already owns this path.',
-                            )
+                            throw new LitiError('LITI_ROUTE_CONFLICT', 'Another public route already owns this path.')
                         state.routes.set(key, clone(change.route))
                     } else
                         for (const [key, route] of state.routes) {
@@ -442,9 +444,9 @@ export function createMemoryDatabase() {
     return {
         storage,
         snapshot: () => clone(state),
-        bind(definition: SiteAdminConfig) {
+        bind(definition: LitiConfig) {
             config = definition
             return storage
         },
-    } satisfies SiteAdminDatabase & { storage: SiteAdminStorage; snapshot: () => State }
+    } satisfies LitiDatabase & { storage: LitiStorage; snapshot: () => State }
 }

@@ -1,35 +1,35 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-    createSiteAdminClient,
-    createSiteAdminManagementClient,
+    createPublicClient,
+    createLitiManagementClient,
     managementAssetUrl,
-    SiteAdminClientError,
+    LitiClientError,
     type PublicEntry,
-} from '../packages/site-admin/src/client'
-import { siteAdminNuxtClientTemplate, siteAdminNuxtModelTypes } from '../packages/site-admin/src/nuxt/client-templates'
+} from '../packages/liti/src/client'
+import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
 
-describe('Site Admin clients', () => {
+describe('liti clients', () => {
     it('returns migration errors without retrying search or mutating reads', async () => {
         let calls = 0
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async () => {
                 calls++
                 return Response.json(
-                    { error: { code: 'SITE_ADMIN_MIGRATION_REQUIRED', message: 'Rebuild explicitly.' } },
+                    { error: { code: 'LITI_MIGRATION_REQUIRED', message: 'Rebuild explicitly.' } },
                     { status: 409 },
                 )
             },
         })
         await expect(client.listEntries('posts', { q: 'needle' })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_MIGRATION_REQUIRED',
+            code: 'LITI_MIGRATION_REQUIRED',
         })
         expect(calls).toBe(1)
     })
     it('preserves cancellation before and after the search transport', async () => {
         const controller = new AbortController()
         let calls = 0
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async () => {
                 calls++
                 controller.abort()
@@ -46,14 +46,14 @@ describe('Site Admin clients', () => {
     })
     it('preserves public projection, encoding, locale and nullable lookup contracts', async () => {
         const calls: Array<{ input: string; method?: string }> = []
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             basePath: '/content/',
             origin: 'https://example.test/',
             fetch: async (input, init) => {
                 calls.push({ input: String(input), ...(init?.method ? { method: init.method } : {}) })
                 if (String(input).includes('/missing')) return Response.json(null, { status: 404 })
                 const document = {
-                    data: { _siteAdmin: { id: 'entry', model: 'posts' }, slug: 'hello', title: 'Hello' },
+                    data: { _liti: { id: 'entry', model: 'posts' }, slug: 'hello', title: 'Hello' },
                 }
                 return Response.json(String(input).includes('/hello') ? document : [document])
             },
@@ -74,7 +74,7 @@ describe('Site Admin clients', () => {
     it('forwards caller AbortSignals through the public get/list/route transport', async () => {
         const controller = new AbortController()
         const signals: Array<AbortSignal | null | undefined> = []
-        const client = createSiteAdminClient<Record<string, PublicEntry>>({
+        const client = createPublicClient<Record<string, PublicEntry>>({
             fetch: async (input, init) => {
                 signals.push(init?.signal)
                 if (String(input).endsWith('/posts')) return Response.json([])
@@ -89,7 +89,7 @@ describe('Site Admin clients', () => {
 
     it('notifies successfully scheduled publications while keeping follow-up read errors separate from task success', async () => {
         const mutations: Array<{ id: string; model?: string }> = []
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             onMutation: (mutation) => {
                 mutations.push(mutation)
             },
@@ -100,10 +100,7 @@ describe('Site Admin clients', () => {
                         failed: [{ entryId: 'failed', message: 'Conflict' }],
                     })
                 if (String(input).endsWith('/denied'))
-                    return Response.json(
-                        { error: { code: 'SITE_ADMIN_FORBIDDEN', message: 'Denied' } },
-                        { status: 403 },
-                    )
+                    return Response.json({ error: { code: 'LITI_FORBIDDEN', message: 'Denied' } }, { status: 403 })
                 return Response.json({ id: 'readable', model: 'posts', version: 2 })
             },
         })
@@ -117,7 +114,7 @@ describe('Site Admin clients', () => {
 
     it('matches management CRUD, publication, sort and revision HTTP routes without assuming mutation data', async () => {
         const calls: Array<{ body?: unknown; headers: Headers; method: string; url: string }> = []
-        const client = createSiteAdminManagementClient<Record<string, Record<string, unknown>>>({
+        const client = createLitiManagementClient<Record<string, Record<string, unknown>>>({
             basePath: '/manage/',
             fetch: async (input, init) => {
                 expect(init?.credentials).toBe('same-origin')
@@ -196,7 +193,7 @@ describe('Site Admin clients', () => {
 
     it('serializes list/reference queries and exposes diagnostics, AI and task endpoints', async () => {
         const urls: string[] = []
-        const client = createSiteAdminManagementClient<Record<string, Record<string, unknown>>>({
+        const client = createLitiManagementClient<Record<string, Record<string, unknown>>>({
             fetch: async (input) => {
                 urls.push(String(input))
                 return Response.json({})
@@ -208,19 +205,19 @@ describe('Site Admin clients', () => {
         await client.models()
         await client.inspect()
         await client.routeSnapshot()
-        await client.runAiAction('suggest/title', { input: { instruction: 'Shorten' } })
+        await client.executeAction('suggest/title', { instruction: 'Shorten' })
         await client.publishDue()
         await client.runAssetGC()
         expect(urls).toEqual([
-            '/api/site-admin/entries?model=posts&limit=5&locale=ja&offset=10&q=hello+world',
-            '/api/site-admin/entries',
-            '/api/site-admin/entries/entry/references?field=sections.0.author&from=posts&view=published',
-            '/api/site-admin/models',
-            '/api/site-admin/diagnostics',
-            '/api/site-admin/routes',
-            '/api/site-admin/ai/actions/suggest%2Ftitle',
-            '/api/site-admin/tasks/publish-due',
-            '/api/site-admin/tasks/asset-gc',
+            '/api/liti/entries?model=posts&limit=5&locale=ja&offset=10&q=hello+world',
+            '/api/liti/entries',
+            '/api/liti/entries/entry/references?field=sections.0.author&from=posts&view=published',
+            '/api/liti/models',
+            '/api/liti/diagnostics',
+            '/api/liti/routes',
+            '/api/liti/actions/suggest%2Ftitle',
+            '/api/liti/tasks/publish-due',
+            '/api/liti/tasks/asset-gc',
         ])
     })
 
@@ -230,7 +227,7 @@ describe('Site Admin clients', () => {
             data: { title: String(index) },
         }))
         const offsets: number[] = []
-        const client = createSiteAdminManagementClient<Record<string, { title: string }>>({
+        const client = createLitiManagementClient<Record<string, { title: string }>>({
             fetch: async (input) => {
                 const url = new URL(String(input), 'http://localhost')
                 const offset = Number(url.searchParams.get('offset'))
@@ -255,7 +252,7 @@ describe('Site Admin clients', () => {
             data: { title: String(index) },
         }))
         const offsets: number[] = []
-        const client = createSiteAdminManagementClient<Record<string, { title: string }>>({
+        const client = createLitiManagementClient<Record<string, { title: string }>>({
             basePath: '/manage',
             fetch: async (input) => {
                 const url = new URL(String(input), 'http://localhost')
@@ -275,7 +272,7 @@ describe('Site Admin clients', () => {
 
     it('rejects an empty intermediate page instead of returning a partial list or looping', async () => {
         const offsets: number[] = []
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async (input) => {
                 const offset = Number(new URL(String(input), 'http://localhost').searchParams.get('offset'))
                 offsets.push(offset)
@@ -283,7 +280,7 @@ describe('Site Admin clients', () => {
             },
         })
         await expect(client.listAllEntries('posts')).rejects.toMatchObject({
-            code: 'SITE_ADMIN_INVALID_RESPONSE',
+            code: 'LITI_INVALID_RESPONSE',
             message: 'Entry list changed. Reload latest.',
         })
         expect(offsets).toEqual([0, 1])
@@ -291,7 +288,7 @@ describe('Site Admin clients', () => {
 
     it('honors changing totals and allows an empty unfiltered list', async () => {
         let calls = 0
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async (input) => {
                 const url = new URL(String(input), 'http://localhost')
                 expect(url.searchParams.has('model')).toBe(false)
@@ -306,7 +303,7 @@ describe('Site Admin clients', () => {
         })
         expect(await client.listAllEntries()).toEqual([{ id: 'first' }, { id: 'second' }])
         expect(calls).toBe(2)
-        const empty = createSiteAdminManagementClient({
+        const empty = createLitiManagementClient({
             fetch: async () => Response.json({ items: [], limit: 100, offset: 0, total: 0 }),
         })
         expect(await empty.listAllEntries()).toEqual([])
@@ -314,7 +311,7 @@ describe('Site Admin clients', () => {
 
     it('uploads raw files with encoded names, retains download responses and handles 204 deletes', async () => {
         const file = new File(['bytes'], '画像 file.txt', { type: 'text/plain' })
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async (input, init) => {
                 if (init?.method === 'POST') {
                     expect(init.body).toBe(file)
@@ -338,12 +335,12 @@ describe('Site Admin clients', () => {
     })
 
     it('keeps structured management errors and fails on malformed public metadata', async () => {
-        const client = createSiteAdminManagementClient({
+        const client = createLitiManagementClient({
             fetch: async () =>
                 Response.json(
                     {
                         error: {
-                            code: 'SITE_ADMIN_CONFLICT',
+                            code: 'LITI_CONFLICT',
                             issues: [{ message: 'Already used.', path: 'title' }],
                             message: 'Changed.',
                         },
@@ -352,37 +349,37 @@ describe('Site Admin clients', () => {
                 ),
         })
         await expect(client.deleteEntry('entry', { expectedVersion: 1 })).rejects.toMatchObject({
-            code: 'SITE_ADMIN_CONFLICT',
+            code: 'LITI_CONFLICT',
             issues: [{ message: 'Already used.', path: 'title' }],
             status: 409,
         })
-        const broken = createSiteAdminClient<Record<string, PublicEntry>>({
+        const broken = createPublicClient<Record<string, PublicEntry>>({
             fetch: async () => Response.json([{ data: {} }]),
         })
-        await expect(broken.list('posts')).rejects.toBeInstanceOf(SiteAdminClientError)
-        const unavailable = createSiteAdminManagementClient({
+        await expect(broken.list('posts')).rejects.toBeInstanceOf(LitiClientError)
+        const unavailable = createLitiManagementClient({
             fetch: async () => new Response('Unavailable', { status: 503 }),
         })
-        await expect(unavailable.models()).rejects.toMatchObject({ code: 'SITE_ADMIN_REQUEST_FAILED', status: 503 })
+        await expect(unavailable.models()).rejects.toMatchObject({ code: 'LITI_REQUEST_FAILED', status: 503 })
     })
 
     it('generates a unified form composable without exposing server configuration', () => {
-        const source = siteAdminNuxtClientTemplate({ basePath: '/content', managementBase: '/manage' })
-        expect(source).not.toContain('@liria24/site-admin/internal/form')
-        expect(source).toContain('useAdminForm')
-        const types = siteAdminNuxtModelTypes('C:\\project\\site-admin.config.ts', ['production', 'preview'])
-        expect(types).toContain('C:/project/site-admin.config.ts')
-        expect(types).toContain('publicModels: InferSiteAdminPublicModels<SiteAdminDomainConfig>')
+        const source = litiNuxtClientTemplate({ basePath: '/content', managementBase: '/manage' })
+        expect(source).not.toContain('liti/internal/form')
+        expect(source).toContain('useLitiForm')
+        const types = litiNuxtModelTypes('C:\\project\\liti.config.ts', ['production', 'preview'])
+        expect(types).toContain('C:/project/liti.config.ts')
+        expect(types).toContain('publicModels: InferLitiPublicModels<LitiDomainConfig>')
         expect(types).toContain('readonly ["production", "preview"]')
     })
 
     it.each([
-        ['C:\\project name\\site-admin.config.ts', 'C:/project name/site-admin.config.ts'],
-        ['C:\\site-admin.config.ts', 'C:/site-admin.config.ts'],
-        ['\\\\server\\share\\site-admin.config.ts', '//server/share/site-admin.config.ts'],
+        ['C:\\project name\\liti.config.ts', 'C:/project name/liti.config.ts'],
+        ['C:\\liti.config.ts', 'C:/liti.config.ts'],
+        ['\\\\server\\share\\liti.config.ts', '//server/share/liti.config.ts'],
         ['/app/config #1%[preview].ts', '/app/config #1%[preview].ts'],
     ])('preserves config import paths in generated model types: %s', (path, expected) => {
-        const types = siteAdminNuxtModelTypes(path)
+        const types = litiNuxtModelTypes(path)
         expect(types).toContain(`typeof import(${JSON.stringify(expected)}).default`)
     })
 })

@@ -1,12 +1,12 @@
-import { createSiteAdminDescriptor } from '../packages/site-admin/src/descriptor'
+import { createLitiDescriptor } from '../packages/liti/src/descriptor'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { array, datetime, defineSiteAdminConfig, number, object, relation, text, url } from '../packages/site-admin/src'
-import { useEntryForm } from '../packages/site-admin/src/form'
+import { array, datetime, defineLitiConfig, number, object, relation, text, url } from '../packages/liti/src'
+import { useEntryForm } from '../packages/vue/src/form'
 import { modelFixture } from './model-fixture'
-import { validateModelData } from '../packages/site-admin/src/validation'
+import { validateModelData } from '../packages/liti/src/validation'
 
-const config = defineSiteAdminConfig({
+const config = defineLitiConfig({
     models: {
         posts: {
             fields: {
@@ -23,7 +23,7 @@ const config = defineSiteAdminConfig({
         parents: { fields: { slug: text() } },
     },
 })
-const descriptor = createSiteAdminDescriptor(config).models.posts!
+const descriptor = createLitiDescriptor(config).models.posts!
 
 describe('shared built-in form/server validation', () => {
     it.each([

@@ -1,30 +1,21 @@
 import {
-    defineSiteAdminConfig,
+    defineLitiConfig,
     text,
-    type ResolvedSiteAdminConfig,
-    type InferSiteAdminModels,
-    type InferSiteAdminPublicModels,
-} from '../packages/site-admin/src'
+    type ResolvedLitiConfig,
+    type InferLitiModels,
+    type InferLitiPublicModels,
+} from '../packages/liti/src'
 
-const common = defineSiteAdminConfig({
+const common = defineLitiConfig({
     models: { posts: { fields: { slug: text(), title: text({ required: true }) } } },
-    storage: { content: { adapter: 'fs', config: { root: './files' } } },
-    $production: { routes: [{ path: '/files', storage: 'content' }], assets: { maxUploadSize: 2 } },
+    assets: { storage: 'content' },
+    $production: { assets: { maxUploadSize: 2 } },
     $env: { staging: { assets: { maxUploadSize: 3 } } },
 })
-const root: string = common.storage.content.config.root
 const required: true = common.models.posts.fields.title.required
-void root
 void required
 
-// @ts-expect-error Native Files fs provider options require root, not arbitrary copied options.
-defineSiteAdminConfig({ models: {}, storage: { adapter: 'fs', config: { missing: true } } })
-// @ts-expect-error Environment provider options are also checked by Files SDK's native types.
-defineSiteAdminConfig({ models: {}, $production: { storage: { adapter: 'fs', config: { missing: true } } } })
-// @ts-expect-error Unknown File storage option.
-defineSiteAdminConfig({ models: {}, storage: { adapter: 'memory', madeUpOption: true } })
-
-const environmentModels = defineSiteAdminConfig({
+const environmentModels = defineLitiConfig({
     models: { posts: { fields: { slug: text(), title: text({ required: true }) } } },
     $production: {
         models: {
@@ -33,67 +24,41 @@ const environmentModels = defineSiteAdminConfig({
         },
     },
 })
-type Production = ResolvedSiteAdminConfig<typeof environmentModels, readonly ['production']>
-const post: InferSiteAdminModels<Production>['posts'] = { title: 'Title', summary: 'Summary' }
-const page: InferSiteAdminModels<Production>['pages'] = { title: 'Page' }
+type Production = ResolvedLitiConfig<typeof environmentModels, readonly ['production']>
+const post: InferLitiModels<Production>['posts'] = { title: 'Title', summary: 'Summary' }
+const page: InferLitiModels<Production>['pages'] = { title: 'Page' }
 // @ts-expect-error Production adds the required summary field.
-const missingSummary: InferSiteAdminModels<Production>['posts'] = { title: 'Title' }
+const missingSummary: InferLitiModels<Production>['posts'] = { title: 'Title' }
 // @ts-expect-error Production marks posts private.
-type PrivatePublicPost = InferSiteAdminPublicModels<Production>['posts']
+type PrivatePublicPost = InferLitiPublicModels<Production>['posts']
 void post
 void page
 void missingSummary
 const noPrivatePost: PrivatePublicPost = undefined
 void noPrivatePost
 
-// Application-owned adapters and SDK models replace as opaque values, including inferred types.
-declare const originalModel: import('ai/test').MockLanguageModelV4 & { oldMarker: true }
-declare const productionModel: import('ai/test').MockLanguageModelV4 & { replacement: true }
-const opaqueEnvironment = defineSiteAdminConfig({
-    models: {},
-    ai: { model: originalModel },
-    $production: { ai: { model: productionModel } },
+// Environment plugin arrays replace complete declarations, including their inferred type.
+const opaqueEnvironment = defineLitiConfig({
+    plugins: [{ id: 'original', apiVersion: 1, models: { oldMarker: { fields: { value: text() } } } }],
+    $production: {
+        plugins: [{ id: 'production', apiVersion: 1, models: { replacement: { fields: { value: text() } } } }],
+    },
 })
-declare const resolvedOpaque: ResolvedSiteAdminConfig<typeof opaqueEnvironment, readonly ['production']>
-const replacedModel: true = resolvedOpaque.ai.model.replacement
-// @ts-expect-error Replaced SDK model does not retain the old instance's keys.
-void resolvedOpaque.ai.model.oldMarker
-void replacedModel
+declare const resolvedOpaque: ResolvedLitiConfig<typeof opaqueEnvironment, readonly ['production']>
+const replacedPlugin: 'text' = resolvedOpaque.plugins[0].models.replacement.fields.value.kind
+// @ts-expect-error The replacement plugin does not retain the previous plugin's keys.
+void resolvedOpaque.plugins[0].models.oldMarker
+void replacedPlugin
 
-// @ts-expect-error An environment replaces the whole SDK model, never a partial provider descriptor.
-defineSiteAdminConfig({ models: {}, $production: { ai: { model: { specificationVersion: 'v4' } } } })
-
-const seoImageEnvironment = defineSiteAdminConfig({
+const seoImageEnvironment = defineLitiConfig({
     models: {},
     seo: { image: { component: 'First', props: { old: true } } },
     $production: { seo: { image: { component: 'Second', props: { replacement: true } } } },
 })
-declare const resolvedImage: ResolvedSiteAdminConfig<typeof seoImageEnvironment, readonly ['production']>
+declare const resolvedImage: ResolvedLitiConfig<typeof seoImageEnvironment, readonly ['production']>
 // @ts-expect-error Replaced component descriptors do not retain old props.
 void resolvedImage.seo.image.props.old
 const productionImage: true = resolvedImage.seo.image.props.replacement
 void productionImage
 // @ts-expect-error An environment image override must be a complete component descriptor.
-defineSiteAdminConfig({ models: {}, $production: { seo: { image: { props: { title: 'Incomplete' } } } } })
-
-// Native 0.2 gateway callbacks use the public Nuxt RequestEvent, including inherited common storage.
-const gateway = defineSiteAdminConfig({
-    models: {},
-    storage: { content: { adapter: 'memory' } },
-    $production: {
-        routes: [
-            {
-                path: '/files',
-                storage: 'content',
-                authorize: ({ event }) => {
-                    const request: Request = event.req
-                    // @ts-expect-error Native request events do not expose H3 Node adapters.
-                    void event.node
-                    void request
-                    return undefined
-                },
-            },
-        ],
-    },
-})
-void gateway
+defineLitiConfig({ models: {}, $production: { seo: { image: { props: { title: 'Incomplete' } } } } })
