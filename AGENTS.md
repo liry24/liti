@@ -53,8 +53,8 @@ Generic proofreading, article dates and slug preparation move to the feature pac
 | P4    | init, plugin add/remove, generate and upgrade implemented, including dry-run and partial-failure reporting                                         |
 | P5    | Query/Models/Form migration implemented; isolated Vue 3.5/3.6 SSR hydration and packed Nuxt public queries verified                                |
 | P6    | Optional AI/blog packages, publication preparation, article dates and native-form proofreading implemented                                         |
-| P7    | liry24.com dev configuration, public queries, native forms and business preparation migrated; app validation in progress                           |
-| P8    | Packed npm/pnpm/Bun matrix in progress; final CI, commit-specific preview and application validation pending                                       |
+| P7    | liry24.com migration in application PR #54; 147 ordinary tests and built Worker/browser suites passed against commit-specific previews             |
+| P8    | Packed npm/pnpm/Bun matrix, Windows/Ubuntu Nuxt and Cloudflare CI passed; first-release artifact verification is prepared                          |
 
 Configuration tests cover empty input, plugin order, collisions, missing references, opaque schemas, and whole-provider replacement.
 The CLI help/version entry is lazy and does not evaluate project configuration. Generation delegates to the selected database tooling and never applies migrations.
@@ -74,12 +74,12 @@ Baseline CI independently reported a Nuxt generated-server-type failure (`useSer
 These results are historical evidence, not acceptance of the new contracts.
 
 The core, Vue/Nuxt bridge and SQLite/Void packages build together with declarations.
-Native Bun SQLite runs the same 31 domain conformance cases as the existing storage implementations.
+Native Bun SQLite runs the same 33 domain conformance cases as the existing storage implementations.
 The Node storage/schema suites verify rollback before commit and read snapshots while another connection holds a writer lock.
 The explicit server bootstrap shares authorization and write-only receipts between HTTP and trusted operation contexts.
 Files SDK identity and Workers' known-length streaming belong to the Void storage adapter.
 Streaming SHA-256 uses the shared incremental implementation; it does not buffer an entire file.
-Public Query and Form changes have targeted runtime, type and SSR coverage; the full packed-consumer matrix is still outstanding.
+Public Query and Form changes have runtime, type and SSR coverage; the full packed-consumer matrix passed in PR #41.
 
 AI is declared through `@litijs/ai` plugins and named actions; the former root AI configuration is rejected.
 Text, native decision and native extraction have separate provider contracts. Nuxt production and local Worker HTTP checks pass after this extraction, with mocked providers and no real inference.
@@ -88,9 +88,9 @@ First publication history is entry-wide: a revision publishes the original and i
 `updatedAt` tracks content saves; the public projection uses the published revision's creation time, so draft edits do not expose an unpublished update date.
 Void owns its native Nuxt auth/Files integration; Nuxt setup and builds do not install missing dependencies.
 The independent Drizzle profile owns ORM/Kit 1.0.0-rc.4 while Void keeps its own 0.45.4 ORM. No global Drizzle override is used.
-The shared D1 conformance suite passes 33 cases for this profile; Bun native schema/storage checks pass 31 cases.
+The shared D1 conformance suite passes 33 cases for this profile; Bun native schema/storage checks pass 33 cases.
 Nuxt production build and local Worker HTTP checks, Files configuration (14 cases), and live HMR/config reload/server types pass.
-The latest broad unit run passed 534 tests with one skipped test. Source type checking, lint, workspace checks and both unused-code checks passed.
+The final Linux CI unit run passed 536 tests. Source type checking, lint, workspace checks and both unused-code checks passed.
 Blog now contributes manual/automatic article models, publication preparation, shared dates/SEO and proofreading through the common form controller.
 Publication transforms run only for new draft candidates; existing revisions and publishDue only validate. Save preparation receives the real entry ID, actor, locale, previous entry, field issues and authorized read services.
 The runtime retains up to 32 successful publication preparations keyed by actor, model, entry/version, operation, locale and input. Repeated commits after a route conflict reuse them.
@@ -106,9 +106,9 @@ Packed Void generation exposes the schema to its native CommonJS Drizzle loader;
 Many-query handles retain the server's total independently of transformed items. The imperative client also exposes paginated DTOs through `queryPage`.
 Model `unique` tuples constrain non-null, non-translated scalar values among current entries in the atomic commit. This replaces app triggers against private content tables without weakening concurrent-save protection.
 The first implementation scans current revisions; add a dedicated keyed index only when write profiling warrants it.
-Application validation, the remaining consumer matrix and final CI are still required.
+Application Node development/browser acceptance is tracked in [application PR #54](https://github.com/liry24/liry24.com/pull/54), using synthetic D1/R2 and mocked AI. The app remains on its local dev checkout; only the feature branch is pushed, because remote dev automatically deploys. Its fresh baseline must not be applied to existing development or production data without a separately reviewed transition.
 
-The transferred repository initially lacked pkg-pr-new GitHub App access. The user has enabled it; publication must be rerun and its returned artifact URLs verified.
+The transferred repository's pkg-pr-new GitHub App is enabled. All six returned commit-specific archives were downloaded and their dependency/peer versions verified; preview publication uses `--peerDeps` with `--previewVersion`. The application pins the verified preview and uses preview-only liti/SQLite overrides while those names remain unpublished. CI consumer fixtures use the pinned native package managers, and Vite's compatible esbuild peer, without forced peer resolution.
 Stable publication must retain the existing uppt release PR/tag/pack/publish workflow. No release tag or npm publish has been requested or performed.
 
 ## Deferred first release
