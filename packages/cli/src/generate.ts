@@ -16,12 +16,15 @@ export async function runGenerate(values: CliOptions) {
     const projectRoot = resolve(values.cwd ?? process.cwd())
     const configPath = inside(projectRoot, values.config ?? 'liti.config.ts')
     const environments = [process.env.NODE_ENV ?? 'development', ...(values.env ?? [])]
+    const nuxt = ['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].some((extension) =>
+        existsSync(resolve(projectRoot, `nuxt.config.${extension}`)),
+    )
     if (values['dry-run']) {
         const ast = parse(await readFile(configPath, 'utf8'), { sourceType: 'module', plugins: ['typescript'] })
         return {
             status: 'planned',
             files: [
-                { path: resolve(projectRoot, 'liti.generated.ts') },
+                ...(!nuxt ? [{ path: resolve(projectRoot, 'liti.generated.ts') }] : []),
                 { path: resolve(projectRoot, '.liti/descriptor.json') },
             ],
             imports: ast.program.body
@@ -61,15 +64,15 @@ export async function runGenerate(values: CliOptions) {
         throw new Error('The selected database did not provide migration generation. Use --schema-only explicitly.')
     if (values['schema-only'] && plan.command)
         throw new Error('Schema-only tooling must not request an external command.')
-    const configImport =
-        './' +
-        relative(projectRoot, configPath)
-            .replaceAll('\\', '/')
-            .replace(/\.(?:ts|mts|js|mjs)$/u, '')
-    plan.files.push(
-        { path: 'liti.generated.ts', source: generateLitiTypes(configImport, environments) },
-        { path: '.liti/descriptor.json', source: generateLitiDescriptor(config) },
-    )
+    if (!nuxt) {
+        const configImport =
+            './' +
+            relative(projectRoot, configPath)
+                .replaceAll('\\', '/')
+                .replace(/\.(?:ts|mts|js|mjs)$/u, '')
+        plan.files.push({ path: 'liti.generated.ts', source: generateLitiTypes(configImport, environments) })
+    }
+    plan.files.push({ path: '.liti/descriptor.json', source: generateLitiDescriptor(config) })
     const files = plan.files.map((file) => ({ ...file, path: inside(projectRoot, file.path) }))
     if (
         new Set(files.map(({ path }) => (process.platform === 'win32' ? path.toLowerCase() : path))).size !==
@@ -108,7 +111,7 @@ export async function runGenerate(values: CliOptions) {
         })
         if (status !== 0)
             throw new Error(
-                `Schema, types and descriptor were generated; migration generation failed (${status ?? 'interrupted'}). Fix the reported error and rerun liti generate.`,
+                `Files were generated; migration generation failed (${status ?? 'interrupted'}). Fix the reported error and rerun liti generate.`,
             )
     }
     return {
@@ -118,8 +121,9 @@ export async function runGenerate(values: CliOptions) {
             values['schema-only']
                 ? 'Schema-only generation completed; migrations were not generated and no application database was modified.'
                 : commandArgs
-                  ? 'Schema, types, descriptor and migrations generated; no application database migrations were applied.'
-                  : 'Types, descriptor and actions generated. Database generation is not applicable; no application database was modified.',
+                  ? 'Schema and migrations generated; no application database migrations were applied.'
+                  : 'Generation completed. Database generation is not applicable; no application database was modified.',
+            ...(nuxt ? ['Nuxt generates client types in its build directory during prepare, dev and build.'] : []),
         ],
     }
 }

@@ -9,6 +9,38 @@ const fields = resolve('packages/liti/src/fields.ts')
 const voidEntry = resolve('packages/void/src/index.ts')
 
 describe('environment-resolved schema CLI', () => {
+    it.each(['ts', 'mjs'])('leaves Nuxt types to its lifecycle with nuxt.config.%s', async (extension) => {
+        await mkdir(resolve('.tmp'), { recursive: true })
+        const path = await mkdtemp(resolve('.tmp/cli-nuxt-types-'))
+        try {
+            await writeFile(resolve(path, 'liti.config.ts'), 'export default { models: {} }')
+            await writeFile(resolve(path, `nuxt.config.${extension}`), 'throw new Error("Nuxt must not be loaded")')
+            const run = (args: string[] = []) =>
+                JSON.parse(
+                    execFileSync(process.execPath, [jiti, cli, 'generate', '--json', ...args], {
+                        cwd: path,
+                        encoding: 'utf8',
+                    }),
+                )
+            const before = await readdir(path)
+            const planned = run(['--dry-run'])
+            expect(planned.files.map((file: { path: string }) => file.path)).toEqual([
+                resolve(path, '.liti/descriptor.json'),
+            ])
+            expect(await readdir(path)).toEqual(before)
+            const generated = run()
+            expect(generated.files.map((file: { path: string }) => file.path)).toEqual([
+                resolve(path, '.liti/descriptor.json'),
+            ])
+            expect(generated.messages.join('\n')).toContain('Nuxt generates client types')
+            expect(JSON.parse(await readFile(resolve(path, '.liti/descriptor.json'), 'utf8'))).toHaveProperty('models')
+            expect(await readdir(path)).not.toContain('liti.generated.ts')
+            expect(await readdir(path)).not.toContain('.nuxt')
+        } finally {
+            await rm(path, { recursive: true, force: true })
+        }
+    })
+
     it('resolves domain environments and explicit output without invoking the application database', async () => {
         await mkdir(resolve('.tmp'), { recursive: true })
         const path = await mkdtemp(resolve('.tmp/cli-generate-'))
