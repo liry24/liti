@@ -58,6 +58,7 @@ Generic proofreading, article dates and slug preparation move to the feature pac
 
 Configuration tests cover empty input, plugin order, collisions, missing references, opaque schemas, and whole-provider replacement.
 The CLI help/version entry is lazy and does not evaluate project configuration. Generation delegates to the selected database tooling and never applies migrations.
+Nuxt owns client type generation in its build directory during prepare/dev/build. The CLI does not emit a root `liti.generated.ts` when a standard Nuxt config exists; standalone CLI consumers retain their generated registry file.
 The build includes private CLI and Vue/Nuxt bridges and their declarations in liti; Vue and Nuxt remain host-owned optional peers.
 Packed core, blog-only, AI-only, SQLite and Vue consumers install normally without forced peer resolution or a workspace source alias.
 Third-party code bundled in each public artifact has a generated `THIRD_PARTY_LICENSES.txt`; every public tarball includes the project license.
