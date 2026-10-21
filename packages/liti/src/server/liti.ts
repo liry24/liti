@@ -1,7 +1,7 @@
 import { prepareTranslations } from './translations'
 import { createManagementOperations } from './operations'
 import type { ModelPreparation, ModelPreparationContext } from '../preparation'
-import type { OperationContext } from '../plugins'
+import type { ActionResult, OperationContext } from '../plugins'
 import type { ComarkContent, ContentFile } from 'comark-content'
 import { createMarkdownContent } from '../markdown/content'
 import { projectMarkdownListSummary } from '../markdown/list-summary'
@@ -95,8 +95,8 @@ const mimeMatches = (value: string, accepted: readonly string[]): boolean =>
     accepted.some((entry) => entry === value || (entry.endsWith('/*') && value.startsWith(entry.slice(0, -1))))
 
 export class Liti<Context = unknown> {
-    // shortcut: candidates survive retries only within this runtime; durable exactly-once inference needs an operation store.
-    readonly #publicationPreparation = new Map<string, Promise<Record<string, unknown>>>()
+    // shortcut: action results survive retries only within this runtime; durable exactly-once inference needs an operation store.
+    readonly #publicationActions = new Map<string, Promise<ActionResult>>()
     readonly #assets: AssetManager<Context>
     readonly #storage: LitiStorage
     readonly diagnostics: LitiDiagnostic[] = []
@@ -537,19 +537,7 @@ export class Liti<Context = unknown> {
                     preparation.actor,
                     data,
                 ])
-                let pending = this.#publicationPreparation.get(key)
-                if (!pending) {
-                    const candidate = structuredClone(data)
-                    pending = this.#runPreparation(definition.preparePublication, candidate, preparation).then(
-                        () => candidate,
-                    )
-                    this.#publicationPreparation.set(key, pending)
-                    void pending.catch(() => this.#publicationPreparation.delete(key))
-                    if (this.#publicationPreparation.size > 32)
-                        this.#publicationPreparation.delete(this.#publicationPreparation.keys().next().value!)
-                }
-                data = structuredClone(await pending)
-                preparation.signal?.throwIfAborted()
+                await this.#runPreparation(definition.preparePublication, data, preparation, false, key)
             }
         }
         const validated = await validateModelData(definition, data)
@@ -566,6 +554,7 @@ export class Liti<Context = unknown> {
         data: Record<string, unknown>,
         context: Omit<ModelPreparationContext, 'data' | 'issues' | 'read' | 'executeAction'>,
         immutable = false,
+        actionCacheKey?: string,
     ) {
         if (!hook) return
         context.signal?.throwIfAborted()
@@ -590,9 +579,43 @@ export class Liti<Context = unknown> {
                 published: {
                     get: (model, id, locale) => this.getPublicEntry(model, id, locale),
                     list: (model, locale) => this.listPublicEntries(model, locale),
+                    routeAvailable: async (value) => {
+                        const definition = this.#model(context.model)
+                        if (
+                            definition.public === false ||
+                            this.#options.routing?.enabled === false ||
+                            (routeRedirect(definition, value) && this.#options.routing?.redirects === false)
+                        )
+                            return true
+                        const path = entryPath(
+                            context.model,
+                            definition,
+                            { id: context.entryId, data: value },
+                            this.#apiBases(),
+                        )
+                        if (path === null) return true
+                        const routes = await this.#storage.routes({
+                            path: this.#localizedPath(definition, path, context.locale),
+                        })
+                        return routes.every((route) => route.entryId === context.entryId)
+                    },
                 },
             },
-            executeAction: operations.executeAction,
+            executeAction: async (name, input) => {
+                if (actionCacheKey === undefined) return operations.executeAction(name, input)
+                const key = stableJson([actionCacheKey, name, input])
+                let pending = this.#publicationActions.get(key)
+                if (!pending) {
+                    pending = operations.executeAction(name, input)
+                    this.#publicationActions.set(key, pending)
+                    void pending.catch(() => {
+                        if (this.#publicationActions.get(key) === pending) this.#publicationActions.delete(key)
+                    })
+                    if (this.#publicationActions.size > 32)
+                        this.#publicationActions.delete(this.#publicationActions.keys().next().value!)
+                }
+                return structuredClone(await pending)
+            },
         })
         context.signal?.throwIfAborted()
         if (issues.length) throw new LitiError('LITI_INVALID_INPUT', 'Model preparation failed.', issues)

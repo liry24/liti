@@ -12,6 +12,8 @@ export interface PreparationRead {
     published: {
         get(model: string, id: string, locale?: string): Promise<PublicEntry | null>
         list(model: string, locale?: string): Promise<PublicEntry[]>
+        /** Checks this entry's localized route against published and historical URLs. */
+        routeAvailable(data: Record<string, unknown>): Promise<boolean>
     }
 }
 

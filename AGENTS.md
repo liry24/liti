@@ -93,8 +93,9 @@ Nuxt production build and local Worker HTTP checks, Files configuration (14 case
 The final Linux CI unit run passed 536 tests. Source type checking, lint, workspace checks and both unused-code checks passed.
 Blog now contributes manual/automatic article models, publication preparation, shared dates/SEO and proofreading through the common form controller.
 Publication transforms run only for new draft candidates; existing revisions and publishDue only validate. Save preparation receives the real entry ID, actor, locale, previous entry, field issues and authorized read services.
-The runtime retains up to 32 successful publication preparations keyed by actor, model, entry/version, operation, locale and input. Repeated commits after a route conflict reuse them.
+The runtime retains up to 32 successful publication action results keyed by actor, model, entry/version, operation, locale and input. Repeated commits reuse action results while preparation and route availability checks run again.
 This is bounded in-process retry protection, not durable exactly-once inference across Worker instances or restarts.
+Automatic blog slugs treat AI as optional: provider failures, invalid output and AI timeouts fall back to an ASCII kebab-case title, or a six-character lowercase alphanumeric Nano ID when empty. Published and historical routes are checked through `PreparationRead.published.routeAvailable`; occupied generated slugs receive a six-character suffix. Drafts and scheduled-only entries do not reserve URLs. Manual and established slugs remain unchanged, and parent cancellation, authorization and commit conflicts still fail normally.
 Scheduled Nuxt jobs use the trusted `liti:task:publishDue` system actor for preparation reads; request-triggered jobs retain the authenticated actor.
 Blog Vue extensions expose stable review/proofread/apply/discard operations, use the native form, preserve unrelated edits and guard publish/schedule.
 Blog/AI-only consumers import without Vue, Nuxt or the AI SDK installed. No production AI requests have run.

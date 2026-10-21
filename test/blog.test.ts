@@ -81,25 +81,20 @@ it('runs manual articles without AI and shares dates across detail, list, summar
     expect(JSON.stringify(await response.json())).toContain('"articlePublishedTime":"2025-12-01T00:00:00Z"')
 })
 
-it('generates a candidate only on explicit publication and reuses it after a route conflict', async () => {
+it('generates a candidate only on explicit publication and avoids an occupied URL', async () => {
     const generate = vi.fn(() => ({ slug: 'generated' }))
     const config = resolveLitiConfig(
         defineLitiConfig({ plugins: [blog({ models: { posts: { slug: { mode: 'auto', generate } } } })] }),
     )
     const admin = await createMigratedTestAdmin({ database: database(), config })
     const blocker = await admin.createEntry('posts', { data: { ...draft, slug: 'generated' } })
-    const occupied = await admin.publishEntry(blocker.id, { expectedVersion: blocker.version })
+    await admin.publishEntry(blocker.id, { expectedVersion: blocker.version })
     const entry = await admin.createEntry('posts', { data: draft })
     expect(generate).not.toHaveBeenCalled()
     const request = { expectedVersion: entry.version, draft: { data: draft } }
-    for (let retry = 0; retry < 2; retry++)
-        await expect(admin.publishEntry(entry.id, request)).rejects.toMatchObject({ code: 'LITI_ROUTE_CONFLICT' })
-    expect(generate).toHaveBeenCalledTimes(1)
-    expect((await admin.getEntry(entry.id)).data.slug).toBe('')
-    await admin.unpublishEntry(occupied.id, { expectedVersion: occupied.version })
     const result = await admin.publishEntry(entry.id, request)
     expect(generate).toHaveBeenCalledTimes(1)
-    expect(result.data.slug).toBe('generated')
+    expect(result.data.slug).toMatch(/^generated-[a-z0-9]{6}$/u)
     await expect(
         admin.publishEntry(entry.id, { expectedVersion: result.version, draft: { data: { slug: '' } } }),
     ).rejects.toMatchObject({ code: 'LITI_INVALID_INPUT' })
