@@ -1,6 +1,6 @@
 {
     "name": "@litijs/sqlite",
-    "version": "0.0.3",
+    "version": "0.1.0",
     "description": "SQLite domain storage and native drivers for liti",
     "license": "MIT",
     "repository": {
@@ -54,13 +54,13 @@
         "liti": "workspace:*"
     },
     "peerDependencies": {
-        "liti": "^0.0.3"
+        "liti": "^0.1.0"
     },
     "liti": {
         "id": "sqlite",
         "apiVersion": 1,
         "kind": "adapter",
-        "liti": "^0.0.3 || ^0.1.0",
+        "liti": "^0.1.0",
         "factory": "sqlite",
         "config": "@litijs/sqlite"
     }

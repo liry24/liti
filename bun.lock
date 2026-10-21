@@ -60,7 +60,7 @@
     },
     "packages/ai": {
       "name": "@litijs/ai",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "dependencies": {
         "@standard-schema/spec": "^1.1.0",
       },
@@ -81,7 +81,7 @@
     },
     "packages/blog": {
       "name": "@litijs/blog",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "dependencies": {
         "@standard-schema/spec": "^1.1.0",
         "comark": "^0.7.0",
@@ -115,7 +115,7 @@
     },
     "packages/drizzle": {
       "name": "@litijs/drizzle",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "dependencies": {
         "@litijs/sqlite": "workspace:^",
       },
@@ -136,7 +136,7 @@
     },
     "packages/liti": {
       "name": "liti",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "bin": {
         "liti": "./dist/cli.mjs",
       },
@@ -198,7 +198,7 @@
     },
     "packages/sqlite": {
       "name": "@litijs/sqlite",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "devDependencies": {
         "@types/bun": "^1.4.3",
         "liti": "workspace:*",
@@ -209,7 +209,7 @@
     },
     "packages/void": {
       "name": "@litijs/void",
-      "version": "0.0.3",
+      "version": "0.1.0",
       "dependencies": {
         "@better-auth/drizzle-adapter": "1.7.11",
         "@litijs/sqlite": "workspace:^",

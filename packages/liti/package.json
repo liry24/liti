@@ -1,6 +1,6 @@
 {
     "name": "liti",
-    "version": "0.0.3",
+    "version": "0.1.0",
     "description": "Runtime-first, schema-driven site administration for Nuxt",
     "homepage": "https://github.com/liry24/liti#readme",
     "license": "MIT",
