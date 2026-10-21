@@ -81,6 +81,17 @@ it('allows draft saves with a proposal and guards direct publish and schedule ca
     expect(writes).toHaveBeenCalledTimes(2)
 })
 
+it('keeps proofreading optional after the action fails and preserves the original content', async () => {
+    const { editor, namespace, action, writes } = setup()
+    action.mockRejectedValueOnce(new Error('AI unavailable'))
+    await expect(namespace.proofread()).rejects.toThrow('AI unavailable')
+    expect(namespace.review.value).toMatchObject({ status: 'error', proposal: null })
+    expect(editor.state.value.can.publish).toBe(true)
+    expect(editor.values.value.content).toBe('Original.')
+    await editor.publish()
+    expect(writes).toHaveBeenCalledTimes(1)
+})
+
 it('keeps a new editor local during proofreading and invalidates proposals only for changed content or identity', async () => {
     const { editor, namespace, fixture, action, writes } = setup('proofread', false)
     await namespace.proofread()

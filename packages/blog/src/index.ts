@@ -13,6 +13,7 @@ import {
     type PublicEntry,
     type PublicEntrySeo,
 } from 'liti'
+import { availableSlug, slugFromTitle } from './slug'
 
 export { createProofreader, protectedMarkdown, validateProofreading } from './proofreading'
 export type { ProofreadingOptions, ProofreadingInput } from './proofreading'
@@ -98,8 +99,6 @@ export function blog<const Models extends Record<string, BlogModelOptions>>(conf
                 )
         if (options.slug?.action && options.slug.generate)
             throw new LitiError('LITI_INVALID_INPUT', `Blog "${name}" must select one slug generator.`)
-        if (mode === 'auto' && !options.slug?.action && !options.slug?.generate)
-            throw new LitiError('LITI_INVALID_INPUT', `Blog "${name}" automatic slugs require an explicit generator.`)
         if (options.slug?.action) actions.push({ name: options.slug.action, contract: 'liti.slug/v1' })
         const proofreading =
             typeof options.proofreading === 'string' ? options.proofreading : options.proofreading?.action
@@ -167,21 +166,40 @@ export function blog<const Models extends Record<string, BlogModelOptions>>(conf
                     title: String(data[mapping.title] ?? ''),
                     context: String(data[mapping.content] ?? ''),
                 }
-                const result = options.slug?.action
-                    ? (await context.executeAction(options.slug.action, input)).data
-                    : await options.slug?.generate?.(input, context)
-                if (
-                    !result ||
-                    typeof result !== 'object' ||
-                    !('slug' in result) ||
-                    typeof result.slug !== 'string' ||
-                    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(result.slug) ||
-                    result.slug.length > 80
-                )
-                    throw new LitiError('LITI_INVALID_INPUT', 'The slug generator returned no valid candidate.', [
-                        { path: mapping.slug, message: 'Provide a slug or configure a generator.' },
-                    ])
-                data[mapping.slug] = result.slug
+                let result: unknown
+                try {
+                    result = options.slug?.action
+                        ? (await context.executeAction(options.slug.action, input)).data
+                        : await options.slug?.generate?.(input, context)
+                } catch (error) {
+                    context.signal?.throwIfAborted()
+                    context.request?.signal.throwIfAborted()
+                    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+                    if (
+                        (context.deadline !== undefined && context.deadline <= Date.now()) ||
+                        (error instanceof Error && error.name === 'AbortError') ||
+                        (typeof code === 'string' &&
+                            code.startsWith('LITI_') &&
+                            ![
+                                'LITI_ACTION_FAILED',
+                                'LITI_ACTION_OUTPUT_INVALID',
+                                'LITI_AI_FAILED',
+                                'LITI_AI_OUTPUT_INVALID',
+                                'LITI_AI_UNAVAILABLE',
+                            ].includes(code))
+                    )
+                        throw error
+                }
+                const generated =
+                    result &&
+                    typeof result === 'object' &&
+                    'slug' in result &&
+                    typeof result.slug === 'string' &&
+                    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(result.slug) &&
+                    result.slug.length <= 80
+                        ? result.slug
+                        : slugFromTitle(input.title)
+                data[mapping.slug] = await availableSlug(context, mapping.slug, generated)
             },
             async validatePublication(context) {
                 const slug = context.data[mapping.slug]

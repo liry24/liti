@@ -35,7 +35,8 @@
     },
     "dependencies": {
         "@standard-schema/spec": "^1.1.0",
-        "comark": "^0.7.0"
+        "comark": "^0.7.0",
+        "nanoid": "^6.0.2"
     },
     "devDependencies": {
         "liti": "workspace:*",
