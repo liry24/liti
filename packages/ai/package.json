@@ -41,12 +41,12 @@
         "@standard-schema/spec": "^1.1.0"
     },
     "devDependencies": {
-        "ai": "7.0.145",
+        "ai": "7.0.148",
         "liti": "workspace:*",
         "void": "1.1.12"
     },
     "peerDependencies": {
-        "ai": "7.0.145",
+        "ai": "~7.0.145",
         "liti": "^0.0.3",
         "void": "1.1.12"
     },
