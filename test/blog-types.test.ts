@@ -43,9 +43,14 @@ const body: string = field('content').value
 const title: string = values.value.title
 const canApply: boolean = review.value.canApply
 const status: 'idle' | 'pending' | 'success' | 'error' = review.value.status
-const asynchronous = await useLitiForm('posts')
-asynchronous.blog.proofread()
-useVueForm('posts').blog.proofread()
+const { form, state: awaitedState, blog: { review: awaitedReview, proofread: awaitedProofread } } = await useLitiForm('posts', {
+    onSuccess: (_entry, { hasUnsavedChanges }) => { const dirty: boolean = hasUnsavedChanges; void dirty },
+})
+const { blog: { review: vueReview, proofread: vueProofread } } = await useVueForm('posts', {
+    onSuccess: (_entry, { hasUnsavedChanges }) => { const dirty: boolean = hasUnsavedChanges; void dirty },
+})
+const awaitedStatus: 'idle' | 'pending' | 'success' | 'error' = awaitedReview.value.status
+const vueCanApply: boolean = vueReview.value.canApply
 const page = useLitiForm('pages')
 const mappedBody: string = page.field('body').value
 page.field('extra')
@@ -62,7 +67,7 @@ const published = useLitiQuery('posts')
 const date: string | null | undefined = published.data.value[0]?.meta.blog.date
 const summary = useLitiQuery('posts', { markdown: 'summary' })
 const summaryDate: string | null | undefined = summary.data.value[0]?.meta.blog.date
-void [body, title, canApply, status, mappedBody, date, summaryDate, state, proofread, applyProofreading, discardProofreading]
+void [body, title, canApply, status, mappedBody, date, summaryDate, state, proofread, applyProofreading, discardProofreading, form, awaitedState, awaitedStatus, awaitedProofread, vueCanApply, vueProofread]
 `,
     )
     const root = JSON.parse(await readFile('tsconfig.json', 'utf8'))

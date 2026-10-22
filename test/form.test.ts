@@ -18,9 +18,10 @@ describe('native resource form', () => {
             'publication',
         ])
     })
-    it('retains dirty input and reports conflicts after AsyncData clears its previous error', () => {
+    it('retains dirty input and reports conflicts after AsyncData clears its previous error', async () => {
         const { resource } = modelFixture(async () => Response.json(null))
-        const editor = useEntryForm(resource)
+        const onSuccess = vi.fn()
+        const editor = useEntryForm(resource, { onSuccess })
         editor.form.setFieldValue('title', 'Local input')
         resource.status.value = 'pending'
         resource.data.value = modelEntry('one', 2, { title: 'Remote input' })
@@ -29,6 +30,8 @@ describe('native resource form', () => {
         expect(resource.error.value).toMatchObject({ data: { code: 'LITI_CONFLICT' } })
         expect(editor.form.state.values.title).toBe('Local input')
         expect(editor.draft.snapshot().version).toBe(1)
+        await editor.form.handleSubmit()
+        expect(onSuccess).not.toHaveBeenCalled()
     })
     it('clones defaults from reactive descriptors', () => {
         const descriptor = reactive({
@@ -46,7 +49,8 @@ describe('native resource form', () => {
             requests.push(body)
             return Response.json({ ...modelEntry('one', 2, body.data), slug: body.slug })
         })
-        const formState = useEntryForm(fixture.resource)
+        const onSuccess = vi.fn()
+        const formState = useEntryForm(fixture.resource, { onSuccess })
         expect(formState.form.Field).toBeDefined()
         expect(formState.form.Subscribe).toBeDefined()
         formState.form.setFieldValue('slug', 'new-slug')
@@ -54,6 +58,10 @@ describe('native resource form', () => {
         await formState.form.handleSubmit()
         expect(requests).toEqual([{ expectedVersion: 1, data: { slug: 'new-slug', title: 'Updated' } }])
         expect(formState.draft.isDirty.value).toBe(false)
+        expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), {
+            operation: 'save',
+            hasUnsavedChanges: false,
+        })
         expect(formState.draft.snapshot()).toMatchObject({ entryId: 'one', version: 2 })
         expect(formState.fields.value.find((field) => field.key === 'title')?.name).toBe('title')
         expect(formState.form).not.toHaveProperty('ai')
@@ -73,7 +81,8 @@ describe('native resource form', () => {
             ),
         )
         const { resource } = modelFixture(request)
-        const formState = useEntryForm(resource)
+        const onSuccess = vi.fn()
+        const formState = useEntryForm(resource, { onSuccess })
         formState.form.setFieldValue('title', '')
         await formState.form.handleSubmit()
         expect(request).not.toHaveBeenCalled()
@@ -86,6 +95,7 @@ describe('native resource form', () => {
         expect(formState.form.state.values.title).toBe('Retry')
         expect(formState.form.state.errors.length).toBeGreaterThan(0)
         expect(resource.status.value).toBe('error')
+        expect(onSuccess).not.toHaveBeenCalled()
     })
     it('creates once, then uses the receipt version after a UI callback failure', async () => {
         const requests: Array<{ url: string; body: Record<string, unknown> }> = []
@@ -115,7 +125,8 @@ describe('native resource form', () => {
             async () => reply.promise,
             modelEntry('one', 1, { title: 'Initial', optional: 'Old' }),
         )
-        const formState = useEntryForm(resource)
+        const onSuccess = vi.fn()
+        const formState = useEntryForm(resource, { onSuccess })
         formState.form.setFieldValue('title', 'Submitted')
         const pending = formState.form.handleSubmit()
         await vi.waitFor(() => expect(resource.status.value).toBe('pending'))
@@ -125,6 +136,10 @@ describe('native resource form', () => {
         await pending
         expect(formState.form.state.values).toEqual({ title: 'Later', optional: undefined })
         expect(formState.draft.isDirty.value).toBe(true)
+        expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), {
+            operation: 'save',
+            hasUnsavedChanges: true,
+        })
     })
     it('retains drafts across identities and rejects stale saved versions', async () => {
         const fixture = modelFixture(async () => Response.json(modelEntry()))

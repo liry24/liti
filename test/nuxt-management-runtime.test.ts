@@ -633,8 +633,9 @@ describe('native management AsyncData and mutation invalidation', () => {
         })
         const actor = Vue.ref('alice')
         const instance = Vue.ref('a')
+        const onSuccess = vi.fn()
         const firstScope = Vue.effectScope()
-        const a = firstScope.run(() => helpers.useLitiForm('posts', { instance, authScope: actor }))!
+        const a = firstScope.run(() => helpers.useLitiForm('posts', { instance, authScope: actor, onSuccess }))!
         const secondScope = Vue.effectScope()
         const b = secondScope.run(() => helpers.useLitiForm('posts', { instance: 'b', authScope: actor }))!
         expect(a.form.Field).toBeDefined()
@@ -645,6 +646,10 @@ describe('native management AsyncData and mutation invalidation', () => {
         b.form.setFieldValue('title', 'B')
         await a.form.handleSubmit()
         expect(a.draft.snapshot().entryId).toBe('created-1')
+        expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ id: 'created-1' }), {
+            operation: 'save',
+            hasUnsavedChanges: false,
+        })
         expect(b.draft.snapshot().entryId).toBeNull()
         expect(b.form.state.values.title).toBe('B')
         expect(b.error.value).toBeUndefined()

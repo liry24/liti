@@ -44,7 +44,7 @@ export interface UseEntryFormOptions<Data extends Record<string, unknown>> {
     }) => void | Promise<void>
     onSuccess?: (
         entry: LitiEntryMutation<Data>,
-        context: { operation: 'save' | 'publish' | 'schedule' },
+        context: { operation: 'save' | 'publish' | 'schedule'; hasUnsavedChanges: boolean },
     ) => void | Promise<void>
 }
 
@@ -310,7 +310,11 @@ export const useEntryForm = <Data extends Record<string, unknown>, Extensions ex
                 published = result
                 completed.value = true
                 try {
-                    if (!ensuring) await options.onSuccess?.(result, { operation: selectedIntent.kind })
+                    if (!ensuring)
+                        await options.onSuccess?.(result, {
+                            operation: selectedIntent.kind,
+                            hasUnsavedChanges: hasUnsavedChanges.value,
+                        })
                 } catch (error) {
                     if (!lifetime.signal.aborted && identity === draftKey()) throw context.report(error, true)
                 }
@@ -347,6 +351,15 @@ export const useEntryForm = <Data extends Record<string, unknown>, Extensions ex
         values.value = state.values
     })
     const isDirty = computed(() => litiSnapshot(serialize(values.value)) !== litiSnapshot(baseline.value))
+    const hasUnsavedChanges = computed(
+        () =>
+            isDirty.value ||
+            Object.entries(context.drafts).some(
+                ([key, draft]) =>
+                    draftGroup(key) === draftGroup(draftKey()) &&
+                    litiSnapshot(draft.value) !== litiSnapshot(draft.baseline),
+            ),
+    )
     function remember() {
         if (switching) return
         if (!isDirty.value && !pendingPublication && !(toValue(context.instance) !== undefined && entryId.value)) {
@@ -660,15 +673,7 @@ export const useEntryForm = <Data extends Record<string, unknown>, Extensions ex
                 })()
                 return ensurePending
             },
-            isDirty: computed(
-                () =>
-                    isDirty.value ||
-                    Object.entries(context.drafts).some(
-                        ([key, draft]) =>
-                            draftGroup(key) === draftGroup(draftKey()) &&
-                            litiSnapshot(draft.value) !== litiSnapshot(draft.baseline),
-                    ),
-            ),
+            isDirty: hasUnsavedChanges,
             snapshot: () =>
                 clone({
                     entryId: entryId.value,
