@@ -20,9 +20,11 @@ it('validates before hooks, coalesces quiet draft creation, and completes before
         onBeforeSubmit: () => {
             order.push('before')
         },
-        onSuccess: () => {
+        onSuccess: (_entry, { operation, hasUnsavedChanges }) => {
             order.push('success')
             expect(editor.operation.value).toBe(null)
+            expect(operation).toBe('save')
+            expect(hasUnsavedChanges).toBe(false)
         },
     })
     await editor.form.handleSubmit()
@@ -207,7 +209,8 @@ it('retains a committed new ID/version and later edits when file effects fail, w
 it('keeps saved state when the success callback fails', async () => {
     const fixture = modelFixture(async () => Response.json(modelEntry('one', 2, { title: 'Saved' })))
     const editor = useEntryForm(fixture.resource, {
-        onSuccess: () => {
+        onSuccess: (_entry, { hasUnsavedChanges }) => {
+            expect(hasUnsavedChanges).toBe(false)
             throw new Error('Navigation callback failed')
         },
     })
@@ -217,6 +220,48 @@ it('keeps saved state when the success callback fails', async () => {
     expect(editor.draft.snapshot()).toMatchObject({ version: 2 })
     expect(editor.draft.isDirty.value).toBe(false)
     expect(fixture.state.error.value?.data?.committed).toBe(true)
+})
+
+it.each(['posts:one', 'posts:other'])(
+    'reports unsaved input from another locale only within the saved draft group (%s)',
+    async (group) => {
+        const fixture = modelFixture(async () => Response.json(modelEntry('one', 2, { title: 'Saved' })))
+        fixture.resource[litiModelContext].group = 'posts:one'
+        fixture.drafts['english-buffer'] = {
+            group,
+            locale: 'en',
+            entryId: 'one',
+            version: 1,
+            value: { title: 'Unsaved English' },
+            baseline: { title: 'English' },
+        }
+        const onSuccess = vi.fn()
+        const editor = useEntryForm(fixture.resource, { onSuccess })
+        editor.form.setFieldValue('title', 'Saved')
+        await editor.form.handleSubmit()
+        expect(editor.state.value.dirty).toBe(false)
+        expect(editor.draft.isDirty.value).toBe(group === 'posts:one')
+        expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), {
+            operation: 'save',
+            hasUnsavedChanges: group === 'posts:one',
+        })
+    },
+)
+
+it('does not notify success when disposed during a save', async () => {
+    const response = Promise.withResolvers<Response>()
+    const request = vi.fn(() => response.promise)
+    const fixture = modelFixture(request)
+    const scope = effectScope()
+    const onSuccess = vi.fn()
+    const editor = scope.run(() => useEntryForm(fixture.resource, { onSuccess }))!
+    editor.form.setFieldValue('title', 'Saved')
+    const pending = editor.form.handleSubmit()
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce())
+    scope.stop()
+    response.resolve(Response.json(modelEntry('one', 2, { title: 'Saved' })))
+    await pending
+    expect(onSuccess).not.toHaveBeenCalled()
 })
 
 it('creates the original and edited locale buffers in one snapshot without persisting inherited fields', async () => {

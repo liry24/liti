@@ -54,11 +54,14 @@ immediate.upload('sections[0].attachment', new File(['x'], 'x.txt'))
 // @ts-expect-error Unknown nested field.
 immediate.upload('sections[0].missing', new File(['x'], 'x.txt'))
 void immediateTitle
-const { form } = await useLitiForm('posts', { id, onSuccess: (saved) => {
+const { form, state } = await useLitiForm('posts', { id, onSuccess: (saved, { operation, hasUnsavedChanges }) => {
     const version: number = saved.version
+    const dirty: boolean = hasUnsavedChanges
+    const action: 'save' | 'publish' | 'schedule' = operation
     if ('data' in saved) { const title: string = saved.data.title; const url: string | undefined = saved.data.image?.url; void [title, url] }
-    void version
+    void [version, dirty, action]
 } })
+const conflict: boolean = state.value.conflict
 const title: string = form.state.values.title
 const copy: string = form.state.values.copy
 const assetUrl: string | undefined = form.state.values.image?.url
@@ -85,7 +88,7 @@ const size: number = list.data.value.length
 const one: string | undefined = post.data.value?.data.title
 const { form: author } = await useLitiForm('authors')
 const name: string = author.state.values.name
-void [title, copy, assetUrl, first, size, projectedTitles, one, name]
+void [title, copy, assetUrl, first, size, projectedTitles, one, name, conflict]
 
 `,
     )

@@ -98,14 +98,17 @@ it('shares a descriptor DTO while exposing a catalog and stable query handles in
 
 it('keeps a fixed field on the native form across reset and identity changes', async () => {
     const id = ref<string | null>('one')
+    const onSuccess = vi.fn()
     const runtime = mount(
         () => {
-            const editor = useLitiForm('posts', { id, instance: 'editor' })
+            const editor = useLitiForm('posts', { id, instance: 'editor', onSuccess })
             return { editor, title: editor.field('title') }
         },
-        async (input) => {
+        async (input, init) => {
             if (String(input).endsWith('/models')) return Response.json(descriptor)
             const selected = String(input).split('/').at(-1)!
+            if (init?.method === 'PATCH')
+                return Response.json(modelEntry(selected, 2, JSON.parse(String(init.body)).data))
             return Response.json(modelEntry(selected, 1, { title: selected }))
         },
     )
@@ -131,6 +134,12 @@ it('keeps a fixed field on the native form across reset and identity changes', a
         expect(title.value).toBe('two')
         expect(editor.state).toBe(state)
         expect(editor.form.state.values.title).toBe('two')
+        editor.form.setFieldValue('title', 'Saved')
+        await editor.form.handleSubmit()
+        expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), {
+            operation: 'save',
+            hasUnsavedChanges: false,
+        })
     } finally {
         runtime.stop()
     }
