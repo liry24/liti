@@ -14,7 +14,7 @@
     "updateNotScheduled": true,
     "ignoreScripts": true,
     "constraints": {
-        "bun": "1.4.3"
+        "bun": "1.4.4"
     },
     "lockFileMaintenance": {
         "enabled": false
