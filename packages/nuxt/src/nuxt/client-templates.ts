@@ -8,26 +8,32 @@ export interface LitiClientTemplateOptions {
     origin?: string
     auth?: boolean
     actions?: boolean
-    vue?: string[]
-    editors?: Record<string, string[]>
 }
 
 /** Generated code contains connection settings, native factory macros and exports only. */
 export const litiNuxtClientTemplate = (options: LitiClientTemplateOptions): string => {
-    const { vue: _vue, ...runtime } = options
     return `
 import { createUseAsyncData } from '#app/composables/asyncData'
 import { createUseFetch } from '#app/composables/fetch'
 import { createLitiComposables, litiAiFetchOptions } from 'liti/internal/runtime/composables'
 ${options.auth ? "import { useUserSession } from '#imports'" : ''}
-${(options.vue ?? []).map((module, index) => `import extension${index} from ${JSON.stringify(module)}`).join('\n')}
 export const litiAsyncData = createUseAsyncData()
 export const litiAiFetch = createUseFetch(litiAiFetchOptions)
-const composables = createLitiComposables(${JSON.stringify(runtime)}, litiAsyncData, litiAiFetch, ${options.auth ? 'useUserSession' : 'undefined'}, Object.assign({}, ${(options.vue ?? []).map((_, index) => `extension${index}`).join(', ')}))
-export const { useLitiQuery, ${options.actions ? 'useAi, ' : ''}litiPublicClientOptions, litiManagementClientOptions, useLitiRoute, litiAttachAsyncData, useLitiAuthScope, litiManagementKey, createNuxtLitiManagementClient, useLitiModels, litiReadModels, useLitiForm } = composables
+const composables = createLitiComposables(${JSON.stringify(options)}, litiAsyncData, litiAiFetch, ${options.auth ? 'useUserSession' : 'undefined'})
+export const { useLitiQuery, ${options.actions ? 'useAi, ' : ''}litiPublicClientOptions, litiManagementClientOptions, useLitiRoute, litiAttachAsyncData, useLitiAuthScope, litiManagementKey, createNuxtLitiManagementClient, useLitiModels, litiReadModels, useManagedSource } = composables
 export type { UseAiOptions, LitiModelOptions, LitiFormOptions, LitiLocaleOptions, LitiBatchRequest, LitiBatchResult } from 'liti/internal/runtime/composables'
 `
 }
+
+export const litiNuxtFormsTemplate = (options: {
+    vue: string[]
+    editors: Record<string, string[]>
+}): string => `import { createLitiFormComposables } from 'liti/internal/runtime/forms'
+import { useManagedSource } from '#build/liti/client'
+${options.vue.map((module, index) => `import extension${index} from ${JSON.stringify(module)}`).join('\n')}
+export const { useLitiForm } = createLitiFormComposables({ useManagedSource }, ${JSON.stringify(options.editors)}, Object.assign({}, ${options.vue.map((_, index) => `extension${index}`).join(', ')}))
+export type { LitiFormOptions } from 'liti/internal/runtime/composables'
+`
 
 /** A config path is used only by TypeScript; the app never loads its runtime code. */
 export const litiNuxtModelTypes = (

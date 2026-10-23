@@ -7,7 +7,11 @@ import {
     LitiClientError,
     type PublicEntry,
 } from '../packages/liti/src/client'
-import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
+import {
+    litiNuxtClientTemplate,
+    litiNuxtFormsTemplate,
+    litiNuxtModelTypes,
+} from '../packages/nuxt/src/nuxt/client-templates'
 
 describe('liti clients', () => {
     it('returns migration errors without retrying search or mutating reads', async () => {
@@ -363,10 +367,16 @@ describe('liti clients', () => {
         await expect(unavailable.models()).rejects.toMatchObject({ code: 'LITI_REQUEST_FAILED', status: 503 })
     })
 
-    it('generates a unified form composable without exposing server configuration', () => {
+    it('keeps form extensions out of the shared generated client without exposing server configuration', () => {
         const source = litiNuxtClientTemplate({ basePath: '/content', managementBase: '/manage' })
         expect(source).not.toContain('liti/internal/form')
-        expect(source).toContain('useLitiForm')
+        expect(source).not.toContain('useLitiForm')
+        expect(source).not.toContain('extension')
+        const forms = litiNuxtFormsTemplate({ vue: ['@litijs/blog/vue'], editors: { posts: ['blog'] } })
+        expect(forms).toContain('useLitiForm')
+        expect(forms).toContain("import { useManagedSource } from '#build/liti/client'")
+        expect(forms).toContain('import extension0 from "@litijs/blog/vue"')
+        expect(forms).not.toContain('createLitiComposables(')
         const types = litiNuxtModelTypes('C:\\project\\liti.config.ts', ['production', 'preview'])
         expect(types).toContain('C:/project/liti.config.ts')
         expect(types).toContain('publicModels: InferLitiPublicModels<LitiDomainConfig>')

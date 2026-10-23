@@ -20,7 +20,7 @@ import {
     type LitiClientOptions,
 } from '../packages/liti/src/client'
 import { defineLitiConfig, image, text } from '../packages/liti/src'
-import { litiNuxtClientTemplate } from '../packages/nuxt/src/nuxt/client-templates'
+import { litiNuxtClientTemplate, litiNuxtFormsTemplate } from '../packages/nuxt/src/nuxt/client-templates'
 import { normalizeLitiQuery } from '../packages/liti/src/query'
 import { litiModelCatalog } from '../packages/liti/src/admin-client'
 import { projectQuery, queryTotal } from '../packages/vue/src/query'
@@ -36,6 +36,7 @@ interface State {
     refresh(options?: { cachedData?: unknown; signal?: AbortSignal; dedupe?: 'cancel' | 'defer' }): Promise<void>
 }
 interface Helpers {
+    useLitiModels(): State & Promise<State>
     useLitiQuery(model: string, options?: Record<string, unknown>): State & Promise<State> & { total: Vue.Ref<number> }
     useLitiForm(model: string, options?: Record<string, unknown>): Promise<FormResource> & FormResource
     litiManagementKey(
@@ -70,7 +71,14 @@ type FormResource = ReturnType<typeof useEntryForm<Record<string, unknown>>> &
 
 const nativeEnvironment = async (
     request: NonNullable<LitiClientOptions['fetch']>,
-    { i18n = false, aiActions = false, serverFetch = false, serverRuntime = false } = {},
+    {
+        i18n = false,
+        aiActions = false,
+        auth = false,
+        serverFetch = false,
+        serverRuntime = false,
+        purgeCachedData = false,
+    } = {},
 ) => {
     const native = nativeRuntimeSource(await readNuxtSource('composables/asyncData.js'), {
         serverRuntime,
@@ -105,8 +113,10 @@ const nativeEnvironment = async (
         callHook: async () => {},
         runWithContext: <Value>(callback: () => Value): Value => callback(),
     }
+    const user = Vue.ref({ id: 'alice', role: 'editor' })
+    const session = Vue.ref({ id: 'session-one' })
     const nativeDependencies = {
-        ...(await nativeNuxtDependencies(app)),
+        ...(await nativeNuxtDependencies(app, { purgeCachedData })),
         onNuxtReady: (callback: () => void) => callback(),
         toArray: (value: unknown) => (Array.isArray(value) ? value : [value]),
         defineKeyedFunctionFactory: (options: { factory: unknown }) => options.factory,
@@ -140,7 +150,8 @@ const nativeEnvironment = async (
             managementBase: '/manage',
             i18n,
             actions: aiActions,
-        }),
+            auth,
+        }) + litiNuxtFormsTemplate({ vue: [], editors: {} }),
         { serverFetch, asyncData: true },
     )
     let managementFactories = 0
@@ -152,6 +163,7 @@ const nativeEnvironment = async (
         projectQuery,
         queryTotal,
         useEntryForm,
+        useUserSession: () => ({ user, session }),
         createLitiModel,
         litiModelError,
         useRoute: () => ({ path: '/' }),
@@ -190,6 +202,8 @@ const nativeEnvironment = async (
     )(...Object.values(dependencies)) as Helpers
     return {
         app,
+        user,
+        session,
         helpers,
         setRouteResult: (value: unknown) => {
             const route = states.get('liti-route')
@@ -1009,6 +1023,156 @@ describe('native management AsyncData and mutation invalidation', () => {
             '/manage/entries/one',
         ])
         expect(environment.requestFetches()).toBe(1)
+    })
+
+    it('reuses a completed parent catalog in SSR child catalogs, lists and forms without leaking across requests', async () => {
+        let descriptors = 0
+        const request = async (input: RequestInfo | URL) => {
+            if (new URL(String(input)).pathname === '/manage/models') {
+                descriptors++
+                return Response.json(modelDescriptor)
+            }
+            return Response.json({ items: [], total: 0, limit: 20, offset: 0 })
+        }
+        const render = async () => {
+            const { helpers } = await nativeEnvironment(request, { serverFetch: true, serverRuntime: true })
+            const child = {
+                setup() {
+                    const models = helpers.useLitiModels()
+                    const list = helpers.modelList('posts')
+                    const form = helpers.useLitiForm('posts')
+                    return () => Vue.h('div', [models.status.value, list.status.value, form.status.value].join(':'))
+                },
+            }
+            return renderToString(
+                Vue.createSSRApp({
+                    async setup() {
+                        await helpers.useLitiModels()
+                        return () => Vue.h(child)
+                    },
+                }),
+            )
+        }
+        expect(await render()).toBe('<div>success:success:success</div>')
+        expect(descriptors).toBe(1)
+        expect(await render()).toBe('<div>success:success:success</div>')
+        expect(descriptors).toBe(2)
+    })
+
+    it('refreshes SSR descriptors explicitly and retries failures instead of caching them', async () => {
+        let calls = 0
+        const { helpers, app } = await nativeEnvironment(
+            async () => {
+                calls++
+                return calls === 1 || calls === 4
+                    ? Response.json({ error: { code: 'LITI_FORBIDDEN', message: 'No access' } }, { status: 403 })
+                    : Response.json(modelDescriptor)
+            },
+            { serverFetch: true, serverRuntime: true },
+        )
+        const scope = Vue.effectScope()
+        const first = await scope.run(() => helpers.useLitiModels())!
+        expect(first.error.value).toMatchObject({ statusCode: 403 })
+        const retry = await scope.run(() => helpers.useLitiModels())!
+        expect(retry.status.value).toBe('success')
+        expect(calls).toBe(2)
+        await retry.refresh()
+        expect(calls).toBe(3)
+        await app.hooks.callHookParallel('app:data:refresh')
+        expect(retry.error.value).toMatchObject({ statusCode: 403 })
+        const recovered = await scope.run(() => helpers.useLitiModels())!
+        expect(recovered.status.value).toBe('success')
+        expect(calls).toBe(5)
+        scope.stop()
+    })
+
+    it.each(['hydration', 'static'] as const)(
+        'preserves native %s descriptor payload reuse and manual refresh',
+        async (mode) => {
+            let calls = 0
+            const { helpers, app } = await nativeEnvironment(async () => {
+                calls++
+                return Response.json(modelDescriptor)
+            })
+            const key = helpers.litiManagementKey(
+                helpers.litiManagementClientOptions(),
+                '[null,null,null]',
+                'models',
+                null,
+                null,
+            )
+            if (mode === 'hydration') {
+                app.isHydrating = true
+                app.payload.data[key] = modelDescriptor
+            } else app.static.data[key] = modelDescriptor
+            const scope = Vue.effectScope()
+            const models = await scope.run(() => helpers.useLitiModels())!
+            expect(models.status.value).toBe('success')
+            expect(calls).toBe(0)
+            app.isHydrating = false
+            await models.refresh()
+            expect(calls).toBe(1)
+            scope.stop()
+        },
+    )
+
+    it('keeps native client descriptor purging when the last consumer is disposed', async () => {
+        let calls = 0
+        const { helpers, app } = await nativeEnvironment(
+            async () => {
+                calls++
+                return Response.json(modelDescriptor)
+            },
+            { purgeCachedData: true },
+        )
+        const scope = Vue.effectScope()
+        await scope.run(() => helpers.useLitiModels())!
+        const key = Object.keys(app.payload.data)[0]!
+        expect(app.payload.data[key]).toEqual(modelDescriptor)
+        scope.stop()
+        await Vue.nextTick()
+        expect(app.payload.data[key]).toBeUndefined()
+        const next = Vue.effectScope()
+        await next.run(() => helpers.useLitiModels())!
+        expect(calls).toBe(2)
+        next.stop()
+    })
+
+    it('separates completed SSR descriptor caches by UI locale, user, role and session', async () => {
+        const locales: Array<string | null> = []
+        const environment = await nativeEnvironment(
+            async (input) => {
+                locales.push(new URL(String(input)).searchParams.get('uiLocale'))
+                return Response.json(modelDescriptor)
+            },
+            { auth: true, i18n: true, serverFetch: true, serverRuntime: true },
+        )
+        const { helpers, app, user, session } = environment
+        const scope = Vue.effectScope()
+        await scope.run(() => helpers.useLitiModels())!
+        await scope.run(() => helpers.useLitiModels())!
+        expect(locales).toEqual(['ja'])
+        app.$i18n.locale.value = 'en'
+        await flush()
+        await scope.run(() => helpers.useLitiModels())!
+        expect(locales).toEqual(['ja', 'en'])
+        user.value.role = 'admin'
+        await flush()
+        await scope.run(() => helpers.useLitiModels())!
+        expect(locales).toHaveLength(3)
+        expect(Object.keys(app.payload.data).every((key) => !key.includes('editor'))).toBe(true)
+        session.value.id = 'session-two'
+        await flush()
+        await scope.run(() => helpers.useLitiModels())!
+        expect(locales).toHaveLength(4)
+        expect(Object.keys(app.payload.data).every((key) => !key.includes('session-one'))).toBe(true)
+        user.value.id = 'bob'
+        await flush()
+        const last = await scope.run(() => helpers.useLitiModels())!
+        expect(locales).toHaveLength(5)
+        expect(Object.keys(app.payload.data).every((key) => !key.includes('alice'))).toBe(true)
+        expect(last.status.value).toBe('success')
+        scope.stop()
     })
 
     it('reuses clients within a request and auth scope, separating transport identity and credentials', async () => {

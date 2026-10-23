@@ -11,7 +11,12 @@ for (const name of publicPackages) {
             '--profile',
             'esm-only',
             ...(name === 'liti'
-                ? ['--exclude-entrypoints', './internal/runtime/composables', './internal/runtime/seo']
+                ? [
+                      '--exclude-entrypoints',
+                      './internal/runtime/composables',
+                      './internal/runtime/forms',
+                      './internal/runtime/seo',
+                  ]
                 : []),
         ],
     ]) {

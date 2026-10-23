@@ -45,6 +45,9 @@ export const generatedRuntimeSource = (source: string, { serverFetch = false, as
                 "(typeof createUseFetch === 'function' ? createUseFetch(litiAiFetchOptions) : undefined)",
             )
     }
+    if (source.includes('createLitiFormComposables(')) {
+        source = readFileSync(new URL('../packages/nuxt/src/runtime/forms.ts', import.meta.url), 'utf8') + '\n' + source
+    }
     const script = stripRuntimeImports(stripTypeScriptTypes(source))
     return (asyncData ? script.replace(/^export const litiAsyncData = createUseAsyncData\(\)\s*$/gmu, '') : script)
         .replace(/^export /gmu, '')

@@ -120,6 +120,7 @@ export default defineConfig({
                 'nuxt/server': '../nuxt/src/nuxt/server.ts',
                 'runtime/nitro2': '../nuxt/src/runtime/nitro2.ts',
                 'runtime/composables': '../nuxt/src/runtime/composables.ts',
+                'runtime/forms': '../nuxt/src/runtime/forms.ts',
                 'runtime/seo': '../nuxt/src/runtime/seo.ts',
                 'runtime/context': '../nuxt/src/runtime/context.ts',
                 'runtime/presentation': '../nuxt/src/runtime/presentation.ts',

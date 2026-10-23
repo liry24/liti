@@ -121,6 +121,10 @@
             "types": "./dist/runtime/composables.d.ts",
             "import": "./dist/runtime/composables.js"
         },
+        "./internal/runtime/forms": {
+            "types": "./dist/runtime/forms.d.ts",
+            "import": "./dist/runtime/forms.js"
+        },
         "./internal/runtime/tasks/rebuild-search": {
             "types": "./dist/runtime/tasks/rebuild-search.d.ts",
             "import": "./dist/runtime/tasks/rebuild-search.js"

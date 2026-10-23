@@ -28,7 +28,12 @@ import type { LitiConfig, LitiLifecycleEvent } from '../../liti/src/config'
 import type { EntryPrepareContext } from '../../vue/src/model'
 import type { AnyField } from '../../liti/src/fields'
 import { serializeLitiSeo, serializeLitiRouteRules } from '../../liti/src/seo'
-import { litiNuxtClientTemplate, litiNuxtModelTypes, litiNuxtSeoTemplate } from './nuxt/client-templates'
+import {
+    litiNuxtClientTemplate,
+    litiNuxtFormsTemplate,
+    litiNuxtModelTypes,
+    litiNuxtSeoTemplate,
+} from './nuxt/client-templates'
 import type { LitiActor } from '../../liti/src/server/types'
 import { moduleMeta } from './meta'
 import { litiNuxtMetadataTemplate, litiNuxtRouteTemplate } from './nuxt/route-templates'
@@ -327,6 +332,14 @@ export default defineNuxtModule<ModuleConfig>({
                     i18n: options.i18n,
                     auth: options.auth,
                     actions: namedActions,
+                    ...(options.client.origin ? { origin: options.client.origin } : {}),
+                }),
+            write: true,
+        })
+        const formsTemplate = addTemplate({
+            filename: 'liti/forms.ts',
+            getContents: () =>
+                litiNuxtFormsTemplate({
                     vue: [
                         ...new Set(domainConfig?.plugins?.flatMap((plugin) => (plugin.vue ? [plugin.vue] : [])) ?? []),
                     ],
@@ -335,7 +348,6 @@ export default defineNuxtModule<ModuleConfig>({
                             .filter(([, model]) => model.editor)
                             .map(([name, model]) => [name, Object.keys(model.editor!)]),
                     ),
-                    ...(options.client.origin ? { origin: options.client.origin } : {}),
                 }),
             write: true,
         })
@@ -347,7 +359,7 @@ export default defineNuxtModule<ModuleConfig>({
         addImports([
             { from: clientTemplate.dst, name: 'useLitiQuery' },
             { from: clientTemplate.dst, name: 'useLitiModels' },
-            { from: clientTemplate.dst, name: 'useLitiForm' },
+            { from: formsTemplate.dst, name: 'useLitiForm' },
         ])
         if (namedActions) {
             nuxt.options.optimization.keyedComposables.push({

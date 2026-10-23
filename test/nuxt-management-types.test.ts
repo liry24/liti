@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
+import {
+    litiNuxtClientTemplate,
+    litiNuxtFormsTemplate,
+    litiNuxtModelTypes,
+} from '../packages/nuxt/src/nuxt/client-templates'
 
 it('infers high-level form, management list, field and successful save types from model names', async () => {
     await mkdir('.tmp', { recursive: true })
@@ -13,6 +17,7 @@ it('infers high-level form, management list, field and successful save types fro
         litiNuxtClientTemplate({ basePath: '/content', managementBase: '/manage', auth: true }),
     )
     await writeFile(join(directory, 'models.d.ts'), litiNuxtModelTypes(join(directory, 'config.ts')))
+    await writeFile(join(directory, 'forms.ts'), litiNuxtFormsTemplate({ vue: [], editors: {} }))
     await writeFile(
         join(directory, 'config.ts'),
         `import { array, defineLitiConfig, file, image, images, markdown, object, text } from 'liti'
@@ -45,7 +50,8 @@ declare module '#imports' {
     await writeFile(
         join(directory, 'consumer.ts'),
         `import { ref } from 'vue'
-import { useLitiQuery, useLitiForm } from './client'
+import { useLitiQuery } from './client'
+import { useLitiForm } from './forms'
 const id = ref<string | null>('post')
 const post = await useLitiQuery('posts', { mode: 'one', view: 'current', id })
 const immediate = useLitiForm('posts', { instance: ref('one') })
