@@ -45,14 +45,14 @@
         "@litijs/sqlite": "workspace:^"
     },
     "devDependencies": {
-        "@types/bun": "^1.4.3",
-        "drizzle-kit": "1.0.0-rc.4",
-        "drizzle-orm": "1.0.0-rc.4",
+        "@types/bun": "^1.4.4",
+        "drizzle-kit": "1.0.0-rc.5",
+        "drizzle-orm": "1.0.0-rc.5",
         "liti": "workspace:*"
     },
     "peerDependencies": {
-        "drizzle-kit": "1.0.0-rc.4",
-        "drizzle-orm": "1.0.0-rc.4",
+        "drizzle-kit": "1.0.0-rc.5",
+        "drizzle-orm": "1.0.0-rc.5",
         "liti": "^0.0.3"
     },
     "peerDependenciesMeta": {
