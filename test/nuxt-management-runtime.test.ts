@@ -51,9 +51,9 @@ interface Helpers {
     useAi(name: string, options: Record<string, unknown>): State & Promise<State>
     modelList(model: string, options?: Record<string, unknown>): State
     modelEntry(model: string, id: Vue.MaybeRefOrGetter<string>, options?: Record<string, unknown>): State
-    publicList(model: string, options?: Record<string, unknown>): State
-    publicEntry(model: string, id: string, options?: Record<string, unknown>): State
-    publicBatch(requests: Record<string, unknown>, options?: Record<string, unknown>): State
+    publicList(model: string, options?: Record<string, unknown>): State & Promise<State>
+    publicEntry(model: string, id: string, options?: Record<string, unknown>): State & Promise<State>
+    publicBatch(requests: Record<string, unknown>, options?: Record<string, unknown>): State & Promise<State>
     useLitiManagementClient(): LitiManagementClient<Record<string, Record<string, unknown>>>
     createNuxtLitiManagementClient(
         connection: {
@@ -78,6 +78,9 @@ const nativeEnvironment = async (
         serverFetch = false,
         serverRuntime = false,
         purgeCachedData = false,
+        requestOrigin = 'http://site.test',
+        origin = undefined as string | undefined,
+        anonymous = false,
     } = {},
 ) => {
     const native = nativeRuntimeSource(await readNuxtSource('composables/asyncData.js'), {
@@ -113,8 +116,8 @@ const nativeEnvironment = async (
         callHook: async () => {},
         runWithContext: <Value>(callback: () => Value): Value => callback(),
     }
-    const user = Vue.ref({ id: 'alice', role: 'editor' })
-    const session = Vue.ref({ id: 'session-one' })
+    const user = Vue.ref<{ id: string; role: string } | null>(anonymous ? null : { id: 'alice', role: 'editor' })
+    const session = Vue.ref<{ id: string } | null>(anonymous ? null : { id: 'session-one' })
     const nativeDependencies = {
         ...(await nativeNuxtDependencies(app, { purgeCachedData })),
         onNuxtReady: (callback: () => void) => callback(),
@@ -126,7 +129,7 @@ const nativeEnvironment = async (
         fetchDefaults: {},
         routeTypedFetch: false,
         $fetch: async (url: string, options: RequestInit) => {
-            const response = await request(new URL(url, 'http://site.test'), {
+            const response = await request(new URL(url, requestOrigin), {
                 ...options,
                 body: JSON.stringify(options.body),
             })
@@ -151,6 +154,7 @@ const nativeEnvironment = async (
             i18n,
             actions: aiActions,
             auth,
+            ...(origin === undefined ? {} : { origin }),
         }) + litiNuxtFormsTemplate({ vue: [], editors: {} }),
         { serverFetch, asyncData: true },
     )
@@ -182,14 +186,14 @@ const nativeEnvironment = async (
         presentLitiData,
         LitiClientError,
         useNuxtApp: () => app,
-        useRequestURL: () => new URL('http://site.test'),
+        useRequestURL: () => new URL(requestOrigin),
         useRequestFetch: () => {
             requestFetches += 1
             return async (
                 url: string,
                 options: RequestInit & { onResponse: (context: { response: Response }) => void },
             ) => {
-                const response = await request(new URL(url, 'http://site.test'), options)
+                const response = await request(new URL(url, requestOrigin), options)
                 options.onResponse({ response })
                 return response
             }
@@ -205,12 +209,14 @@ const nativeEnvironment = async (
         user,
         session,
         helpers,
+        states,
         setRouteResult: (value: unknown) => {
             const route = states.get('liti-route')
             if (route) route.value = value
             else states.set('liti-route', Vue.ref(value))
         },
         refreshSubscribers: () => hooks.get('app:data:refresh')?.size ?? 0,
+        hydrationSubscribers: () => hooks.get('app:suspense:resolve')?.size ?? 0,
         managementFactories: () => managementFactories,
         requestFetches: () => requestFetches,
     }
@@ -219,6 +225,206 @@ const flush = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     await Vue.nextTick()
 }
+
+it.each(['entry', 'list', 'batch'] as const)(
+    'hydrates a cached public %s when Nitro strips the request origin, then refreshes the real browser origin',
+    async (kind) => {
+        const read = (helpers: Helpers) =>
+            kind === 'entry'
+                ? helpers.publicEntry('posts', 'one')
+                : kind === 'list'
+                  ? helpers.publicList('posts')
+                  : helpers.publicBatch({ posts: { list: 'posts' }, post: { entry: 'posts', id: 'one' } })
+        const response = (input: RequestInfo | URL, title: string) => {
+            const record = { data: { _liti: { id: 'one', model: 'posts' }, title } }
+            return Response.json(new URL(String(input)).pathname === '/content/posts' ? [record] : record)
+        }
+        const server = await nativeEnvironment(async (input) => response(input, 'Cached'), {
+            requestOrigin: 'http://localhost',
+            serverFetch: true,
+            serverRuntime: true,
+        })
+        let rendered: State | undefined
+        await renderToString(
+            Vue.createSSRApp({
+                setup() {
+                    rendered = read(server.helpers)
+                    return () => Vue.h('div', rendered!.status.value)
+                },
+            }),
+        )
+        expect(rendered?.status.value).toBe('success')
+        const requests: string[] = []
+        const browser = await nativeEnvironment(
+            async (input) => {
+                requests.push(String(input))
+                return response(input, 'Updated')
+            },
+            { requestOrigin: 'https://site.test' },
+        )
+        Object.assign(browser.app.payload.data, JSON.parse(JSON.stringify(server.app.payload.data)))
+        browser.app.payload.serverRendered = true
+        browser.app.isHydrating = true
+        const scope = Vue.effectScope()
+        try {
+            const hydrated = await scope.run(() => read(browser.helpers))!
+            expect(hydrated.data.value).toEqual(rendered?.data.value)
+            expect(requests).toEqual([])
+            browser.app.isHydrating = false
+            await hydrated.refresh()
+            expect(requests).toHaveLength(kind === 'batch' ? 2 : 1)
+            expect(requests.every((url) => url.startsWith('https://site.test/content/'))).toBe(true)
+            expect(hydrated.data.value).not.toEqual(rendered?.data.value)
+        } finally {
+            scope.stop()
+        }
+    },
+)
+
+it.each([undefined, 'https://content.test'])(
+    'keeps the configured public origin %s isolated during mutation invalidation',
+    async (origin) => {
+        const requests: string[] = []
+        const request: NonNullable<LitiClientOptions['fetch']> = async (input, init) => {
+            if (init?.method === 'PATCH') return Response.json({ id: 'one', model: 'posts', version: 2 })
+            requests.push(String(input))
+            return Response.json([{ data: { _liti: { id: 'one', model: 'posts' }, title: 'Public' } }])
+        }
+        const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(request)
+        const scope = Vue.effectScope()
+        try {
+            const { app, helpers } = await nativeEnvironment(request, { origin })
+            await scope.run(() => helpers.publicList('posts'))!
+            expect(requests).toEqual([`${origin ?? 'http://site.test'}/content/posts`])
+            expect(JSON.parse(Object.keys(app.payload.data)[0]!.slice('liti:'.length))[0]).toBe(origin ?? 'same-origin')
+            const update = (managementOrigin: string) =>
+                helpers
+                    .createNuxtLitiManagementClient(
+                        { origin: managementOrigin, basePath: '/manage', fetch: request },
+                        'alice',
+                    )
+                    .updateEntry('one', { data: {}, expectedVersion: 1 })
+            await update(origin ? 'http://site.test' : 'https://other.test')
+            expect(requests).toHaveLength(1)
+            await update(origin ?? 'http://site.test')
+            expect(requests).toHaveLength(2)
+        } finally {
+            scope.stop()
+            fetch.mockRestore()
+        }
+    },
+)
+
+it.each(['before setup', 'during hydration'])(
+    'keeps public SSR data while automatic auth resolves %s, then follows user, role and session changes',
+    async (timing) => {
+        const response = (input: RequestInfo | URL, title: string) => {
+            const record = { data: { _liti: { id: 'one', model: 'posts' }, title } }
+            return Response.json(new URL(String(input)).pathname.endsWith('/posts') ? [record] : record)
+        }
+        const read = (helpers: Helpers) => [helpers.publicList('posts'), helpers.publicEntry('posts', 'one')]
+        const server = await nativeEnvironment(async (input) => response(input, 'SSR'), {
+            auth: true,
+            anonymous: true,
+            serverFetch: true,
+            serverRuntime: true,
+        })
+        await renderToString(
+            Vue.createSSRApp({
+                setup() {
+                    const states = read(server.helpers)
+                    return () => Vue.h('div', states.map((state) => state.status.value).join(':'))
+                },
+            }),
+        )
+        let reads = 0
+        const browser = await nativeEnvironment(
+            async (input) => {
+                reads++
+                return response(input, 'Client')
+            },
+            { auth: true, anonymous: timing === 'during hydration' },
+        )
+        Object.assign(browser.app.payload.data, JSON.parse(JSON.stringify(server.app.payload.data)))
+        for (const [key, state] of server.states) {
+            browser.states.set(key, Vue.ref(JSON.parse(JSON.stringify(state.value))))
+        }
+        browser.app.payload.serverRendered = true
+        browser.app.isHydrating = true
+        const scope = Vue.effectScope()
+        try {
+            const states = scope.run(() => read(browser.helpers))!
+            await Promise.all(states)
+            if (timing === 'during hydration') {
+                browser.user.value = { id: 'alice', role: 'editor' }
+                browser.session.value = { id: 'session-one' }
+                await flush()
+            }
+            expect(reads).toBe(0)
+            expect(states[0]!.data.value).toMatchObject([{ data: { title: 'SSR' } }])
+            expect(states[1]!.data.value).toMatchObject({ data: { title: 'SSR' } })
+            browser.app.isHydrating = false
+            await browser.app.hooks.callHookParallel('app:suspense:resolve')
+            await flush()
+            expect(reads).toBe(2)
+            expect(states[0]!.data.value).toMatchObject([{ data: { title: 'Client' } }])
+            expect(states[1]!.data.value).toMatchObject({ data: { title: 'Client' } })
+            expect(browser.hydrationSubscribers()).toBe(0)
+            browser.user.value!.role = 'admin'
+            await flush()
+            expect(reads).toBe(4)
+            browser.session.value!.id = 'session-two'
+            await flush()
+            expect(reads).toBe(6)
+            browser.user.value!.id = 'bob'
+            await flush()
+            expect(reads).toBe(8)
+        } finally {
+            scope.stop()
+        }
+    },
+)
+
+it('keeps explicit public auth and management scopes live during hydration and disposes public hydration hooks', async () => {
+    const requests: string[] = []
+    const browser = await nativeEnvironment(
+        async (input) => {
+            const path = new URL(String(input)).pathname
+            requests.push(path)
+            return Response.json(path.endsWith('/models') ? modelDescriptor : [])
+        },
+        { auth: true },
+    )
+    browser.app.payload.serverRendered = true
+    browser.app.isHydrating = true
+    const actor = Vue.ref('explicit-one')
+    const scope = Vue.effectScope()
+    try {
+        const states = scope.run(() => [
+            browser.helpers.publicList('posts', { authScope: actor }),
+            browser.helpers.useLitiModels(),
+        ])!
+        await Promise.all(states)
+        requests.length = 0
+        actor.value = 'explicit-two'
+        browser.user.value!.id = 'bob'
+        await flush()
+        expect(requests.sort()).toEqual(['/content/posts', '/manage/models'])
+        expect(browser.hydrationSubscribers()).toBe(0)
+        const leaving = Vue.effectScope()
+        await leaving.run(() => browser.helpers.publicList('authors'))!
+        expect(browser.hydrationSubscribers()).toBe(1)
+        leaving.stop()
+        expect(browser.hydrationSubscribers()).toBe(0)
+        requests.length = 0
+        browser.app.isHydrating = false
+        await browser.app.hooks.callHookParallel('app:suspense:resolve')
+        await flush()
+        expect(requests).toEqual([])
+    } finally {
+        scope.stop()
+    }
+})
 
 it.each(['published', 'current'])(
     'keeps native Nuxt %s pagination totals separate from transformed data',
@@ -1156,17 +1362,17 @@ describe('native management AsyncData and mutation invalidation', () => {
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toEqual(['ja', 'en'])
-        user.value.role = 'admin'
+        user.value!.role = 'admin'
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(3)
         expect(Object.keys(app.payload.data).every((key) => !key.includes('editor'))).toBe(true)
-        session.value.id = 'session-two'
+        session.value!.id = 'session-two'
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(4)
         expect(Object.keys(app.payload.data).every((key) => !key.includes('session-one'))).toBe(true)
-        user.value.id = 'bob'
+        user.value!.id = 'bob'
         await flush()
         const last = await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(5)

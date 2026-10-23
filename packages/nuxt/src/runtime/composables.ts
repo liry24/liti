@@ -26,7 +26,18 @@ import type { UseFetchOptions } from '#app'
 import type { AsyncDataMiddleware } from '#app'
 import type { ActionResult } from '../../../liti/src/plugins'
 type Actions = RegisteredLitiSchema['actions']
-import { computed, nextTick, readonly, toValue, watch, ref, shallowRef, type Ref, type MaybeRefOrGetter } from 'vue'
+import {
+    computed,
+    nextTick,
+    readonly,
+    toValue,
+    watch,
+    ref,
+    shallowRef,
+    onScopeDispose,
+    type Ref,
+    type MaybeRefOrGetter,
+} from 'vue'
 import type { EntryPrepareContext } from '../../../vue/src/model'
 import type { UseEntryFormOptions } from '../../../vue/src/form'
 import { normalizeLitiQuery } from '../../../liti/src/query'
@@ -524,6 +535,23 @@ export const createLitiComposables = (
         return Object.fromEntries(items) as LitiBatchResult<Record<string, LitiBatchRequest>>
     }
 
+    const usePublishedAuthScope = (provided?: MaybeRefOrGetter<string>) => {
+        const current = useLitiAuthScope(provided)
+        if (!getAuth || provided !== undefined) return current
+        const nuxtApp = useNuxtApp()
+        // Cached SSR can be anonymous while the browser resolves a session before hydration finishes.
+        const initial = useState('liti:public-auth-scope', () => current.value)
+        const hydrating = ref(nuxtApp.isHydrating && nuxtApp.payload.serverRendered)
+        if (hydrating.value) {
+            const remove = nuxtApp.hook('app:suspense:resolve', () => {
+                hydrating.value = false
+                remove()
+            })
+            onScopeDispose(remove, true)
+        }
+        return computed(() => (hydrating.value ? initial.value : current.value))
+    }
+
     function usePublishedSource(
         modelOrRequests: PublicModelName | MaybeRefOrGetter<Record<string, LitiBatchRequest>>,
         options: AsyncDataOptions<unknown> &
@@ -536,10 +564,11 @@ export const createLitiComposables = (
                 authScope?: MaybeRefOrGetter<string>
             } = {},
     ) {
+        // Nitro's cached SSR strips Host, so keys use the configured origin while HTTP keeps the request URL.
         const connection = litiPublicClientOptions()
         const client = createPublicClient<LitiPublicModels, LitiPublicSummaryModels>(connection)
         const locale = useLitiLocale(options.locale)
-        const auth = useLitiAuthScope(options.authScope)
+        const auth = usePublishedAuthScope(options.authScope)
         const {
             locale: _locale,
             markdown: _markdown,
@@ -552,7 +581,7 @@ export const createLitiComposables = (
         } = options
         if (typeof modelOrRequests !== 'string') {
             const snapshot = computed(() => litiSnapshotBatchRequests(toValue(modelOrRequests)))
-            const key = computed(() => litiBatchDataKey(connection, snapshot.value, locale.value))
+            const key = computed(() => litiBatchDataKey(configuration, snapshot.value, locale.value))
             return litiAttachAsyncData(
                 () => key.value,
                 (_app, { signal }) => litiResolveBatch(client, snapshot.value, locale.value, signal),
@@ -566,7 +595,7 @@ export const createLitiComposables = (
         const path = useRoute()
         const key = computed(() =>
             litiDataKey(
-                connection,
+                configuration,
                 single ? 'entry' : 'list',
                 model,
                 single
@@ -731,7 +760,11 @@ export const createLitiComposables = (
                                 id === mutation.id))
                 } else if (key.startsWith('liti:')) {
                     const [origin, base, operation, model, selector] = JSON.parse(key.slice('liti:'.length))
-                    if (origin === connection.origin && base === configuration.basePath) {
+                    if (
+                        origin === (configuration.origin ?? 'same-origin') &&
+                        connection.origin === (configuration.origin ?? useRequestURL().origin) &&
+                        base === configuration.basePath
+                    ) {
                         if (operation === 'list') matches = model === mutation.model
                         // Native transform/pick may remove identity; conservatively clear that model's unidentifiable entries.
                         else if (operation === 'entry') {
@@ -891,7 +924,6 @@ export const createLitiComposables = (
     ) => {
         const { transform, pick, default: initial, page: _page, pageSize: _size, ...queryOptions } = options
         const locale = useLitiLocale(options.locale)
-        const auth = useLitiAuthScope(options.authScope)
         const resolved = computed(() =>
             normalizeLitiQuery({
                 ...queryOptions,
@@ -905,6 +937,7 @@ export const createLitiComposables = (
         )
         const one = resolved.value.mode === 'one'
         const current = resolved.value.view === 'current'
+        const auth = current ? useLitiAuthScope(options.authScope) : usePublishedAuthScope(options.authScope)
         const source = current
             ? useAdminResource(model, {
                   ...queryOptions,
