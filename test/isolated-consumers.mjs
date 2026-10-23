@@ -54,8 +54,8 @@ try {
             name: 'drizzle',
             dependencies: {
                 ...archiveDependencies(archives, ['@litijs/sqlite', '@litijs/drizzle']),
-                'drizzle-orm': '1.0.0-rc.4',
-                'drizzle-kit': '1.0.0-rc.4',
+                'drizzle-orm': '1.0.0-rc.5',
+                'drizzle-kit': '1.0.0-rc.5',
                 ...consumerDependencies(['@types/node']),
             },
             absent: ['vue', 'nuxt', 'void', 'ai'],
@@ -64,8 +64,8 @@ try {
             name: 'mixed',
             dependencies: {
                 ...archiveDependencies(archives, ['@litijs/sqlite', '@litijs/drizzle', '@litijs/void']),
-                'drizzle-orm': '1.0.0-rc.4',
-                'drizzle-kit': '1.0.0-rc.4',
+                'drizzle-orm': '1.0.0-rc.5',
+                'drizzle-kit': '1.0.0-rc.5',
                 ...consumerDependencies(['void', '@types/node']),
             },
             absent: ['vue', 'nuxt', 'ai'],
@@ -310,7 +310,7 @@ try {
                     "assert.equal(entry.data.title, 'Updated')",
                     'await app.close()',
                     "const independent = createRequire(import.meta.resolve('@litijs/drizzle'))",
-                    "assert.equal(independent('drizzle-orm/version').npmVersion, '1.0.0-rc.4')",
+                    "assert.equal(independent('drizzle-orm/version').npmVersion, '1.0.0-rc.5')",
                     ...(profile.name === 'mixed'
                         ? [
                               "const native = createRequire(import.meta.resolve('@litijs/void'))",

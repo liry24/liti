@@ -2,7 +2,7 @@ import type { DatabaseTooling } from 'liti/adapter'
 import { LitiError } from 'liti/adapter'
 import { emitDrizzleSchema } from '@litijs/sqlite/tooling'
 
-export const drizzleVersion = '1.0.0-rc.4'
+export const drizzleVersion = '1.0.0-rc.5'
 
 export interface DrizzleToolingOptions {
     schema?: { generated?: string; entry?: string }

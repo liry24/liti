@@ -150,14 +150,14 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@babel/parser": "^7.29.9",
+        "@babel/parser": "^8.0.7",
         "@noble/hashes": "2.4.0",
         "@standard-schema/spec": "^1.1.0",
-        "@types/markdown-it": "^14.1.2",
-        "comark": "^0.7.0",
+        "@types/markdown-it": "^14.2.0",
+        "comark": "^0.8.1",
         "comark-content": "^0.4.1",
         "jiti": "^2.7.0",
-        "nypm": "^0.6.10",
+        "nypm": "^0.6.11",
         "rou3": "^1.0.0",
         "semver": "^7.8.5",
         "yaml": "^2.9.1"
@@ -169,7 +169,7 @@
         "@takumi-rs/core": "^2.16.2",
         "@takumi-rs/wasm": "^2.16.2",
         "nuxt": "^4.6.1",
-        "nuxt-llms": "^0.2.0",
+        "nuxt-llms": "^0.3.0",
         "nuxt-og-image": "^7.0.7",
         "nuxt-schema-org": "^7.0.1",
         "nuxt-seo-utils": "^9.0.1",

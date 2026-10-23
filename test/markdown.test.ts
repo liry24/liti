@@ -104,7 +104,7 @@ describe('internal Markdown asset contracts', () => {
             label: 'liti://asset/a',
             ':src': 'data.url',
         })
-        expect(elements(document.nodes, 'photo')[0]?.[1]).toMatchObject({ src: url('a'), 'xlink:href': url('a') })
+        expect(elements(document.nodes, 'Photo')[0]?.[1]).toMatchObject({ src: url('a'), 'xlink:href': url('a') })
         expect(document.meta).toEqual({})
     })
 
@@ -279,7 +279,14 @@ describe('internal Markdown asset contracts', () => {
             'posts',
             { route: true, fields: { body: markdown(), sections: array(object({ body: markdown() })) } },
             [entry],
-            undefined,
+            {
+                plugins: [
+                    {
+                        name: 'modern-parser-probe',
+                        markdownItPlugins: [(md: object) => expect(md).toHaveProperty('renderAsync')],
+                    },
+                ],
+            },
             url,
         )
         const [item] = await content.list()

@@ -47,7 +47,7 @@ export async function generate(
         ],
         ...(!context.schemaOnly
             ? {
-                  command: { package: 'void', bin: 'void', version: '1.1.12', args: ['db', 'generate'] },
+                  command: { package: 'void', bin: 'void', version: '1.2.1', args: ['db', 'generate'] },
               }
             : {}),
     }

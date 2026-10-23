@@ -25,9 +25,9 @@ it('replaces the complete database bundle and its generation owner', async () =>
     expect(plan.command).toEqual({
         package: 'drizzle-kit',
         bin: 'drizzle-kit',
-        version: '1.0.0-rc.4',
+        version: '1.0.0-rc.5',
         args: ['generate', '--config=.liti/drizzle.config.mjs'],
-        peers: { 'drizzle-orm': '1.0.0-rc.4' },
+        peers: { 'drizzle-orm': '1.0.0-rc.5' },
     })
     expect(plan.files[0]?.source).toContain('@litijs/drizzle/schema')
     expect(plan.files[0]?.source).not.toContain('@litijs/void')

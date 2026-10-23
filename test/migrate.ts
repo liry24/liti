@@ -60,8 +60,8 @@ export async function migrateTestDatabase(
                       {
                           package: 'drizzle-kit',
                           bin: 'drizzle-kit',
-                          version: '1.0.0-rc.4',
-                          peers: { 'drizzle-orm': '1.0.0-rc.4' },
+                          version: '1.0.0-rc.5',
+                          peers: { 'drizzle-orm': '1.0.0-rc.5' },
                           args,
                       },
                       resolve('packages/drizzle'),

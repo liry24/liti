@@ -71,28 +71,28 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@better-auth/drizzle-adapter": "1.7.11",
+        "@better-auth/drizzle-adapter": "1.7.12",
         "@litijs/sqlite": "workspace:^",
-        "auth": "1.7.11",
+        "auth": "1.7.12",
         "drizzle-orm": "0.45.4",
         "files-sdk": "^3.1.1",
         "jiti": "^2.7.0"
     },
     "devDependencies": {
-        "@nuxtjs/better-auth": "^0.3.11",
-        "better-auth": "1.7.11",
+        "@nuxtjs/better-auth": "0.3.11",
+        "better-auth": "1.7.12",
         "liti": "workspace:*",
         "nitropack": "2.13.5",
         "nuxt": "4.6.2",
         "nuxt-files-sdk": "^0.3.1",
-        "void": "1.1.12"
+        "void": "1.2.1"
     },
     "peerDependencies": {
-        "@nuxtjs/better-auth": "^0.3.11",
+        "@nuxtjs/better-auth": "0.3.11",
         "liti": "^0.0.3",
         "nuxt": "^4.6.2",
         "nuxt-files-sdk": "^0.3.1",
-        "void": "1.1.12"
+        "void": "1.2.1"
     },
     "peerDependenciesMeta": {
         "nuxt": {

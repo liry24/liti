@@ -1,4 +1,5 @@
-import { comarkContent, type Source, type JsonSchema, type ContentFile } from 'comark-content'
+import { comarkContent, type Source, type JsonSchema, type ContentFile, type ContentPlugin } from 'comark-content'
+import { createMarkdownParser } from 'comark'
 import json from 'comark-content/plugins/json'
 import markdownFields, { markdownField } from 'comark-content/plugins/markdown-fields'
 import type { ModelDefinition, LitiConfig } from '../config'
@@ -91,9 +92,29 @@ export const createMarkdownContent = async (
         (field.kind === 'array' && hasMarkdown(field.item))
     const plugins = Object.values(definition.fields).some(hasMarkdown) ? await markdownPlugins(options, resolve) : []
     const contentOptions = {
-        markdown: { plugins },
         onError: 'throw' as const,
-        plugins: [json(), markdownFields()],
+        plugins: [
+            json(),
+            markdownFields(),
+            {
+                name: 'liti-markdown',
+                setup(content) {
+                    // shortcut: comark-content pins Comark 0.7, remove when it accepts Comark 0.8.
+                    const parse = createMarkdownParser({ plugins, tracer: content.perf })
+                    content.addParser(['.md', '.markdown'], async ({ read }) => {
+                        const body = await read()
+                        if (!body) return null
+                        const document = await parse(body)
+                        return {
+                            kind: 'document',
+                            nodes: document.nodes,
+                            data: document.frontmatter,
+                            meta: document.meta,
+                        }
+                    })
+                },
+            } satisfies ContentPlugin,
+        ],
         source,
     }
     const raw = comarkContent(modelName, contentOptions)

@@ -6,7 +6,7 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
-        "@nuxt/devtools-kit": "4.0.0-beta.5",
+        "@nuxt/devtools-kit": "4.0.0-beta.7",
         "@nuxt/kit": "^4.6.2",
         "@nuxt/schema": "^4.6.2",
         "devframe": "1.2.6",
