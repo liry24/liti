@@ -80,6 +80,7 @@ const nativeEnvironment = async (
         purgeCachedData = false,
         requestOrigin = 'http://site.test',
         origin = undefined as string | undefined,
+        anonymous = false,
     } = {},
 ) => {
     const native = nativeRuntimeSource(await readNuxtSource('composables/asyncData.js'), {
@@ -115,8 +116,8 @@ const nativeEnvironment = async (
         callHook: async () => {},
         runWithContext: <Value>(callback: () => Value): Value => callback(),
     }
-    const user = Vue.ref({ id: 'alice', role: 'editor' })
-    const session = Vue.ref({ id: 'session-one' })
+    const user = Vue.ref<{ id: string; role: string } | null>(anonymous ? null : { id: 'alice', role: 'editor' })
+    const session = Vue.ref<{ id: string } | null>(anonymous ? null : { id: 'session-one' })
     const nativeDependencies = {
         ...(await nativeNuxtDependencies(app, { purgeCachedData })),
         onNuxtReady: (callback: () => void) => callback(),
@@ -208,12 +209,14 @@ const nativeEnvironment = async (
         user,
         session,
         helpers,
+        states,
         setRouteResult: (value: unknown) => {
             const route = states.get('liti-route')
             if (route) route.value = value
             else states.set('liti-route', Vue.ref(value))
         },
         refreshSubscribers: () => hooks.get('app:data:refresh')?.size ?? 0,
+        hydrationSubscribers: () => hooks.get('app:suspense:resolve')?.size ?? 0,
         managementFactories: () => managementFactories,
         requestFetches: () => requestFetches,
     }
@@ -311,6 +314,117 @@ it.each([undefined, 'https://content.test'])(
         }
     },
 )
+
+it.each(['before setup', 'during hydration'])(
+    'keeps public SSR data while automatic auth resolves %s, then follows user, role and session changes',
+    async (timing) => {
+        const response = (input: RequestInfo | URL, title: string) => {
+            const record = { data: { _liti: { id: 'one', model: 'posts' }, title } }
+            return Response.json(new URL(String(input)).pathname.endsWith('/posts') ? [record] : record)
+        }
+        const read = (helpers: Helpers) => [helpers.publicList('posts'), helpers.publicEntry('posts', 'one')]
+        const server = await nativeEnvironment(async (input) => response(input, 'SSR'), {
+            auth: true,
+            anonymous: true,
+            serverFetch: true,
+            serverRuntime: true,
+        })
+        await renderToString(
+            Vue.createSSRApp({
+                setup() {
+                    const states = read(server.helpers)
+                    return () => Vue.h('div', states.map((state) => state.status.value).join(':'))
+                },
+            }),
+        )
+        let reads = 0
+        const browser = await nativeEnvironment(
+            async (input) => {
+                reads++
+                return response(input, 'Client')
+            },
+            { auth: true, anonymous: timing === 'during hydration' },
+        )
+        Object.assign(browser.app.payload.data, JSON.parse(JSON.stringify(server.app.payload.data)))
+        for (const [key, state] of server.states) {
+            browser.states.set(key, Vue.ref(JSON.parse(JSON.stringify(state.value))))
+        }
+        browser.app.payload.serverRendered = true
+        browser.app.isHydrating = true
+        const scope = Vue.effectScope()
+        try {
+            const states = scope.run(() => read(browser.helpers))!
+            await Promise.all(states)
+            if (timing === 'during hydration') {
+                browser.user.value = { id: 'alice', role: 'editor' }
+                browser.session.value = { id: 'session-one' }
+                await flush()
+            }
+            expect(reads).toBe(0)
+            expect(states[0]!.data.value).toMatchObject([{ data: { title: 'SSR' } }])
+            expect(states[1]!.data.value).toMatchObject({ data: { title: 'SSR' } })
+            browser.app.isHydrating = false
+            await browser.app.hooks.callHookParallel('app:suspense:resolve')
+            await flush()
+            expect(reads).toBe(2)
+            expect(states[0]!.data.value).toMatchObject([{ data: { title: 'Client' } }])
+            expect(states[1]!.data.value).toMatchObject({ data: { title: 'Client' } })
+            expect(browser.hydrationSubscribers()).toBe(0)
+            browser.user.value!.role = 'admin'
+            await flush()
+            expect(reads).toBe(4)
+            browser.session.value!.id = 'session-two'
+            await flush()
+            expect(reads).toBe(6)
+            browser.user.value!.id = 'bob'
+            await flush()
+            expect(reads).toBe(8)
+        } finally {
+            scope.stop()
+        }
+    },
+)
+
+it('keeps explicit public auth and management scopes live during hydration and disposes public hydration hooks', async () => {
+    const requests: string[] = []
+    const browser = await nativeEnvironment(
+        async (input) => {
+            const path = new URL(String(input)).pathname
+            requests.push(path)
+            return Response.json(path.endsWith('/models') ? modelDescriptor : [])
+        },
+        { auth: true },
+    )
+    browser.app.payload.serverRendered = true
+    browser.app.isHydrating = true
+    const actor = Vue.ref('explicit-one')
+    const scope = Vue.effectScope()
+    try {
+        const states = scope.run(() => [
+            browser.helpers.publicList('posts', { authScope: actor }),
+            browser.helpers.useLitiModels(),
+        ])!
+        await Promise.all(states)
+        requests.length = 0
+        actor.value = 'explicit-two'
+        browser.user.value!.id = 'bob'
+        await flush()
+        expect(requests.sort()).toEqual(['/content/posts', '/manage/models'])
+        expect(browser.hydrationSubscribers()).toBe(0)
+        const leaving = Vue.effectScope()
+        await leaving.run(() => browser.helpers.publicList('authors'))!
+        expect(browser.hydrationSubscribers()).toBe(1)
+        leaving.stop()
+        expect(browser.hydrationSubscribers()).toBe(0)
+        requests.length = 0
+        browser.app.isHydrating = false
+        await browser.app.hooks.callHookParallel('app:suspense:resolve')
+        await flush()
+        expect(requests).toEqual([])
+    } finally {
+        scope.stop()
+    }
+})
 
 it.each(['published', 'current'])(
     'keeps native Nuxt %s pagination totals separate from transformed data',
@@ -1248,17 +1362,17 @@ describe('native management AsyncData and mutation invalidation', () => {
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toEqual(['ja', 'en'])
-        user.value.role = 'admin'
+        user.value!.role = 'admin'
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(3)
         expect(Object.keys(app.payload.data).every((key) => !key.includes('editor'))).toBe(true)
-        session.value.id = 'session-two'
+        session.value!.id = 'session-two'
         await flush()
         await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(4)
         expect(Object.keys(app.payload.data).every((key) => !key.includes('session-one'))).toBe(true)
-        user.value.id = 'bob'
+        user.value!.id = 'bob'
         await flush()
         const last = await scope.run(() => helpers.useLitiModels())!
         expect(locales).toHaveLength(5)
