@@ -42,7 +42,6 @@ export function createD1Database(client: Client, schema: Record<string, unknown>
     }
     const connection: DrizzleConnection = {
         tables,
-        lockKey: native,
         getInstance: async () => native,
         prepare: (sql: string) => ({
             all: async (...params: Primitive[]): Promise<unknown[]> => {
@@ -103,7 +102,6 @@ export function createD1Database(client: Client, schema: Record<string, unknown>
 /** Adapter-private native connection. Not part of the Core storage contract. */
 export interface DrizzleConnection {
     tables: Map<string, SQLiteTable>
-    lockKey: object
     getInstance(): Promise<Client>
     prepare(sql: string): {
         all(...params: Primitive[]): Promise<unknown[]>

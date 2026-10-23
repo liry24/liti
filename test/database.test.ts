@@ -12,11 +12,11 @@ const runAtomic = (database: DrizzleLitiDatabase, statements: Parameters<Drizzle
     database.atomic(statements)
 import { testAdapter } from './migrate'
 import { defineLitiConfig, text } from '../packages/liti/src'
-import { createD1Database, type DrizzleConnection } from '../packages/void/src/database'
+import { createD1Database } from '../packages/void/src/database'
+import { createD1Connection } from '../packages/sqlite/src/d1'
 import { createNativeSqliteDatabase } from '../packages/sqlite/src/native'
 import { createRuntime } from '../packages/liti/src/server'
 import { migrateTestDatabase } from './migrate'
-import { queryRows as nativeQueryRows, runAtomic as nativeRunAtomic } from '../packages/void/src/d1-connection'
 
 const databases: Database[] = []
 const temporaryFiles: string[] = []
@@ -110,44 +110,57 @@ describe('atomic database execution', () => {
         expect(() => createD1Database({} as Parameters<typeof createD1Database>[0], {})).toThrow('Void D1')
     })
 
-    it('serializes reads behind a transaction on the same Database instance', async () => {
-        const order: string[] = []
-        let release!: () => void
-        const gate = new Promise<void>((resolve) => (release = resolve))
-        const fake = {
-            lockKey: {},
-            dialect: 'sqlite',
-            getInstance: () => ({
-                prepare: () => ({
-                    bind() {
-                        return this
-                    },
-                }),
-                batch: async () => {
-                    order.push('batch')
-                    await gate
-                    order.push('commit')
-                    return [{ results: [] }]
-                },
-            }),
-            prepare: (sql: string) => ({
-                all: async () => {
-                    order.push(`all:${sql}`)
-                    return []
-                },
-                get: async () => undefined,
-                run: async () => ({ changes: 1 }),
-            }),
-        } as unknown as DrizzleConnection
-        const mutation = nativeRunAtomic(fake, [{ query: true, sql: 'SELECT mutation' }])
-        await Promise.resolve()
-        const read = nativeQueryRows(fake, 'SELECT read')
-        await Promise.resolve()
-        expect(order).toEqual(['batch'])
-        release()
-        await Promise.all([mutation, read])
-        expect(order).toEqual(['batch', 'commit', 'all:SELECT read'])
-    })
+    it.each(['sqlite', 'void'] as const)(
+        'keeps %s D1 reads and batches independent of another request with unfinished I/O',
+        async (driver) => {
+            const started = Promise.withResolvers<void>()
+            const gate = Promise.withResolvers<void>()
+            class Statement {
+                constructor(readonly sql: string) {}
+                bind() {
+                    return this
+                }
+                async all() {
+                    if (this.sql === 'SELECT stalled') {
+                        started.resolve()
+                        await gate.promise
+                    }
+                    return { results: [{ value: this.sql }], success: true }
+                }
+                run() {
+                    return this.all()
+                }
+            }
+            const binding = {
+                prepare: (sql: string) => new Statement(sql),
+                batch: (statements: unknown[]) =>
+                    Promise.all(
+                        statements.map((statement) => {
+                            if (!(statement instanceof Statement)) throw new Error('Unknown D1 statement.')
+                            return statement.all()
+                        }),
+                    ),
+            }
+            const database = driver === 'sqlite' ? createD1Connection(binding) : createD1Database(binding, {})
+            const stalled = database.query('SELECT stalled')
+            await started.promise
+            let completed = false
+            const later = Promise.all([
+                database.query('SELECT read'),
+                database.atomic([{ sql: 'SELECT batch', expectRow: true }]),
+            ]).then((results) => {
+                completed = true
+                return results
+            })
+            try {
+                await expect.poll(() => completed, { timeout: 1000 }).toBe(true)
+                expect(await later).toEqual([[{ value: 'SELECT read' }], [{ rows: [{ value: 'SELECT batch' }] }]])
+            } finally {
+                gate.resolve()
+                await Promise.all([stalled, later])
+            }
+        },
+    )
 
     it('rolls back a failed SQLite mutation', async () => {
         const database = createDatabase(nodeSqlite({ name: ':memory:' }))
