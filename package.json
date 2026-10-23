@@ -34,7 +34,7 @@
         "@litijs/sqlite": "workspace:*",
         "@litijs/void": "workspace:*",
         "@nuxt/test-utils": "4.3.4",
-        "@nuxtjs/better-auth": "^0.3.12",
+        "@nuxtjs/better-auth": "0.3.11",
         "@nuxtjs/i18n": "^10.6.0",
         "@nuxtjs/robots": "^7.0.2",
         "@nuxtjs/sitemap": "^9.1.0",

@@ -186,7 +186,7 @@ try {
         headers: { 'content-type': 'application/json', origin },
         body: JSON.stringify({ email: 'd1@example.test', name: 'D1 user', password: 'synthetic-d1-test-password' }),
     })
-    if (!signup.ok) throw new Error(`Native D1 signup failed: ${await signup.text()}`)
+    if (!signup.ok) throw new Error(`Native D1 signup failed (${signup.status}): ${await signup.text()}`)
     const cookie = signup.headers
         .getSetCookie()
         .map((value) => value.split(';')[0])
