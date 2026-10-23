@@ -536,6 +536,7 @@ export const createLitiComposables = (
                 authScope?: MaybeRefOrGetter<string>
             } = {},
     ) {
+        // Nitro's cached SSR strips Host, so keys use the configured origin while HTTP keeps the request URL.
         const connection = litiPublicClientOptions()
         const client = createPublicClient<LitiPublicModels, LitiPublicSummaryModels>(connection)
         const locale = useLitiLocale(options.locale)
@@ -552,7 +553,7 @@ export const createLitiComposables = (
         } = options
         if (typeof modelOrRequests !== 'string') {
             const snapshot = computed(() => litiSnapshotBatchRequests(toValue(modelOrRequests)))
-            const key = computed(() => litiBatchDataKey(connection, snapshot.value, locale.value))
+            const key = computed(() => litiBatchDataKey(configuration, snapshot.value, locale.value))
             return litiAttachAsyncData(
                 () => key.value,
                 (_app, { signal }) => litiResolveBatch(client, snapshot.value, locale.value, signal),
@@ -566,7 +567,7 @@ export const createLitiComposables = (
         const path = useRoute()
         const key = computed(() =>
             litiDataKey(
-                connection,
+                configuration,
                 single ? 'entry' : 'list',
                 model,
                 single
@@ -731,7 +732,11 @@ export const createLitiComposables = (
                                 id === mutation.id))
                 } else if (key.startsWith('liti:')) {
                     const [origin, base, operation, model, selector] = JSON.parse(key.slice('liti:'.length))
-                    if (origin === connection.origin && base === configuration.basePath) {
+                    if (
+                        origin === (configuration.origin ?? 'same-origin') &&
+                        connection.origin === (configuration.origin ?? useRequestURL().origin) &&
+                        base === configuration.basePath
+                    ) {
                         if (operation === 'list') matches = model === mutation.model
                         // Native transform/pick may remove identity; conservatively clear that model's unidentifiable entries.
                         else if (operation === 'entry') {

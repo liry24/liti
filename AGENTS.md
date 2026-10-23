@@ -118,6 +118,7 @@ The 2026-10-23 dependency refresh targets Bun 1.4.4, Better Auth/auth/Drizzle ad
 
 Nuxt generates separate shared-client and form entry points. Public queries and model descriptors use the shared client; only form consumers register Vue form extensions. Keep public auto-imports, form types and await/destructure behavior unchanged when editing these templates. Packed public-only consumers assert that form and extension code is absent from their browser output.
 Model descriptors reuse successful initial results only within one SSR request and matching authorization/language scope. Refreshes and retries after errors still fetch, and browser consumers retain Nuxt's native cache disposal when their final component unmounts. Do not replace this with a process-wide cache.
+Public Nuxt payload keys use the configured origin, or `same-origin` when omitted, because Nitro's cached SSR strips the Host header. HTTP requests still use the actual request origin. Keep explicit-origin and authorization separation, refreshes and mutation invalidation intact when changing these keys.
 D1 adapters rely on native atomic batches and SQL commit guards. Never serialize their operations through a shared JavaScript promise queue: a canceled Worker request can leave that queue unresolved and block later requests. The native Worker fixture verifies subsequent reads and batches after Workerd cancels a stalled request, for both SQLite D1 and Void.
 
 ## Deferred first release
