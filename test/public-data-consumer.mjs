@@ -334,10 +334,15 @@ export default defineNuxtConfig({
         await put(
             'liti.config.ts',
             `import { defineLitiConfig, markdown, text } from 'liti'
-export default defineLitiConfig({ models: {
+export default defineLitiConfig({ plugins: [{ id: 'form-only-probe', apiVersion: 1, vue: ${JSON.stringify(resolvePath(directory, 'form-only-probe.ts').replaceAll('\\', '/'))} }], models: {
   posts: { fields: { title: text({ required: true }), body: markdown({ required: true }) } },
   private: { fields: { secret: text() }, public: false },
 } })`,
+        )
+        await put(
+            'form-only-probe.ts',
+            `Object.defineProperty(globalThis, '__liti_form_only_probe__', { value: true })
+export default {}`,
         )
         await put(
             'app/app.vue',
@@ -507,6 +512,17 @@ void [title, nodes, titles, featuredTitle, count]`,
         )
         console.log('Public data consumer: real Nuxt macro build and generated app types')
         run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
+        const publicDirectory = join(directory, '.output/public')
+        const clientFiles = (await readdir(publicDirectory, { recursive: true })).filter((file) => file.endsWith('.js'))
+        assert.ok(clientFiles.length, 'The packed consumer must emit client JavaScript.')
+        for (const file of clientFiles) {
+            const source = await readFile(join(publicDirectory, file), 'utf8')
+            assert.ok(
+                !source.includes('__liti_form_only_probe__'),
+                `Form extensions leaked into public-only output: ${file}`,
+            )
+            assert.ok(!source.includes('TanStackForm.'), `Native forms leaked into public-only output: ${file}`)
+        }
         run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'prepare'])
         run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', '.nuxt/tsconfig.app.json'])
         await verifyNuxtDeclarations(directory)

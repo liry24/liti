@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
-import { litiNuxtClientTemplate, litiNuxtModelTypes } from '../packages/nuxt/src/nuxt/client-templates'
+import {
+    litiNuxtClientTemplate,
+    litiNuxtFormsTemplate,
+    litiNuxtModelTypes,
+} from '../packages/nuxt/src/nuxt/client-templates'
 
 it('types immediate and awaited blog namespaces, mapped fields and public metadata only for blog models', async () => {
     await mkdir('.tmp', { recursive: true })
@@ -13,9 +17,11 @@ it('types immediate and awaited blog namespaces, mapped fields and public metada
         litiNuxtClientTemplate({
             basePath: '/content',
             managementBase: '/manage',
-            vue: ['@litijs/blog/vue'],
-            editors: { posts: ['blog'], pages: ['blog'] },
         }),
+    )
+    await writeFile(
+        join(directory, 'forms.ts'),
+        litiNuxtFormsTemplate({ vue: ['@litijs/blog/vue'], editors: { posts: ['blog'], pages: ['blog'] } }),
     )
     await writeFile(
         join(directory, 'models.d.ts'),
@@ -35,7 +41,8 @@ export default defineLitiConfig({
     await writeFile(
         join(directory, 'consumer.ts'),
         `
-import { useLitiForm, useLitiQuery } from './client'
+import { useLitiQuery } from './client'
+import { useLitiForm } from './forms'
 import { useLitiForm as useVueForm } from 'liti/vue'
 const immediate = useLitiForm('posts')
 const { blog: { review, proofread, applyProofreading, discardProofreading }, field, values, state } = immediate
@@ -86,6 +93,7 @@ void [body, title, canApply, status, mappedBody, date, summaryDate, state, proof
                     ...paths,
                     'liti/client': [resolve('packages/liti/src/public-client.ts')],
                     'liti/internal/runtime/*': [resolve('packages/nuxt/src/runtime/*')],
+                    '#build/liti/client': [join(directory, 'client.ts')],
                 },
             },
             include: ['./*.ts'],

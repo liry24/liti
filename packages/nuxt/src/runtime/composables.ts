@@ -17,7 +17,7 @@ import { presentLitiData } from '../../../liti/src/client'
 import { createLitiModel, litiModelError } from '../../../vue/src/model'
 // oxlint-disable-next-line no-unused-vars -- declaration emit must name the resource's unique symbol property
 import type { litiModelContext } from '../../../vue/src/model'
-import type { LitiFailure, LitiModelActions, LitiModelError, LitiSessionDraft } from '../../../vue/src/model'
+import type { LitiFailure, LitiModelError, LitiSessionDraft } from '../../../vue/src/model'
 import type { ModelDescriptor, LitiDescriptor } from '../../../liti/src/descriptor'
 import { clearNuxtData, refreshNuxtData, useNuxtApp } from '#app'
 import { defineUseFetchAddon } from '#app/composables/addons'
@@ -26,21 +26,9 @@ import type { UseFetchOptions } from '#app'
 import type { AsyncDataMiddleware } from '#app'
 import type { ActionResult } from '../../../liti/src/plugins'
 type Actions = RegisteredLitiSchema['actions']
-import {
-    computed,
-    getCurrentInstance,
-    nextTick,
-    readonly,
-    toValue,
-    useId,
-    watch,
-    ref,
-    shallowRef,
-    type Ref,
-    type MaybeRefOrGetter,
-} from 'vue'
+import { computed, nextTick, readonly, toValue, watch, ref, shallowRef, type Ref, type MaybeRefOrGetter } from 'vue'
 import type { EntryPrepareContext } from '../../../vue/src/model'
-import { useEntryForm, type UseEntryFormOptions } from '../../../vue/src/form'
+import type { UseEntryFormOptions } from '../../../vue/src/form'
 import { normalizeLitiQuery } from '../../../liti/src/query'
 import type { LitiQueryModel, LitiQueryResult, RegisteredLitiSchema, ActionMetadata } from '../../../liti/src/query'
 import {
@@ -51,7 +39,6 @@ import {
     type QuerySource,
 } from '../../../vue/src/query'
 import { litiModelCatalog } from '../../../liti/src/admin-client'
-import type { LitiFormExtensionRegistry, LitiFormExtensions } from '../../../vue/src/extensions'
 
 declare module '#app' {
     interface RuntimeNuxtHooks {
@@ -73,6 +60,14 @@ declare global {
 
 type AsyncDataExecuteOptions = NonNullable<Parameters<AsyncData<unknown, unknown>['execute']>[0]>
 type PublicModelName = Extract<keyof LitiPublicModels, string>
+
+const descriptorCachedData: NonNullable<AsyncDataOptions<LitiDescriptor>['getCachedData']> = (key, app, { cause }) => {
+    if (app.isHydrating) return app.payload.data[key]
+    // Completed parent reads are reusable only inside the same SSR request and scoped descriptor key.
+    // oxlint-disable-next-line no-underscore-dangle -- Nuxt retains the previous payload after a failed refresh.
+    if (import.meta.server && cause === 'initial' && !app.payload._errors[key]) return app.payload.data[key]
+    if (cause !== 'refresh:manual' && cause !== 'refresh:hook') return app.static.data[key]
+}
 
 export interface UseLitiQuery {
     <
@@ -197,7 +192,7 @@ type LitiResolvedBatchRequest = {
 
 export type ManagementModelName = Extract<keyof LitiFormModels, string>
 
-type FormData<Name extends string> = Name extends ManagementModelName
+export type FormData<Name extends string> = Name extends ManagementModelName
     ? Extract<LitiFormModels[Name], Record<string, unknown>>
     : Record<string, unknown>
 
@@ -222,41 +217,6 @@ export type LitiFormOptions<Data extends Record<string, unknown>> = LitiModelOpt
         id?: MaybeRefOrGetter<string | null | undefined>
         instance?: MaybeRefOrGetter<string | undefined>
     }
-
-type Handled<Methods> = {
-    [Key in keyof Methods]: Methods[Key] extends (...args: infer Args) => Promise<infer Result>
-        ? (...args: Args) => Promise<Result | undefined>
-        : Methods[Key]
-}
-
-type LitiModelResource<Name extends string, Result> = Omit<
-    AsyncData<Result, LitiModelError | undefined>,
-    'then' | 'catch' | 'finally'
-> &
-    Handled<Omit<LitiModelActions<FormData<Name>>, 'data' | 'status' | 'error' | 'refresh' | 'meta'>> & {
-        meta: Readonly<import('../../../liti/src/client').LitiModelMeta<Name>>
-        page: Ref<number>
-    }
-
-type ModelActions<Name extends string> = LitiModelActions<FormData<Name>>
-
-type SingleResource<Name extends string> = Omit<
-    LitiModelResource<Name, LitiEntry<FormData<Name>> | null>,
-    'publish' | 'schedule'
-> & {
-    publish: (value?: FormData<Name>) => Promise<Awaited<ReturnType<ModelActions<Name>['publish']>> | undefined>
-    schedule: (
-        at: Date | string,
-        value?: FormData<Name>,
-    ) => Promise<Awaited<ReturnType<ModelActions<Name>['schedule']>> | undefined>
-}
-
-type FormResource<Name extends string> = ReturnType<typeof useEntryForm<FormData<Name>>> &
-    Pick<SingleResource<Name>, 'meta' | 'data' | 'status' | 'error' | 'refresh' | 'features' | 'display' | 'remove'> &
-    LitiFormExtensions<Name>
-
-type ValidModel<Name extends string> = Name &
-    (Name extends ManagementModelName ? unknown : string extends Name ? unknown : never)
 
 type AiActionName = Extract<keyof Actions, string>
 
@@ -334,12 +294,10 @@ export const createLitiComposables = (
         defaultLocale?: string
         auth?: boolean
         actions?: boolean
-        editors?: Record<string, string[]>
     },
     litiAsyncData: UseAsyncData,
     litiAiFetch: UseFetch,
     getAuth?: () => { user: Ref<{ id?: string; role?: string | null } | null>; session: Ref<{ id?: string } | null> },
-    extensions: LitiFormExtensionRegistry = {},
 ) => {
     const litiLocalFetches = new WeakMap<ReturnType<typeof useNuxtApp>, NonNullable<LitiClientOptions['fetch']>>()
 
@@ -866,7 +824,11 @@ export const createLitiComposables = (
         return litiAttachAsyncData(
             () => key.value,
             (_app, { signal }) => client.models({ signal, ...(uiLocale.value ? { uiLocale: uiLocale.value } : {}) }),
-            { dedupe: 'defer', immediate },
+            {
+                dedupe: 'defer',
+                immediate,
+                ...(import.meta.server ? { getCachedData: descriptorCachedData } : {}),
+            },
         )
     }
 
@@ -984,44 +946,6 @@ export const createLitiComposables = (
             }),
             handle,
         )
-    }
-
-    const useLitiForm = <Name extends string>(
-        model: ValidModel<Name>,
-        options: LitiFormOptions<FormData<Name>> = {},
-    ): FormResource<Name> & Promise<FormResource<Name>> => {
-        const generatedInstance = getCurrentInstance() ? useId() : crypto.randomUUID()
-        const resource = useAdminResource(
-            model,
-            {
-                ...options,
-                id: () => toValue(options.id) ?? null,
-                instance: () => toValue(options.instance) ?? generatedInstance,
-            },
-            true,
-        ) as unknown as Promise<SingleResource<Name>> & SingleResource<Name>
-        const editor = useEntryForm(
-            resource,
-            options,
-            Object.fromEntries(
-                Object.entries(extensions).filter(([name]) => configuration.editors?.[model]?.includes(name)),
-            ),
-        )
-        const result = {
-            ...editor,
-            meta: resource.meta,
-            data: resource.data,
-            status: resource.status,
-            error: resource.error,
-            refresh: resource.refresh,
-            features: resource.features,
-            display: resource.display,
-            remove: resource.remove,
-        }
-        return Object.assign(
-            resource.then(() => result),
-            result,
-        ) as unknown as FormResource<Name> & Promise<FormResource<Name>>
     }
 
     function useAdminResource(
@@ -1314,6 +1238,5 @@ export const createLitiComposables = (
         useManagedSource: useAdminResource,
         useLitiQuery: useLitiQuery as unknown as UseLitiQuery,
         litiReadModels,
-        useLitiForm,
     }
 }
