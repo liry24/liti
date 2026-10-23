@@ -105,6 +105,27 @@ try {
     const rollback = await (await fetch(`http://127.0.0.1:${port}/rollback`)).json()
     if (!rollback.rolledBack) throw new Error('Cloudflare D1 batch did not roll back atomically.')
     const origin = `http://127.0.0.1:${port}`
+    for (const driver of ['sqlite', 'void']) {
+        const canceled = await fetch(`${origin}/request-isolation/stall?driver=${driver}`, {
+            signal: AbortSignal.timeout(10000),
+        })
+        if (canceled.status !== 500 || !(await canceled.text()).includes('hung and would never generate a response'))
+            throw new Error(`The ${driver} fixture did not exercise a request canceled by Workerd.`)
+        const next = await fetch(`${origin}/request-isolation/read?driver=${driver}`, {
+            signal: AbortSignal.timeout(10000),
+        })
+        const independent = await next.json()
+        if (
+            !next.ok ||
+            !independent.stalled ||
+            independent.read?.[0]?.value !== 1 ||
+            independent.batch?.[0]?.rows?.[0]?.value !== 2
+        )
+            throw new Error(
+                `A canceled ${driver} D1 request blocked later reads/batches: ${JSON.stringify(independent)}`,
+            )
+    }
+    console.log('Native D1 reads and atomic batches survive an earlier request canceled by Workerd (sqlite/void).')
     const large = await (await fetch(origin + '/search-large', { signal: AbortSignal.timeout(30000) })).json()
     if (
         String(large.counts) !== '1,1,0,1,1' ||

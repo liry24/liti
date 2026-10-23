@@ -18,24 +18,6 @@ interface D1Database {
     prepare(sql: string): D1Statement
 }
 
-const locks = new WeakMap<object, Promise<void>>()
-const noop = (): void => undefined
-
-const withLock = async <Value>(key: object, task: () => Promise<Value>): Promise<Value> => {
-    const previous = locks.get(key) ?? Promise.resolve()
-    let release = noop
-    const current = new Promise<void>((resolve) => (release = resolve))
-    const queued = previous.then(() => current)
-    locks.set(key, queued)
-    await previous
-    try {
-        return await task()
-    } finally {
-        release()
-        if (locks.get(key) === queued) locks.delete(key)
-    }
-}
-
 const runD1Batch = async (instance: D1Database, statements: AtomicStatement[]): Promise<AtomicResult[]> => {
     const prepared = statements.map((statement) => instance.prepare(statement.sql).bind(...(statement.params ?? [])))
     const raw = await instance.batch(prepared)
@@ -52,15 +34,13 @@ const runD1Batch = async (instance: D1Database, statements: AtomicStatement[]): 
 
 export const runAtomic = async (database: Database, statements: AtomicStatement[]): Promise<AtomicResult[]> => {
     if (statements.length === 0) return []
-    // ponytail: one lock per native connection favors correctness; split reader connections if measured contention demands it.
-    return withLock(database.lockKey, async () => {
-        const instance = await database.getInstance()
-        return runD1Batch(instance, statements)
-    })
+    // D1 owns the atomic batch; a shared JS queue can retain I/O from a canceled Worker request.
+    const instance = await database.getInstance()
+    return runD1Batch(instance, statements)
 }
 
 export const queryRows = async <Row extends object>(
     database: Database,
     sql: string,
     params: Primitive[] = [],
-): Promise<Row[]> => withLock(database.lockKey, async () => (await database.prepare(sql).all(...params)) as Row[])
+): Promise<Row[]> => (await database.prepare(sql).all(...params)) as Row[]

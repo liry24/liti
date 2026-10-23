@@ -10,6 +10,7 @@ import { defineLitiConfig, file, text } from '../../../packages/liti/src/index'
 import { queryRow, runAtomic } from '../../sqlite-queries'
 import { createRuntime } from '../../../packages/liti/src/server/index'
 import { searchProbe } from './search-probe'
+import { requestIsolationProbe } from './request-isolation'
 
 interface Env {
     LITI_DB: AnyD1Database
@@ -34,6 +35,8 @@ export default {
             if (new URL(request.url).pathname === '/health') return new Response('OK')
             if (new URL(request.url).pathname.startsWith('/search-'))
                 return await searchProbe(request, env.LITI_DB, schema)
+            if (new URL(request.url).pathname.startsWith('/request-isolation/'))
+                return await requestIsolationProbe(request, env.LITI_DB)
             const database = createD1Database(env.LITI_DB, schema)
             if (new URL(request.url).pathname === '/missing-binding') {
                 const missing = createD1Database(undefined as unknown as AnyD1Database, schema)
