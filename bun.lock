@@ -11,6 +11,7 @@
         "@litijs/blog": "workspace:*",
         "@litijs/drizzle": "workspace:*",
         "@litijs/sqlite": "workspace:*",
+        "@litijs/test-utils": "workspace:*",
         "@litijs/void": "workspace:*",
         "@nuxt/test-utils": "4.3.4",
         "@nuxtjs/better-auth": "0.3.11",
@@ -206,6 +207,21 @@
       "peerDependencies": {
         "liti": "^0.0.3",
       },
+    },
+    "packages/test-utils": {
+      "name": "@litijs/test-utils",
+      "version": "0.0.3",
+      "devDependencies": {
+        "liti": "workspace:*",
+        "vitest": "5.0.5",
+      },
+      "peerDependencies": {
+        "liti": "^0.0.3",
+        "vitest": "^5.0.5",
+      },
+      "optionalPeers": [
+        "vitest",
+      ],
     },
     "packages/void": {
       "name": "@litijs/void",
@@ -598,6 +614,8 @@
     "@litijs/drizzle": ["@litijs/drizzle@workspace:packages/drizzle"],
 
     "@litijs/sqlite": ["@litijs/sqlite@workspace:packages/sqlite"],
+
+    "@litijs/test-utils": ["@litijs/test-utils@workspace:packages/test-utils"],
 
     "@litijs/void": ["@litijs/void@workspace:packages/void"],
 

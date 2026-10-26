@@ -5,6 +5,9 @@ export default defineConfig({
     resolve: {
         alias: Object.fromEntries(
             Object.entries({
+                'liti/client': './packages/liti/src/public-client.ts',
+                '@litijs/test-utils/vitest': './packages/test-utils/src/vitest.ts',
+                '@litijs/test-utils': './packages/test-utils/src/index.ts',
                 'liti/adapter': './packages/liti/src/adapter.ts',
                 'liti/server': './packages/liti/src/server/index.ts',
                 liti: './packages/liti/src/index.ts',

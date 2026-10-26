@@ -32,7 +32,10 @@
             "@litijs/ai/ai-sdk": ["../packages/ai/src/ai-sdk.ts"],
             "@litijs/ai/void": ["../packages/ai/src/void.ts"],
             "@litijs/blog": ["../packages/blog/src/index.ts"],
-            "@litijs/blog/vue": ["../packages/blog/src/vue.ts"]
+            "@litijs/blog/vue": ["../packages/blog/src/vue.ts"],
+            "liti/client": ["../packages/liti/src/public-client.ts"],
+            "@litijs/test-utils": ["../packages/test-utils/src/index.ts"],
+            "@litijs/test-utils/vitest": ["../packages/test-utils/src/vitest.ts"]
         }
     },
     "exclude": ["**/.data/**", "**/.nuxt/**", "**/.output/**", "**/node_modules/**"],

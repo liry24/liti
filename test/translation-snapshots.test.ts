@@ -6,7 +6,7 @@ import { Files } from 'files-sdk'
 import { memory } from 'files-sdk/memory'
 import { defineLitiConfig, text, file, relation, markdown } from '../packages/liti/src'
 import { createMigratedTestAdmin, testAdapter } from './migrate'
-import { createMemoryDatabase } from './memory-storage'
+import { createMemoryDatabase } from '@litijs/test-utils'
 import { createRuntime } from '../packages/liti/src/server'
 
 const databases: Database[] = []
@@ -23,8 +23,11 @@ it('retries all DB pages when publication changes during an all-entry read', asy
     const entries: Array<{ id: string; version: number }> = []
     for (let index = 0; index < 101; index++) entries.push(await admin.createEntry('posts', { data: { title: 'old' } }))
     let changed = false
-    const page = database.storage.pagePublished.bind(database.storage)
-    const reads = vi.spyOn(database.storage, 'pagePublished').mockImplementation(async (filter, bounds) => {
+    const storage = database.bind(
+        defineLitiConfig({ models: { posts: { publishing: false, fields: { title: text() } } } }),
+    )
+    const page = storage.pagePublished.bind(storage)
+    const reads = vi.spyOn(storage, 'pagePublished').mockImplementation(async (filter, bounds) => {
         const result = await page(filter, bounds)
         if (!changed) {
             changed = true

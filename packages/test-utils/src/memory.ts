@@ -1,5 +1,5 @@
-import { translatedRouteFields } from '../packages/liti/src/i18n'
-import type { LitiConfig } from '../packages/liti/src/config'
+import { translatedRouteFields } from 'liti/adapter'
+import type { LitiConfig } from 'liti'
 import type {
     LitiDatabase,
     LitiStorage,
@@ -12,13 +12,13 @@ import type {
     StorageContentCommit,
     StorageCondition,
     StorageEntryFilter,
-} from '../packages/liti/src/adapter'
-import type { AssetRecord, EntryRecord, IncomingReference } from '../packages/liti/src/server/types'
-import { LitiError } from '../packages/liti/src/errors'
-import { searchQuery } from '../packages/liti/src/storage'
+} from 'liti/adapter'
+import type { AssetRecord, EntryRecord, IncomingReference } from 'liti/server'
+import { LitiError } from 'liti'
+import { searchQuery } from 'liti/adapter'
 
 /** Deliberately SQL/ORM-free test backend, with domain objects and atomic copy-on-write commits. */
-export function createMemoryDatabase() {
+export function createMemoryDatabase(): LitiDatabase {
     type State = {
         entries: Map<string, StorageEntryState>
         revisions: Map<string, StorageRevisionCandidate>
@@ -442,11 +442,9 @@ export function createMemoryDatabase() {
         }),
     }
     return {
-        storage,
-        snapshot: () => clone(state),
         bind(definition: LitiConfig) {
             config = definition
             return storage
         },
-    } satisfies LitiDatabase & { storage: LitiStorage; snapshot: () => State }
+    }
 }
