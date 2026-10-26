@@ -21,6 +21,19 @@ try {
     const packages = archiveDependencies(archives, Object.keys(archives))
     const profiles = [
         {
+            name: 'test-utils',
+            dependencies: { '@litijs/test-utils': packages['@litijs/test-utils'] },
+            absent: ['vitest', 'vue', 'nuxt', 'void', 'drizzle-orm', 'ai', 'better-auth'],
+        },
+        {
+            name: 'test-utils-vitest',
+            dependencies: {
+                '@litijs/test-utils': packages['@litijs/test-utils'],
+                ...consumerDependencies(['vitest', '@types/node']),
+            },
+            absent: ['vue', 'nuxt', 'void', 'drizzle-orm', 'ai', 'better-auth'],
+        },
+        {
             name: 'core',
             dependencies: {},
             absent: ['vue', 'nuxt', 'void', 'drizzle-orm', 'ai', '@litijs/blog', '@litijs/ai'],
@@ -108,6 +121,23 @@ try {
             "client.query('posts', { id: 'one' })",
             'void [title, createLiti, executeAction]',
         ]
+        if (profile.name.startsWith('test-utils'))
+            source.push(
+                "import { createTestLiti, createMemoryDatabase } from '@litijs/test-utils'",
+                'const fixture = await createTestLiti(config)',
+                'const service = await fixture.service({ actor: null })',
+                "const saved = await service.createEntry('posts', { data: { title: 'typed' } })",
+                'const savedTitle: string = (await fixture.client.getEntry(saved.id)).data.title; void [savedTitle, createMemoryDatabase]',
+                '// @ts-expect-error Required model fields remain required.',
+                "service.createEntry('posts', { data: {} })",
+                'await fixture.close()',
+            )
+        if (profile.name === 'test-utils-vitest')
+            source.push(
+                "import { test } from 'vitest'",
+                "import { litiFixture } from '@litijs/test-utils/vitest'",
+                "test.extend({ liti: litiFixture(config) })('fixture', async ({ liti }) => { await liti.client.query('posts') })",
+            )
         if (profile.name === 'blog')
             source.push(
                 "import { blog } from '@litijs/blog'",
@@ -163,7 +193,7 @@ try {
                     noEmit: true,
                     strict: true,
                     skipLibCheck: false,
-                    types: nativeDrizzle ? ['node'] : [],
+                    types: nativeDrizzle || profile.name === 'test-utils-vitest' ? ['node'] : [],
                     lib: ['ES2024', 'DOM', 'DOM.Iterable'],
                 },
                 include: ['types.ts'],
@@ -223,6 +253,13 @@ try {
                 'const client = createLitiClient({ fetch: async () => Response.json([]) })',
                 "assert.deepEqual(await client.query('posts'), [])",
                 'assert.ok(defineLitiConfig({ models: { posts: { fields: { title: text() } } } }).models.posts)',
+                ...(profile.name.startsWith('test-utils')
+                    ? [
+                          "const { createTestLiti } = await import('@litijs/test-utils')",
+                          'const fixture = await createTestLiti(defineLitiConfig({ models: { posts: { fields: { title: text() } } } }))',
+                          "assert.deepEqual(await fixture.client.query('posts'), []); await fixture.close()",
+                      ]
+                    : []),
                 ...(profile.name === 'blog'
                     ? [
                           "const { blog } = await import('@litijs/blog'); assert.ok(blog({ models: { posts: {} } }).models.posts)",
@@ -245,6 +282,25 @@ try {
             ].join('\n'),
         )
         run(process.execPath, ['probe.mjs'], cwd)
+        if (profile.name === 'test-utils-vitest') {
+            await writeFile(
+                join(cwd, 'fixture.test.mjs'),
+                [
+                    "import { test, expect } from 'vitest'",
+                    "import { defineLitiConfig, text } from 'liti'",
+                    "import { litiFixture } from '@litijs/test-utils/vitest'",
+                    "const actor = { id: 'test', roles: ['admin'] }",
+                    'const fixture = test.extend({ liti: litiFixture(defineLitiConfig({ models: { posts: { fields: { title: text() } } } }), { authenticate: () => actor }) })',
+                    "fixture('service and client share storage', async ({ liti }) => { const service = await liti.service({ actor }); const saved = await service.createEntry('posts', { data: { title: 'packed' } }); expect((await liti.client.getEntry(saved.id)).data.title).toBe('packed') })",
+                    "fixture('every test starts empty', async ({ liti }) => { expect((await liti.client.listEntries('posts')).total).toBe(0) })",
+                ].join('\n'),
+            )
+            run(
+                process.execPath,
+                [join(dirname(local.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'fixture.test.mjs'],
+                cwd,
+            )
+        }
         if (profile.name.startsWith('vue')) await verifyIsolatedVue(cwd, run)
         const cli = join(dirname(local.resolve('liti/package.json')), 'dist/cli.mjs')
         await writeFile(join(cwd, 'liti.config.ts'), 'throw new Error("Configuration must not run")')

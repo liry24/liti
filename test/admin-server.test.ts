@@ -4,7 +4,7 @@ import { useAdmin } from '../packages/nuxt/src/server-api'
 import { configureLitiRuntime } from '../packages/nuxt/src/nuxt/server'
 import { defineLitiConfig, text } from '../packages/liti/src'
 import { createRuntime } from '../packages/liti/src/server'
-import { createMemoryDatabase } from './memory-storage'
+import { createMemoryDatabase } from '@litijs/test-utils'
 import { createManagementOperations } from '../packages/liti/src/server/operations'
 import { createAdminClient } from '../packages/liti/src/admin-client'
 

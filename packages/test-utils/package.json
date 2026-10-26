@@ -1,0 +1,49 @@
+{
+    "name": "@litijs/test-utils",
+    "version": "0.0.3",
+    "description": "Isolated liti runtimes and Vitest fixtures",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/liti.git",
+        "directory": "packages/test-utils"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./vitest": {
+            "types": "./dist/vitest.d.ts",
+            "import": "./dist/vitest.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "vp pack",
+        "prepack": "bun run build",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "liti": "workspace:*",
+        "vitest": "5.0.5"
+    },
+    "peerDependencies": {
+        "liti": "^0.0.3",
+        "vitest": "^5.0.5"
+    },
+    "peerDependenciesMeta": {
+        "vitest": {
+            "optional": true
+        }
+    }
+}

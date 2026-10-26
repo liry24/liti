@@ -165,3 +165,33 @@ it('protects Markdown fragments in order, including duplicates, without requirin
     const output = definition.output({ content: original })
     expect(await output['~standard'].validate({ content: original.replace('`x`', '`y`') })).toHaveProperty('issues')
 })
+
+it.each([
+    ['nested link target', '[link](/posts/a(foo).png)', '[link](/posts/a(foo).jpg)'],
+    ['nested image target', '![image](/assets/a(foo).png)', '![image](/assets/a(foo).jpg)'],
+    ['indented code', 'Example:\n\n    one()\n    next()', 'Example:\n\n    two()\n    next()'],
+    ['multiline code span', 'Example `one()\nnext()`.', 'Example `two()\nnext()`.'],
+    ['code span whitespace', 'Example `one()\nnext()`.', 'Example `one() next()`.'],
+    ['multiple backticks', 'Example ``one(`x`)\nnext()``.', 'Example ``two(`x`)\nnext()``.'],
+    ['long fence', '````js\none()\n```\nnext()\n````', '````js\ntwo()\n```\nnext()\n````'],
+    ['reference target', '[link][a]\n\n[a]: /posts/a(foo).png', '[link][a]\n\n[a]: /posts/a(foo).jpg'],
+    ['unused reference', '[unused]: /posts/a(foo).png', '[unused]: /posts/a(foo).jpg'],
+    ['inline HTML link', 'Read <a href="/posts/original">link</a>.', 'Read <a href="/posts/changed">link</a>.'],
+    ['HTML image', '<img src="/assets/original.png">', '<img src="/assets/changed.png">'],
+    ['inline HTML image', 'See <img src="/assets/original.png"> here.', 'See <img src="/assets/changed.png"> here.'],
+    ['multiline HTML link', 'Read <a\n href="/posts/original">link</a>.', 'Read <a\n href="/posts/changed">link</a>.'],
+    [
+        'HTML block destination',
+        '<div>\n<a href="/posts/original">link</a>\n</div>',
+        '<div>\n<a href="/posts/changed">link</a>\n</div>',
+    ],
+    [
+        'other HTML attributes',
+        'Read <a href="/posts/original" title="Original">link</a>.',
+        'Read <a href="/posts/original" title="Changed">link</a>.',
+    ],
+    ['HTML block prose', '<div>\nThis are an example.\n</div>', '<div>\nThis is an example.\n</div>'],
+])('preserves %s during proofreading', async (_name, original, changed) => {
+    expect(await validateProofreading(original, original)).toBe(true)
+    expect(await validateProofreading(original, changed)).toBe(false)
+})

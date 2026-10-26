@@ -64,6 +64,10 @@
         "packages/blog": {
             "entry": ["src/{index,vue}.ts!"],
             "project": ["src/**/*.ts!"]
+        },
+        "packages/test-utils": {
+            "entry": ["src/{index,vitest}.ts!"],
+            "project": ["src/**/*.ts!"]
         }
     }
 }

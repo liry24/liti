@@ -8,7 +8,7 @@ import { aiSdk } from '../packages/ai/src/ai-sdk'
 import { handleActionRequest } from '../packages/liti/src/server/actions-http'
 import { useEntryForm } from '../packages/vue/src/form'
 import { createRuntime, handleManagementRequest } from '../packages/liti/src/server'
-import { createMemoryDatabase } from './memory-storage'
+import { createMemoryDatabase } from '@litijs/test-utils'
 import { modelFixture } from './model-fixture'
 
 const generated = (value: unknown) => ({
@@ -46,8 +46,8 @@ const setup = (run: MockLanguageModelV4['doGenerate']) => {
     )
     const actor = { id: 'admin', roles: ['admin'] }
     const database = createMemoryDatabase()
-    const assertSchema = vi.spyOn(database.storage, 'assertSchema')
-    const commit = vi.spyOn(database.storage, 'commit')
+    const assertSchema = vi.spyOn(database.bind(config), 'assertSchema')
+    const commit = vi.spyOn(database.bind(config), 'commit')
     const admin = createRuntime({ config, database, authorize: () => actor })
     const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init)

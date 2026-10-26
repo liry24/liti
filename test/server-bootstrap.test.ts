@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createLiti } from '../packages/liti/src/server'
 import { defineLitiConfig, text } from '../packages/liti/src'
-import { createMemoryDatabase } from './memory-storage'
+import { createMemoryDatabase } from '@litijs/test-utils'
 import type { DatabaseAdapter, OperationContext } from '../packages/liti/src/plugins'
 import { z } from 'zod'
 

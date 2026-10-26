@@ -13,7 +13,7 @@ export const publicPackages = (
     )
 ).flat()
 
-/** All consumers install the same six archives, including uppt's exact release artifacts. */
+/** All consumers install the same public archives, including uppt's exact release artifacts. */
 export const consumerPackages = async (directory, run) => {
     let files = process.env.LITI_TARBALLS ? JSON.parse(process.env.LITI_TARBALLS) : undefined
     if (!files) {
