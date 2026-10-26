@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { TestContext } from 'vitest'
 
 const actor = { id: 'writer', roles: ['writer'] }
+const authenticate = vi.fn(() => actor)
 const connect = vi.fn(() => {
     throw new Error('Production adapter must not connect')
 })
@@ -29,7 +30,7 @@ const config = defineLitiConfig({
 })
 const test = base.extend({
     liti: litiFixture(config, {
-        authenticate: () => actor,
+        authenticate,
         now: () => new Date('2026-10-26T00:00:00Z'),
     }),
 })
@@ -47,6 +48,9 @@ test('uses real service and HTTP contracts with isolated storage and inferred ac
     expect(await liti.client.query('notes')).toMatchObject([{ data: { title: 'Private' } }])
     const result: string = (await liti.client.executeAction('upper', { value: 'test' })).data
     expect(result).toBe('TEST')
+    const platformContext = { binding: 'synthetic' }
+    expect((await liti.fetch(new Request('http://liti.test/api/liti/models'), platformContext)).status).toBe(200)
+    expect(authenticate).toHaveBeenLastCalledWith(expect.objectContaining({ platformContext }))
     expect(connect).not.toHaveBeenCalled()
 })
 

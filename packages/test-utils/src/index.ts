@@ -24,9 +24,9 @@ export async function createTestLiti<const Config extends LitiConfigInput>(
     const assertOpen = () => {
         if (closed) throw new Error('This liti test instance is closed.')
     }
-    const fetch = (request: Request) => {
+    const fetch: typeof runtime.fetch = (request, platformContext) => {
         assertOpen()
-        return runtime.fetch(request)
+        return runtime.fetch(request, platformContext)
     }
     const client = createLitiClient<InferLitiSchema<ResolvedLitiConfig<Config, readonly []>>>({
         origin: 'http://liti.test',
