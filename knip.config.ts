@@ -8,7 +8,7 @@ export default {
         '.': {
             entry: ['taze.config.ts', 'scripts/*.mjs', 'test/**/*.test.ts', 'test/*.mjs'],
             project: ['*.ts', 'scripts/*.{ts,mjs}', 'test/**/*.{ts,mjs}'],
-            ignoreDependencies: ['@arethetypeswrong/cli', '@litijs/blog', 'liti', 'nuxt', 'publint', 'vite'],
+            ignoreDependencies: ['@arethetypeswrong/cli', '@litijs/blog', 'publint', 'vite'],
         },
         'packages/model': {
             entry: [

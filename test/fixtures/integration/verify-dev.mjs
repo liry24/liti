@@ -110,7 +110,11 @@ try {
         assert.ok(!(await (await fetch(`${origin}/private?id=${user.id}`)).text()).includes(secret))
         console.log('PASS Nuxt dev model-definition HMR, native authenticated writes and private SSR')
     } finally {
-        await writeFile(file, original)
+        try {
+            await stopProcess(child)
+        } finally {
+            await writeFile(file, original)
+        }
     }
 } finally {
     await stopProcess(child)

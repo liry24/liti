@@ -168,7 +168,11 @@ for (const mode of ['production', 'development']) {
                 assert.ok(reloaded, `Native dev server did not reload the edited route:\n${logs}`)
                 console.log('PASS Nuxt-free native Vite dev server and server-route HMR')
             } finally {
-                await writeFile(health, original)
+                try {
+                    await stopProcess(child)
+                } finally {
+                    await writeFile(health, original)
+                }
             }
         }
     } finally {

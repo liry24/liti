@@ -16,6 +16,15 @@ export async function verifyHttp(origin, token, logs) {
             headers: { 'content-type': 'application/json', cookie, origin: requestOrigin },
             body: JSON.stringify(body),
         })
+    const rpc = (action, body, cookie = context.editor) =>
+        fetch(`${origin}/_vitehub/rpc/__call`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie, origin },
+            body: JSON.stringify({
+                method: 'vitehub:console:documents',
+                input: { method: 'POST', query: { section: 'content', action }, body },
+            }),
+        })
     assert.equal((await manage({ action: 'models' }, '')).status, 401)
     const hostile = await manage({ action: 'models' }, context.editor, 'https://hostile.test')
     assert.equal(hostile.status, 403, `${await hostile.text()}\n${logs()}`)
@@ -75,7 +84,22 @@ export async function verifyHttp(origin, token, logs) {
         body: JSON.stringify({ action: 'read', model: 'memos', id: firstUser.id }),
     })
     assert.equal(spoofed.status, 403, await spoofed.clone().text())
+    const consoleMemo = await rpc('get', { collection: 'memos', id: firstUser.id })
+    assert.equal(consoleMemo.status, 200, await consoleMemo.clone().text())
+    assert.equal((await consoleMemo.json()).value.data.secret, owned[0].secret)
+    const otherMemo = await rpc('get', { collection: 'memos', id: firstUser.id }, secondCookie)
+    assert.equal(otherMemo.status, 403, await otherMemo.clone().text())
+    const rawDatabase = await fetch(`${origin}/_vitehub/rpc/__call`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie: context.editor, origin },
+        body: JSON.stringify({
+            method: 'vitehub:console:database',
+            input: { method: 'GET', query: { database: 'default' } },
+        }),
+    })
+    assert.equal(rawDatabase.status, 403, await rawDatabase.clone().text())
     console.log('PASS concurrent authenticated SSR isolates owner-only drafts and rejects a spoofed actor header')
+    console.log('PASS Console enforces entry ownership and the native policy rejects raw Database inspection')
     const id = crypto.randomUUID()
     const save = await manage({
         action: 'save',
@@ -89,15 +113,6 @@ export async function verifyHttp(origin, token, logs) {
     assert.equal(save.status, 200, `${await save.clone().text()}\n${logs()}`)
     const receipt = await save.json()
     assert.equal('data' in receipt, false)
-    const rpc = (action, body) =>
-        fetch(`${origin}/_vitehub/rpc/__call`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie: context.editor, origin },
-            body: JSON.stringify({
-                method: 'vitehub:console:documents',
-                input: { method: 'POST', query: { section: 'content', action }, body },
-            }),
-        })
     const consoleId = crypto.randomUUID()
     const consoleInput = {
         collection: 'posts',

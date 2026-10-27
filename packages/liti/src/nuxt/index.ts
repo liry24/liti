@@ -1,4 +1,5 @@
 import type { NitroConfig } from 'nitropack'
+import type { NuxtModule } from 'nuxt/schema'
 import { readdir, mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -41,7 +42,7 @@ async function modelFiles(root: string): Promise<string[]> {
         .sort()
 }
 
-export default defineNuxtModule<ModuleOptions>({
+const module: NuxtModule<ModuleOptions, ModuleOptions> = defineNuxtModule<ModuleOptions>({
     meta: { name: 'liti', configKey: 'liti', compatibility: { nuxt: '^4.6.2' } },
     defaults: { workspace: 'content', database: 'default', baseURL: '/api/_liti', admin: true },
     async setup(options, nuxt) {
@@ -165,3 +166,4 @@ export default defineNuxtModule<ModuleOptions>({
         })
     },
 })
+export default module

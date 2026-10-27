@@ -29,7 +29,7 @@ export default defineConfig({
         trailingComma: 'all',
     },
     lint: {
-        // The Model overlay is typechecked after packing into its generated native Nuxt consumer.
+        // Consumer fixtures are typechecked with their own installed packages and generated host types.
         ignorePatterns: [
             '**/dist/**',
             '**/.nuxt/**',
@@ -40,6 +40,7 @@ export default defineConfig({
             'test/fixtures/model/**',
             'test/fixtures/model-vite/**',
             'test/fixtures/integration/**',
+            'test/fixtures/vitehub/**',
         ],
         options: { typeAware: true, typeCheck: true },
         jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],
