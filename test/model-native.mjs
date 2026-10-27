@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const integrated = process.argv.includes('--nuxt')
@@ -11,9 +12,10 @@ const temporary = resolve(root, '.tmp')
 mkdirSync(temporary, { recursive: true })
 const consumer = process.env.LITI_MODEL_CONSUMER
     ? resolve(process.env.LITI_MODEL_CONSUMER)
-    : mkdtempSync(resolve(temporary, 'model-consumer-'))
+    : mkdtempSync(resolve(tmpdir(), 'liti-model-consumer-'))
 assert.ok(
-    consumer.startsWith(temporary + sep) && consumer.includes('model-consumer-'),
+    (consumer.startsWith(temporary + sep) && consumer.includes('model-consumer-')) ||
+        consumer.startsWith(resolve(tmpdir(), 'liti-model-consumer-')),
     'Reuse only an isolated test consumer.',
 )
 const run = (command, args, cwd = consumer, env = process.env) => {
@@ -24,6 +26,41 @@ const run = (command, args, cwd = consumer, env = process.env) => {
 const copy = (source, target) => {
     mkdirSync(dirname(target), { recursive: true })
     cpSync(source, target, { recursive: true })
+}
+const readArchive = (file, member) => {
+    const result = spawnSync('tar', ['-xOf', file, `package/${member}`], { encoding: 'utf8', windowsHide: true })
+    if (result.error) throw result.error
+    assert.equal(result.status, 0, result.stderr)
+    return result.stdout
+}
+const provided = process.env.LITI_TARBALLS ? new Map() : null
+if (provided) {
+    for (const file of JSON.parse(process.env.LITI_TARBALLS)) {
+        const path = resolve(file),
+            entry = JSON.parse(readArchive(path, 'package.json'))
+        assert.ok(!provided.has(entry.name), `Duplicate artifact ${entry.name}`)
+        provided.set(entry.name, path)
+    }
+    assert.deepEqual(
+        [...provided.keys()].sort((left, right) => left.localeCompare(right)),
+        ['@litijs/blog', '@litijs/model', 'liti'],
+    )
+}
+const pack = (folder, name) => {
+    let packed = provided?.get(name)
+    if (!packed) {
+        assert.ok(!provided, `Missing artifact ${name}`)
+        const directory = resolve(root, `packages/${folder}`)
+        run('bun', ['run', 'typecheck'], directory)
+        run('bun', ['run', 'build'], directory)
+        run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], directory)
+        const { version } = JSON.parse(readFileSync(resolve(directory, 'package.json'), 'utf8'))
+        packed = resolve(consumer, `${name.replace('@', '').replace('/', '-')}-${version}.tgz`)
+    }
+    const archive = `${folder}-${createHash('sha256').update(readFileSync(packed)).digest('hex').slice(0, 16)}.tgz`
+    if (provided) copy(packed, resolve(consumer, archive))
+    else renameSync(packed, resolve(consumer, archive))
+    return archive
 }
 const base = resolve(root, 'test/fixtures/vitehub')
 for (const name of [
@@ -52,39 +89,21 @@ writeFileSync(
         "export default defineNuxtConfig({\n    nitro: { externals: { inline: ['@litijs/model'] } },",
     ),
 )
-run('bun', ['run', 'typecheck'], resolve(root, 'packages/model'))
-run('bun', ['run', 'build'], resolve(root, 'packages/model'))
-run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/model'))
-const version = JSON.parse(readFileSync(resolve(root, 'packages/model/package.json'), 'utf8')).version
-const packed = resolve(consumer, `litijs-model-${version}.tgz`)
-const archive = `model-${createHash('sha256').update(readFileSync(packed)).digest('hex').slice(0, 16)}.tgz`
-renameSync(packed, resolve(consumer, archive))
+const archive = pack('model', '@litijs/model')
 const manifest = JSON.parse(readFileSync(resolve(base, 'package.json'), 'utf8'))
 manifest.name = 'liti-model-packed-consumer'
 manifest.dependencies['@litijs/model'] = `file:./${archive}`
 if (integrated) {
-    run('bun', ['run', 'typecheck'], resolve(root, 'packages/liti'))
-    run('bun', ['run', 'build'], resolve(root, 'packages/liti'))
+    const litiArchive = pack('liti', 'liti')
     assert.ok(
-        readFileSync(resolve(root, 'packages/liti/dist/runtime/server/manage.post.js'), 'utf8').includes(
+        readArchive(resolve(consumer, litiArchive), 'dist/runtime/server/manage.post.js').includes(
             'from "#liti/runtime"',
         ),
         'Keep the generated server module virtual in the package.',
     )
-    run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/liti'))
-    const litiVersion = JSON.parse(readFileSync(resolve(root, 'packages/liti/package.json'), 'utf8')).version
-    const litiPacked = resolve(consumer, `liti-${litiVersion}.tgz`)
-    const litiArchive = `liti-${createHash('sha256').update(readFileSync(litiPacked)).digest('hex').slice(0, 16)}.tgz`
-    renameSync(litiPacked, resolve(consumer, litiArchive))
     manifest.dependencies.liti = `file:./${litiArchive}`
     manifest.overrides = { ...manifest.overrides, '@litijs/model': `file:./${archive}` }
-    run('bun', ['run', 'typecheck'], resolve(root, 'packages/blog'))
-    run('bun', ['run', 'build'], resolve(root, 'packages/blog'))
-    run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/blog'))
-    const blogVersion = JSON.parse(readFileSync(resolve(root, 'packages/blog/package.json'), 'utf8')).version
-    const blogPacked = resolve(consumer, `litijs-blog-${blogVersion}.tgz`)
-    const blogArchive = `blog-${createHash('sha256').update(readFileSync(blogPacked)).digest('hex').slice(0, 16)}.tgz`
-    renameSync(blogPacked, resolve(consumer, blogArchive))
+    const blogArchive = pack('blog', '@litijs/blog')
     manifest.dependencies['@litijs/blog'] = `file:./${blogArchive}`
     copy(resolve(consumer, 'verify-http.mjs'), resolve(consumer, 'verify-model-http.mjs'))
     copy(resolve(root, 'test/fixtures/integration'), consumer)
@@ -107,6 +126,7 @@ run(
 run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'migrate'])
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
 run(process.execPath, ['verify-node.mjs'])
+if (integrated) run(process.execPath, ['verify-dev.mjs'])
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'], consumer, {
     ...process.env,
     LITI_PROBE_PRESET: 'cloudflare',

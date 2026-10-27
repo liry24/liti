@@ -4,6 +4,7 @@ import generatedPaths from './workarounds/generated-paths'
 import libsqlNative from './workarounds/libsql-native'
 import nitroCache from './workarounds/nitro-cache'
 import schedulePlugin from './workarounds/schedule-plugin'
+import devRuntime from './workarounds/dev-runtime'
 import { databaseContribution } from './probe-database'
 
 const cloudflare = process.env.LITI_PROBE_PRESET === 'cloudflare'
@@ -36,6 +37,7 @@ export default defineNuxtConfig({
         libsqlNative,
         nitroCache,
         schedulePlugin,
+        devRuntime,
     ],
     devtools: { enabled: false },
 })

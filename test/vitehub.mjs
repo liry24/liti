@@ -50,4 +50,5 @@ if (cloudflare) {
     run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'migrate'])
     run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
     run(process.execPath, ['verify-node.mjs'])
+    run(process.execPath, ['verify-node.mjs', '--dev'])
 }

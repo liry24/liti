@@ -30,3 +30,13 @@ export { validateData, referenceValues, assertJson } from './definition/validati
 export { modelLocale, documentId, splitDocumentId, resolveTranslation } from './i18n/index'
 export { authorize } from './authorization/index'
 export { normalizeModelUrl } from './definition/url'
+export type {
+    ModelOperation,
+    SaveInput,
+    PublicationInfo,
+    ContentEntry,
+    DraftEntry,
+    PublishSelection,
+    RecordEntry,
+    RecordOperation,
+} from './definition/entries'

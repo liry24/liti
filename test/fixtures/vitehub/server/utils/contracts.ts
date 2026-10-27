@@ -3,6 +3,7 @@ import { registerWorkspacePlugin, useWorkspace } from 'vite-hub/workspace'
 import { cachedSource } from 'vite-hub/source/server'
 import { blob } from 'vite-hub/blob'
 import { content } from '../content'
+import { useStorage } from 'nitropack/runtime'
 
 export async function verifyContentContracts() {
     const checks: string[] = []
@@ -18,11 +19,24 @@ export async function verifyContentContracts() {
         },
         {
             name: `liti-probe-${id}`,
+            base: `liti-probe-${id}`,
             maxAge: 60,
             getKey: (key) => key,
         },
     )
-    assert.deepEqual(await cached.get('one'), await cached.get('one'))
+    const firstCached = await cached.get('one')
+    // Native Nitro writes its cache asynchronously; dev uses a filesystem driver.
+    const cacheStorage = useStorage(`liti-probe-${id}`)
+    let persisted = false
+    for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await cacheStorage.getKeys()).length) {
+            persisted = true
+            break
+        }
+        await new Promise((done) => setTimeout(done, 10))
+    }
+    assert.ok(persisted, 'The native cache entry was not committed.')
+    assert.deepEqual(firstCached, await cached.get('one'))
     assert.equal(reads, 1)
     assert.equal((await cached.get('two')).reads, 2)
     checks.push('Source uses the host Nitro cache with separate keys')

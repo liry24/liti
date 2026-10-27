@@ -50,7 +50,7 @@
         "build": "vp pack",
         "dev": "vp pack --watch",
         "prepack": "bun run build",
-        "typecheck": "tsc --noEmit -p tsconfig.rebuild.json"
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@litijs/model": "workspace:*",

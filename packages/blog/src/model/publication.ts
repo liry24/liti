@@ -1,4 +1,4 @@
-import type { ContentEntry, DraftEntry } from '@litijs/model/content'
+import type { ContentEntry, DraftEntry } from '@litijs/model'
 
 export interface ArticleDates {
     authoredAt: string | null

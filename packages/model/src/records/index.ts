@@ -1,7 +1,7 @@
 import { and, eq, asc, count, isNull, getTableColumns } from 'drizzle-orm'
 import { databases } from '@vite-hub/database/drizzle'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
-import type { RecordModel, ContentModel, Actor } from '../definition/model'
+import type { RecordModel, ContentModel } from '../definition/model'
 import { assertIdentity, ModelError } from '../definition/errors'
 import { validateData, queryFilter } from '../definition/validation'
 import { authorize } from '../authorization/index'
@@ -9,17 +9,8 @@ import type { RecordTables } from './schema'
 import { sqlCommit } from './errors'
 
 export type { RecordTable, RecordTables } from './schema'
-export interface RecordEntry {
-    id: string
-    version: number
-    createdAt: string
-    updatedAt: string
-    data: Record<string, unknown>
-}
-export interface RecordOperation {
-    actor: Actor
-    signal?: AbortSignal
-}
+import type { RecordEntry, RecordOperation } from '../definition/entries'
+export type { RecordEntry, RecordOperation } from '../definition/entries'
 
 export function createModelRecords(options: {
     models: readonly RecordModel[]

@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createServer } from 'node:net'
+import { readFile, writeFile } from 'node:fs/promises'
+import { stopProcess } from './stop-process.ts'
+
+const probe = createServer()
+probe.listen(0, '127.0.0.1')
+await once(probe, 'listening')
+const { port } = probe.address()
+await new Promise((resolve, reject) => probe.close((error) => (error ? reject(error) : resolve())))
+const origin = `http://127.0.0.1:${port}`
+const child = spawn(
+    process.execPath,
+    [
+        'node_modules/nuxt/bin/nuxt.mjs',
+        'dev',
+        '--no-fork',
+        '--no-tui',
+        '--no-takeover',
+        '--strictPort',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        String(port),
+    ],
+    {
+        cwd: process.cwd(),
+        env: { ...process.env, LITI_PROBE_PRESET: 'node' },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    },
+)
+let logs = ''
+child.stdout.on('data', (value) => {
+    logs += value
+})
+child.stderr.on('data', (value) => {
+    logs += value
+})
+try {
+    let ready = false
+    for (let attempt = 0; attempt < 240; attempt++) {
+        if (child.exitCode !== null) throw new Error(`Nuxt dev exited:\n${logs}`)
+        try {
+            if ((await fetch(origin, { signal: AbortSignal.timeout(1000) })).ok) {
+                ready = true
+                break
+            }
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    assert.ok(ready, logs)
+    const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin },
+        body: JSON.stringify({
+            name: 'Dev editor',
+            email: `editor-${crypto.randomUUID()}@example.test`,
+            password: 'Synthetic-dev-password-2026',
+        }),
+    })
+    assert.equal(signup.status, 200, `${await signup.clone().text()}\n${logs}`)
+    const user = (await signup.json()).user,
+        cookie = signup.headers
+            .getSetCookie()
+            .map((value) => value.split(';')[0])
+            .join('; ')
+    const manage = (body) =>
+        fetch(`${origin}/api/_liti/manage`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', origin, cookie },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(10000),
+        })
+    const metadata = await manage({ action: 'models' })
+    assert.equal(metadata.status, 200, `${await metadata.clone().text()}\n${logs}`)
+    const file = new URL('./server/models/memos.ts', import.meta.url),
+        original = await readFile(file, 'utf8')
+    try {
+        await writeFile(file, original.replace("name: 'memos',", "name: 'memos', label: 'Reloaded memo',"))
+        let reloaded = false
+        for (let attempt = 0; attempt < 120; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 250))
+            try {
+                const response = await manage({ action: 'models' })
+                if (
+                    response.ok &&
+                    (await response.json()).some((model) => model.name === 'memos' && model.label === 'Reloaded memo')
+                ) {
+                    reloaded = true
+                    break
+                }
+            } catch {}
+        }
+        assert.ok(reloaded, `Model definition did not reload:\n${logs}`)
+        const secret = `DEV_PRIVATE_${crypto.randomUUID()}`
+        const saved = await manage({
+            action: 'save',
+            model: 'memos',
+            id: user.id,
+            data: { title: 'Dev memo', secret },
+            ifDigest: null,
+        })
+        assert.equal(saved.status, 200, `${await saved.clone().text()}\n${logs}`)
+        const page = await fetch(`${origin}/private?id=${user.id}`, { headers: { cookie } })
+        assert.equal(page.status, 200, `${await page.clone().text()}\n${logs}`)
+        assert.ok((await page.text()).includes(secret), logs)
+        assert.ok(!(await (await fetch(`${origin}/private?id=${user.id}`)).text()).includes(secret))
+        console.log('PASS Nuxt dev model-definition HMR, native authenticated writes and private SSR')
+    } finally {
+        await writeFile(file, original)
+    }
+} finally {
+    await stopProcess(child)
+}

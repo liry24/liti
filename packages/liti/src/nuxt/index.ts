@@ -51,14 +51,19 @@ export default defineNuxtModule<ModuleOptions>({
         if (!/^\/[a-zA-Z0-9/_-]+$/u.test(options.baseURL) || options.baseURL.endsWith('/'))
             throw new Error('[liti] baseURL must be an absolute path without a trailing slash.')
         const resolver = createResolver(import.meta.url)
+        nuxt.options.build.transpile.push(resolver.resolve('../runtime'))
         const directory = resolve(nuxt.options.serverDir, 'models')
         const contentFile = slash(resolve(nuxt.options.serverDir, 'content.ts'))
         let files = await modelFiles(directory)
         const imports = () =>
             files.map((file, index) => `import * as model${index} from ${JSON.stringify(file)}`).join('\n')
         const values = () => `[${files.map((_, index) => `model${index}`).join(',')}].flatMap(Object.values)`
+        const modelTypes = () =>
+            files
+                .map((file) => `(typeof import(${JSON.stringify(file)}))[keyof typeof import(${JSON.stringify(file)})]`)
+                .join(' | ') || 'never'
         const definitionsSource = () =>
-            `${imports()}\nexport const models = [...new Set(${values()}.filter(value => value && typeof value === 'object' && (value.storage === 'content' || value.storage === 'records')))]\n`
+            `${imports()}\n/** @type {Extract<${modelTypes()}, import('@litijs/model').Model>[]} */\nexport const models = [...new Set(${values()}.filter(value => value && typeof value === 'object' && (value.storage === 'content' || value.storage === 'records')))]\n`
         const definitions = addTemplate({
             filename: 'liti/definitions.mjs',
             write: true,
@@ -129,7 +134,7 @@ export default defineNuxtModule<ModuleOptions>({
             config.plugins.unshift(slash(plugin.dst))
             config.externals ??= {}
             config.externals.inline ??= []
-            config.externals.inline.push('liti', '@litijs/model', '@litijs/blog')
+            config.externals.inline.push('liti', '@litijs/model', '@litijs/blog', slash(dirname(runtime.dst)))
             config.handlers ??= []
             config.handlers.push({
                 route: options.baseURL,

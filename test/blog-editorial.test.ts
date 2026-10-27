@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vite-plus/test'
 import {
     defineArticle,
     articleDates,
@@ -21,6 +21,11 @@ it('defines native-body articles with deterministic Japanese slugs and preserves
     expect(prepared.data.slug).toBe('日本語の記事-stable-id')
     const data = await validateData(article.fields, prepared.data)
     expect(data.tags).toEqual([])
+    const historical = await article.prepare!({ data: { title: 'Manual', slug: '2026.10~review%value' } }, context)
+    const historicalData = await validateData(article.fields, historical.data)
+    expect(article.url!({ id: 'stable-id', locale: 'und', data: historicalData })).toBe('/posts/2026.10~review%25value')
+    const longId = await article.prepare!({ data: { title: '𠮷'.repeat(90) } }, { ...context, id: 'x'.repeat(128) })
+    expect((await validateData(article.fields, longId.data)).slug.length).toBeLessThanOrEqual(210)
     expect(
         await article.prepare!(
             { data: { title: 'Changed title', slug: '' } },

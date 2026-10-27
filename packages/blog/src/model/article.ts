@@ -10,7 +10,8 @@ const standardFields = {
             .string()
             .min(1)
             .max(210)
-            .regex(/^[\p{L}\p{N}_-]+$/u),
+            .regex(/^[^\s/?#\\]+$/u)
+            .refine((value) => value !== '.' && value !== '..', 'Use one article path segment.'),
         { localized: true },
     ),
     summary: field(z.string().optional(), { localized: true, input: 'textarea' }),
@@ -44,7 +45,7 @@ export function defineArticle<const F extends Fields = Record<never, never>, con
     const { fields, prepare, validate, ...rest } = options
     const defaultUrl = ({ locale, data }: { locale: string; data: object }) => {
         if (!('slug' in data) || typeof data.slug !== 'string') return null
-        return `${options.locales ? `/${locale}` : ''}/${options.name}/${data.slug}`
+        return `${options.locales ? `/${locale}` : ''}/${options.name}/${encodeURIComponent(data.slug)}`
     }
     return defineContentModel({
         ...rest,

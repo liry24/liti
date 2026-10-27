@@ -87,6 +87,10 @@ export async function runCommand(commands: string[], options: Options, manifest:
             const spec = manifest.dependencies[name]
             if (!spec || spec.startsWith('workspace:'))
                 throw new Error('Run init from a packed commit-specific Liti distribution.')
+            if (name === 'vite-hub' && dependencies[name] && dependencies[name] !== spec)
+                throw new Error(
+                    'The project selects a different ViteHub distribution. Verify that alpha cohort separately before changing it. No files changed.',
+                )
             if (!dependencies[name]) packages.push(`${name}@${spec}`)
         }
         if (!dependencies.zod) packages.push('zod@4.6.7')

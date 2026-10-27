@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vite-plus/test'
 import { z } from 'zod'
 import { recordSchema } from '../packages/model/src/records/schema'
 import {
@@ -140,6 +140,18 @@ describe('ViteHub model definitions', () => {
         ).toEqual(['one', 'two'])
         expect(referenceValues({ mentions: [] }, 'mentions.*.game')).toEqual([])
         expect(() => referenceValues({ game: 42 }, 'game')).toThrow('stable IDs')
+    })
+    it('keeps contributed table names precise without constraining unrelated native tables', () => {
+        const games = defineRecordModel({ name: 'games', fields: { title: field(z.string()) }, authorize: policy })
+        const tables = recordSchema([games])
+        type Tables = typeof tables
+        interface NativeSchema extends Tables {
+            contentSessions: { body: string }
+        }
+        const native: Pick<NativeSchema, 'contentSessions'> = { contentSessions: { body: 'Native content session' } }
+        expect(native.contentSessions.body).toBe('Native content session')
+        // @ts-expect-error only contributed model names are queryable through this table set
+        expect(tables.missing).toBeUndefined()
     })
     it('refuses non-JSON values returned by validators', async () => {
         await expect(validateData({ date: field(z.date()) }, { date: new Date() })).rejects.toMatchObject({

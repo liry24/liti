@@ -2,6 +2,57 @@
     "vitehubCommit": "24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
     "fixes": [
         {
+            "id": "nuxt-dev-sourcemap-memory",
+            "kind": "public-hook-workaround",
+            "packages": ["vite-hub@0.0.4", "nuxt@4.6.2", "nitropack@2.13.5"],
+            "symptom": "The Liti-free Console/Agent-enabled Nuxt dev server reaches the default Node V8 heap limit near 4 GiB while generating server sourcemaps. Tree-shaking alone does not resolve it. Production Node/workerd builds are unaffected.",
+            "environment": "Windows Node 24.22.1 and the pinned full-commit native distribution; normal Node heap settings.",
+            "reproduction": "Run the Liti-free fixture's node verify-node.mjs --dev without dev-runtime. Both the unchanged configuration and tree-shaking-only attempt fail with Ineffective mark-compacts near heap limit.",
+            "workaround": "test/fixtures/vitehub/workarounds/dev-runtime.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/dev-runtime.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
+            "scope": "Only in Nuxt dev, disable Nitro server sourcemap generation through public NitroConfig.sourceMap. Client maps, typechecking, runtime validation, error handling, storage and production builds are unchanged. Dev server stack traces lose server sourcemap mapping until this can be removed.",
+            "regressions": [
+                "test/vitehub.mjs",
+                "test/fixtures/vitehub/verify-node.mjs --dev",
+                "test/fixtures/integration/verify-dev.mjs"
+            ],
+            "verification": "The native-only server starts in about 21 seconds with the default heap and passes native Auth/Console/Content/Database/Agent/Schedule HTTP contracts. Packed Liti also passes model-definition HMR, authenticated writes and private SSR after reloading.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove the sourceMap assignment and run native-only plus packed Liti dev/HMR probes on Windows and Linux with default server sourcemaps and normal Node heap settings. Startup, authenticated writes, SSR and HMR must pass without exceeding the heap limit. Keep the generated-module inline fix until its independent regression also passes."
+        },
+        {
+            "id": "nuxt-dev-generated-database-externalized",
+            "kind": "public-hook-workaround",
+            "packages": ["@vite-hub/database@0.0.4", "nuxt@4.6.2", "nitropack@2.13.5"],
+            "symptom": "Nuxt dev externalizes the generated .nuxt/vitehub/database/local-runtime.mjs. Node then imports the application's untransformed TypeScript Database Definition and fails resolving its extensionless auth-schema import; the homepage and Auth return 500.",
+            "reproduction": "After resolving the sourcemap memory failure, start the native-only dev consumer without the generated-module inline matcher. Observe Cannot find module server/database/auth-schema imported from server/databases/config.ts.",
+            "workaround": "test/fixtures/vitehub/workarounds/dev-runtime.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/dev-runtime.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
+            "scope": "A public Nitro externals.inline matcher only includes ViteHub's generated directory under Nuxt's actual buildDir, with normalized Windows separators. It retains the selected native Database, schema and driver. Liti's own generated directory is independently registered for normal bundling by liti/nuxt.",
+            "regressions": ["test/fixtures/vitehub/verify-node.mjs --dev", "test/fixtures/integration/verify-dev.mjs"],
+            "verification": "With the matcher, the native-only dev consumer passes durable Auth signup/session, native SQL constraints and the remaining HTTP contracts. No .ts extension changes or runtime loaders were added to application definitions.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove the inline matcher and pass the native-only and packed Nuxt dev probes using unmodified ordinary application imports. Auth and SQL must execute the transformed native generated module without raw-Node module-resolution failures. Remove the file and registration when its separate sourcemap assignment is also obsolete."
+        },
+        {
+            "id": "nuxt-schedule-registry-resolver",
+            "kind": "bun-patch",
+            "packages": [
+                "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "The provided Nuxt bridge emits a Schedule dev handler importing #vitehub/schedule/registry but does not forward Schedule's existing Vite resolver/load hooks to Nitro 2. Dev output retains an unresolved bare import.",
+            "reproduction": "Without the Schedule resolver hunk, native-only Nuxt dev logs Could not resolve import #vitehub/schedule/registry and leaves the unresolved import in .nuxt/dev/index.mjs.",
+            "patch": "patches/vitehub-nuxt-24ddab7.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/vitehub-nuxt-24ddab7.patch",
+            "scope": "Add the installed Schedule Vite plugin to the existing resolver/replay allowlist. The native registry renderer, Schedule authorization and runtime are reused unchanged. This does not claim support for the separately documented Nuxt Schedule CLI dev transport.",
+            "regressions": ["test/fixtures/vitehub/verify-node.mjs --dev", "test/vitehub.mjs"],
+            "verification": "Native-only dev compiles the existing registry without unresolved-import warnings and passes the native scheduled-snapshot/duplicate-execution contracts.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove this hunk from both patch copies, install an upstream-fixed Nuxt bridge, and pass the same dev generated-output assertion and native Schedule runtime contracts. Remove the shared patch entry only after its independent Env and Console-error hunks are also obsolete."
+        },
+        {
             "id": "console-action-error-marker",
             "kind": "bun-patch",
             "packages": [
@@ -49,10 +100,15 @@
             "workaround": "test/fixtures/vitehub/workarounds/generated-paths.ts",
             "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/generated-paths.ts",
             "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
+            "standaloneWorkaround": "packages/model/src/internal/vitehub-workarounds/generated-paths.ts",
+            "standaloneRegistration": "packages/model/src/vite/index.ts",
+            "standaloneEnvironment": "Vite 8.3.5 / Nitro 3.0.260903-beta without Nuxt on Windows. The same distributed Content handler path contains raw Windows backslashes and fails in #nitro/virtual/routing.",
+            "standaloneVerification": "Unmodified distribution fails resolving C:Users...content<carriage-return>oute.mjs. A public Nitro module captures the host and public Vite build/dev hooks normalize options and resync native routing after async config completion. The packed Nuxt-free consumer builds and verifies native SQL uniqueness/FKs and Content authorization/save/publish/history in production and dev, including server-route HMR. Model's normal server-environment noExternal registration keeps native virtual Database configuration visible inside packaged server modules. Strict checking reports 151 existing native diagnostics and no added Model diagnostics; source/SDK errors fail the check.",
             "registration": "test/fixtures/vitehub/nuxt.config.ts",
             "regressions": [
                 "test/upstream-regressions/vitehub-generated-paths.test.mjs",
-                "test/fixtures/vitehub/verify-node.mjs"
+                "test/fixtures/vitehub/verify-node.mjs",
+                "test/model-vite.mjs"
             ],
             "upstream": {
                 "status": "not-reported",

@@ -1,51 +1,5 @@
 {
     "extends": "../tsconfig.json",
-    "compilerOptions": {
-        "paths": {
-            "@litijs/sqlite/storage": ["../packages/sqlite/src/connection.ts"],
-            "@litijs/sqlite/schema": ["../packages/sqlite/src/schema.ts"],
-            "@litijs/sqlite/tooling": ["../packages/sqlite/src/schema-source.ts"],
-            "@litijs/void/database": ["../packages/void/src/database.ts"],
-            "@litijs/void/schema": ["../packages/void/src/schema.ts"],
-            "@litijs/void/tooling": ["../packages/void/src/tooling.ts"],
-            "liti": ["../packages/liti/src/index.ts"],
-            "liti/internal/*": ["../packages/liti/src/*"],
-            "liti/internal/runtime/*": ["../packages/nuxt/src/runtime/*"],
-            "liti/internal/nuxt/*": ["../packages/nuxt/src/nuxt/*"],
-            "liti/nuxt": ["../packages/nuxt/src/index.ts"],
-            "liti/vue": ["../packages/vue/src/index.ts"],
-            "liti/*": ["../packages/liti/src/*"],
-            "liti/server": ["../packages/liti/src/server/index.ts"],
-            "#app": ["../node_modules/nuxt/dist/app/index.d.ts"],
-            "#app/*": ["../node_modules/nuxt/dist/app/*"],
-            "@litijs/void": ["../packages/void/src/index.ts"],
-            "@litijs/void/session": ["../packages/void/src/session.ts"],
-            "@litijs/void/context": ["../packages/void/src/context.ts"],
-            "@litijs/sqlite": ["../packages/sqlite/src/index.ts"],
-            "@litijs/sqlite/native": ["../packages/sqlite/src/native.ts"],
-            "@litijs/drizzle": ["../packages/drizzle/src/index.ts"],
-            "@litijs/drizzle/schema": ["../packages/drizzle/src/schema.ts"],
-            "@litijs/drizzle/tooling": ["../packages/drizzle/src/tooling.ts"],
-            "@litijs/drizzle/runtime": ["../packages/drizzle/src/runtime.ts"],
-            "liti/nuxt/server": ["../packages/nuxt/src/server-api.ts"],
-            "@litijs/ai": ["../packages/ai/src/index.ts"],
-            "@litijs/ai/ai-sdk": ["../packages/ai/src/ai-sdk.ts"],
-            "@litijs/ai/void": ["../packages/ai/src/void.ts"],
-            "@litijs/blog": ["../packages/blog/src/index.ts"],
-            "@litijs/blog/vue": ["../packages/blog/src/vue.ts"],
-            "liti/client": ["../packages/liti/src/public-client.ts"],
-            "@litijs/test-utils": ["../packages/test-utils/src/index.ts"],
-            "@litijs/test-utils/vitest": ["../packages/test-utils/src/vitest.ts"]
-        }
-    },
-    "exclude": [
-        "fixtures/vitehub/**",
-        "fixtures/model/**",
-        "fixtures/integration/**",
-        "**/.data/**",
-        "**/.nuxt/**",
-        "**/.output/**",
-        "**/node_modules/**"
-    ],
-    "include": ["**/*.ts", "../vite.config.ts"]
+    "exclude": ["fixtures/**", "**/node_modules/**"],
+    "include": ["*.ts", "../vite.config.ts", "../scripts/*.ts"]
 }

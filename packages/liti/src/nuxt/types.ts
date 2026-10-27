@@ -1,6 +1,4 @@
-import type { Model, ModelInput, ModelPublicData } from '@litijs/model'
-import type { ContentEntry, DraftEntry } from '@litijs/model/content'
-import type { RecordEntry } from '@litijs/model/records'
+import type { Model, ModelInput, ModelPublicData, ContentEntry, DraftEntry, RecordEntry } from '@litijs/model'
 
 /** Nuxt augments this interface from server/models without a client-side server import. */
 export interface LitiModels {}

@@ -2,6 +2,14 @@ diff --git a/dist/nuxt.js b/dist/nuxt.js
 index 97e9ef4585a7b767a34452ff2a900288e9ec8f63..9c3e166110d71eda17f668eb68f1915aa9b7e5c9 100644
 --- a/dist/nuxt.js
 +++ b/dist/nuxt.js
+@@ -98,6 +98,7 @@
+ const nitroRuntimeResolverNames = /* @__PURE__ */ new Set([
+ 	"@vite-hub/auth/vite",
+ 	"@vite-hub/blob/vite",
++	"@vite-hub/schedule/vite",
+ 	"@vite-hub/email/vite",
+ 	"@vite-hub/kv/vite",
+ 	"@vite-hub/markdown-template/vite"
 @@ -143,6 +143,8 @@ function nitroRuntimeResolver(plugin) {
  }
  function installNitroRuntimeResolvers(config, plugins) {

@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it } from 'vite-plus/test'
 import { reconcile, snapshot } from '../packages/liti/src/runtime/composables/reconcile'
 
 it('retains in-flight nested edits and deletion while accepting unrelated canonical values', () => {

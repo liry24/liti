@@ -2,16 +2,19 @@ import assert from 'node:assert/strict'
 import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
 
 const workspace = fileURLToPath(new URL('../', import.meta.url))
 export const publicPackages = (
     await Promise.all(
         (await readdir(join(workspace, 'packages'))).map(async (directory) => {
+            if (!existsSync(join(workspace, 'packages', directory, 'package.json'))) return []
             const manifest = JSON.parse(await readFile(join(workspace, 'packages', directory, 'package.json'), 'utf8'))
             return manifest.private ? [] : [directory]
         }),
     )
 ).flat()
+assert.deepEqual([...publicPackages].sort(), ['blog', 'liti', 'model'])
 
 /** All consumers install the same public archives, including uppt's exact release artifacts. */
 export const consumerPackages = async (directory, run) => {
@@ -48,7 +51,7 @@ export const archiveDependencies = (packages, names) =>
     Object.fromEntries(names.map((name) => [name, 'file:' + packages[name].replaceAll('\\', '/')]))
 
 // Registry versions do not exist before the first release; all first-party edges must use the candidate archives.
-export const archiveOverrides = (packages, manager, names = ['liti', '@litijs/sqlite']) => {
+export const archiveOverrides = (packages, manager, names = ['@litijs/model']) => {
     const dependency = archiveDependencies(packages, names)
     return manager === 'pnpm'
         ? { pnpm: { overrides: dependency } }

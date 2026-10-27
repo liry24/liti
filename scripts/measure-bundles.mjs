@@ -1,7 +1,7 @@
 // Adapted from liria24/insight-ts/packages/insight-ts/scripts/measure-bundles.ts (MIT).
 // Copyright (c) 2026 Liria. Permission and warranty terms are in LICENSE.
 /* eslint-disable no-await-in-loop -- entries are measured sequentially to bound peak memory */
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -19,6 +19,11 @@ if (cliArguments[0] === '--compare') {
     for (const entry of await readdir(join(workspace, 'packages'), { withFileTypes: true })) {
         if (!entry.isDirectory()) continue
         const packageRoot = join(workspace, 'packages', entry.name)
+        try {
+            await access(join(packageRoot, 'package.json'))
+        } catch {
+            continue
+        }
         const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
         if (!manifest.private) results.push(...(await measure(packageRoot, manifest)))
     }

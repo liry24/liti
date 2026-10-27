@@ -29,7 +29,7 @@ export default defineConfig({
         unbundle: true,
         platform: 'neutral',
         dts: { tsconfig: './tsconfig.pack.json' },
-        deps: { neverBundle: [/^#app(?:\/|$)/u, '#liti/runtime'], dts: { neverBundle: true } },
+        deps: { neverBundle: [/^node:/u, /^#app(?:\/|$)/u, '#liti/runtime'], dts: { neverBundle: true } },
         exports: false,
         plugins: [
             {

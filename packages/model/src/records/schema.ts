@@ -35,7 +35,9 @@ const baseTable = (
             ),
     )
 export type RecordTable = ReturnType<typeof baseTable>
-export type RecordTables = Record<string, RecordTable>
+export type RecordTables<Models extends readonly RecordModel[] = readonly RecordModel[]> = {
+    [Name in Models[number]['name']]: RecordTable
+}
 
 function sqlKind(input: unknown): string | undefined {
     if (!input || typeof input !== 'object') return
@@ -52,7 +54,7 @@ function sqlKind(input: unknown): string | undefined {
 }
 
 /** Native Drizzle tables are contributed to ViteHub Database; no driver or migration executor lives here. */
-export function recordSchema(models: readonly RecordModel[]): RecordTables {
+export function recordSchema<const Models extends readonly RecordModel[]>(models: Models): RecordTables<Models> {
     const tables: RecordTables = {}
     const names = new Set<string>()
     for (const model of models) {
@@ -94,5 +96,5 @@ export function recordSchema(models: readonly RecordModel[]): RecordTables {
             )
         tables[model.name] = baseTable(`liti_${model.name}`, columns, model.unique ?? [])
     }
-    return tables
+    return tables as RecordTables<Models>
 }

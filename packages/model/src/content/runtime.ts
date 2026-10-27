@@ -13,40 +13,26 @@ import { authorize } from '../authorization/index'
 import { assertIdentity, ModelError } from '../definition/errors'
 import { normalizeModelUrl } from '../definition/url'
 import { assertJson, referenceValues, validateData, queryFilter } from '../definition/validation'
-import type { Actor, ContentModel, ModelAction, ModelSaveInput } from '../definition/model'
+import type { Actor, ContentModel, ModelAction } from '../definition/model'
 import { documentId, modelLocale, resolveTranslation, splitDocumentId } from '../i18n/index'
 
-export interface ModelOperation {
-    actor: Actor
-    signal?: AbortSignal
-}
-export type SaveInput = ModelSaveInput
-export interface PublicationInfo {
-    firstPublishedAt: string | null
-    updatedAt: string | null
-}
-export interface ContentEntry {
-    id: string
-    model: string
-    locale: string
-    translated: boolean
-    data: Record<string, unknown>
-    body: string
-    order: number
-    url: string | null
-    publication: PublicationInfo | null
-}
-export interface DraftEntry {
-    id: string
-    model: string
-    locale: string
-    data: Record<string, unknown>
-    body?: string
-    order: number
-    digest: string
-    revision: string
-    updatedAt: string | null
-}
+import type {
+    ModelOperation,
+    SaveInput,
+    PublicationInfo,
+    ContentEntry,
+    DraftEntry,
+    PublishSelection,
+} from '../definition/entries'
+export type {
+    ModelOperation,
+    SaveInput,
+    PublicationInfo,
+    ContentEntry,
+    DraftEntry,
+    PublishSelection,
+} from '../definition/entries'
+
 export interface ContentBindingOptions {
     content: ContentDocumentsRuntime
     workspace: string
@@ -58,12 +44,6 @@ interface WriteScope {
     paths: Set<string>
     actor: Actor
     signal?: AbortSignal
-}
-export interface PublishSelection {
-    model: string
-    id: string
-    locales?: readonly string[]
-    digests: Record<string, string | null>
 }
 interface SnapshotJob {
     id: string

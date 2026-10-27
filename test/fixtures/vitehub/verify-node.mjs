@@ -8,6 +8,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(fileURLToPath(import.meta.url))
+const dev = process.argv.includes('--dev')
 const commit = '24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9'
 const manifest = JSON.parse(await readFile(resolve(root, 'node_modules/vite-hub/package.json'), 'utf8'))
 for (const name of ['./content', './content/presets/cms', './nuxt', './workspace/blob-database']) {
@@ -25,11 +26,29 @@ await once(portProbe, 'listening')
 const { port } = portProbe.address()
 await new Promise((done, reject) => portProbe.close((error) => (error ? reject(error) : done())))
 const token = crypto.randomUUID()
-const child = spawn(process.execPath, ['.output/server/index.mjs'], {
-    cwd: root,
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), LITI_PROBE_TOKEN: token },
-    stdio: ['ignore', 'pipe', 'pipe'],
-})
+const child = spawn(
+    process.execPath,
+    dev
+        ? [
+              'node_modules/nuxt/bin/nuxt.mjs',
+              'dev',
+              '--no-fork',
+              '--no-tui',
+              '--no-takeover',
+              '--strictPort',
+              '--host',
+              '127.0.0.1',
+              '--port',
+              String(port),
+          ]
+        : ['.output/server/index.mjs'],
+    {
+        cwd: root,
+        env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), LITI_PROBE_TOKEN: token },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+    },
+)
 let logs = ''
 child.stdout.on('data', (data) => {
     logs += data
@@ -40,19 +59,27 @@ child.stderr.on('data', (data) => {
 const origin = `http://127.0.0.1:${port}`
 try {
     let ready = false
-    for (let attempt = 0; attempt < 100; attempt++) {
+    let lastPage = ''
+    for (let attempt = 0; attempt < (dev ? 240 : 100); attempt++) {
         if (child.exitCode !== null) throw new Error(`Built consumer exited: ${logs}`)
         try {
             const page = await fetch(origin, { signal: AbortSignal.timeout(1_000) })
-            if (page.ok && (await page.text()).includes('ViteHub distribution probe')) {
+            lastPage = `${page.status}: ${(await page.text()).slice(0, 4000)}`
+            if (page.ok && lastPage.includes('ViteHub distribution probe')) {
                 ready = true
                 break
             }
         } catch {}
         await new Promise((done) => setTimeout(done, 100))
     }
-    assert.ok(ready, `Built consumer did not become ready: ${logs}`)
+    assert.ok(ready, `Consumer did not become ready: ${lastPage}\n${logs}`)
     await verifyHttp(origin, token, () => logs)
+    if (dev) {
+        const output = await readFile(resolve(root, '.nuxt/dev/index.mjs'), 'utf8')
+        assert.doesNotMatch(output, /from ["']#vitehub\/schedule\/registry["']/u)
+        assert.doesNotMatch(logs, /Could not resolve import "#vitehub\/schedule\/registry"/u)
+        console.log('PASS native Nuxt dev resolves the generated Schedule registry')
+    }
 } finally {
     if (child.exitCode === null && child.signalCode === null) {
         const exited = once(child, 'exit')

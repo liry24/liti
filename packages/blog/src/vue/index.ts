@@ -12,7 +12,7 @@ import {
 import { createEditorialReview, type EditorialProposal, type EditorialSource } from '../editorial/review'
 import type { ProofreadingOptions } from '../editorial/markdown'
 import { articleDates } from '../model/publication'
-import type { ContentEntry } from '@litijs/model/content'
+import type { ContentEntry } from '@litijs/model'
 
 export function useArticleReview(
     options: ProofreadingOptions & {

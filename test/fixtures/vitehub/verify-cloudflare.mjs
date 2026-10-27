@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { verifyHttp } from './verify-http.mjs'
+import * as checks from './verify-http.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const serverRoot = resolve(root, '.output/server')
@@ -41,6 +41,11 @@ await once(portProbe, 'listening')
 const { port } = portProbe.address()
 await new Promise((done, reject) => portProbe.close((error) => (error ? reject(error) : done())))
 const origin = `http://127.0.0.1:${port}`
+const inspectorProbe = createServer()
+inspectorProbe.listen(0, '127.0.0.1')
+await once(inspectorProbe, 'listening')
+const inspectorPort = inspectorProbe.address().port
+await new Promise((done, reject) => inspectorProbe.close((error) => (error ? reject(error) : done())))
 let child
 let logs = ''
 const start = async () => {
@@ -59,6 +64,8 @@ const start = async () => {
             '127.0.0.1',
             '--port',
             String(port),
+            '--inspector-port',
+            String(inspectorPort),
         ],
         { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
     )
@@ -88,7 +95,7 @@ const stop = async () => {
 }
 try {
     await start()
-    const { editor, documentId } = await verifyHttp(origin, token, () => logs)
+    const { editor, documentId } = await checks.verifyHttp(origin, token, () => logs)
     const snapshot = async (input) => {
         const response = await fetch(`${origin}/api/__snapshot`, {
             method: 'POST',
@@ -125,6 +132,18 @@ try {
     assert.equal((await snapshot({ id: queued.id })).head.id, after.head.id)
     console.log('PASS workerd restart retains D1 authentication and R2-backed publication')
     console.log('PASS restarted Worker Cron publishes a durable snapshot once and retains newer draft edits')
+    const verifyPerformance = Reflect.get(checks, 'verifyPerformance')
+    if (typeof verifyPerformance === 'function')
+        await verifyPerformance({
+            origin,
+            token,
+            inspectorPort,
+            restart: async () => {
+                await stop()
+                await start()
+            },
+            logs: () => logs,
+        })
 } finally {
     await stop()
 }
