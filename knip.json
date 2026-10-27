@@ -68,6 +68,10 @@
         "packages/test-utils": {
             "entry": ["src/{index,vitest}.ts!"],
             "project": ["src/**/*.ts!"]
+        },
+        "test/fixtures/vitehub": {
+            "entry": ["server/auth.ts!", "server/console-authorize.ts!", "workarounds/*.ts!", "verify-node.mjs!"],
+            "ignoreDependencies": ["@iconify-json/lucide", "@iconify-json/ph", "nuxt", "wrangler", "vue-tsc"]
         }
     }
 }

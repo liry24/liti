@@ -1,0 +1,114 @@
+{
+    "vitehubCommit": "24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+    "fixes": [
+        {
+            "id": "generated-nitro-paths",
+            "kind": "public-hook-workaround",
+            "packages": [
+                "vite-hub@0.0.4",
+                "@vite-hub/workspace@0.0.4",
+                "@vite-hub/database@0.0.4",
+                "@vite-hub/content@0.0.4"
+            ],
+            "symptom": "Nuxt build succeeds with unresolved generated handlers, but the built Node server exits with ERR_MODULE_NOT_FOUND. Workspace plugin is registered relative to server/; Windows handler paths contain backslashes that are interpreted as JavaScript escapes.",
+            "environment": "Windows; Node 24.22.1; Bun 1.4.4; Nuxt 4.6.2 / Nitro 2.13.5; Vite 8.3.5; selected full-commit preview",
+            "reproduction": "Remove generatedPaths from fixture modules, run bun run build, then node .output/server/index.mjs. Observed unmodified failure before adding the workaround.",
+            "workaround": "test/fixtures/vitehub/workarounds/generated-paths.ts",
+            "registration": "test/fixtures/vitehub/nuxt.config.ts",
+            "regressions": [
+                "test/upstream-regressions/vitehub-generated-paths.test.mjs",
+                "test/fixtures/vitehub/verify-node.mjs"
+            ],
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "On Windows and Linux, remove the module registration/file and verify clean install, prepare, build and the built Node/Worker probes without unresolved generated imports. Retain the runtime regression. The module is fixture-local until phase 1 passes; no application patch has been applied."
+        },
+        {
+            "id": "nitro-import-meta-initialization",
+            "kind": "bun-patch",
+            "packages": ["nitropack@2.13.5"],
+            "symptom": "Workspace require shim evaluates in a non-entry chunk before Node entry initialization. Nitro supplies file:///_entry.js, which createRequire rejects on Windows.",
+            "reproduction": "After normalizing generated paths, build the unpatched Node fixture and run verify-node.mjs: ERR_INVALID_ARG_VALUE for file:///_entry.js.",
+            "patch": "patches/nitropack@2.13.5.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/nitropack@2.13.5.patch",
+            "regressions": ["test/fixtures/vitehub/verify-node.mjs"],
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "Remove both root/consumer patchedDependencies and both patch copies, reinstall, then build and run the Node probe on Windows/Linux. Non-entry import.meta must initialize with a valid actual module URL. Keep the runtime probe."
+        },
+        {
+            "id": "console-libsql-native-trace",
+            "kind": "public-hook-workaround",
+            "packages": ["vite-hub@0.0.4", "nitropack@2.13.5"],
+            "symptom": "Enabling Console traces libSQL JS and package metadata but omits win32-x64-msvc/index.node; the production server exits with MODULE_NOT_FOUND.",
+            "reproduction": "Enable fixture Console without libsqlNative, build, then run verify-node.mjs.",
+            "workaround": "test/fixtures/vitehub/workarounds/libsql-native.ts",
+            "registration": "test/fixtures/vitehub/nuxt.config.ts",
+            "regressions": ["test/fixtures/vitehub/verify-node.mjs"],
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "Remove the registration/file and verify the installed Windows x64 native binding is included automatically and the built Console consumer starts. Other platforms are not covered by this workaround."
+        },
+        {
+            "id": "optional-agent-peer-imports",
+            "kind": "bun-patch",
+            "packages": [
+                "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "Nuxt Cloudflare Console build tries to resolve unused optional advocaat / Discord / Teams peers. The first failure is Cannot resolve advocaat and externals are not allowed.",
+            "reproduction": "bun run test:vitehub:cloudflare without this patch fails resolving advocaat.",
+            "patch": "patches/vitehub-agent-24ddab7.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/vitehub-agent-24ddab7.patch",
+            "regressions": ["test/vitehub.mjs --cloudflare"],
+            "verification": "The same Worker build advances beyond optional peers but still fails at the separately recorded Nitro 3 / H3 integration blocker. Worker acceptance is not claimed.",
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "Remove consumer patchedDependencies and both patch copies, reinstall the selected fixed distribution, then pass Cloudflare build and workerd Auth/Content/Console/mock-Agent tests with those optional peers absent. Retain the regression. App patch propagation is pending the package gate."
+        }
+    ],
+    "blockers": [
+        {
+            "id": "console-nitro3-runtime-in-nitro2",
+            "kind": "integration-bug",
+            "packages": ["vite-hub@0.0.4", "nitro@3.0.260903-beta", "nuxt@4.6.2", "nitropack@2.13.5"],
+            "symptom": "Cloudflare compilation resolves h3/rules imported by nitro/dist/runtime/internal/app.mjs through the Nuxt H3 1 alias, producing h3/dist/index.mjs/rules, which does not exist. Externals are forbidden in the Worker build.",
+            "reproduction": "bun run test:vitehub:cloudflare with the pinned fixture and both Bun patches",
+            "workaround": null,
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "acceptance": "The same installed-distribution fixture must build and boot under workerd with Console enabled; native D1/R2 and durable Auth POST/session must pass. Do not alias missing APIs to empty modules or claim Node success as Worker acceptance."
+        }
+    ],
+    "artifacts": [
+        {
+            "name": "vite-hub",
+            "url": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+            "sha256": "398ca534a96734835a95e0341efeff5e3be1e6a565e90cd1f3a49a999f4870f9"
+        },
+        {
+            "name": "@vite-hub/content",
+            "url": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+            "sha256": "775ddc6514e5fed9730fcf4cb05c88cf5ce03562e9f8d14083a58c752dd1ce8d"
+        }
+    ]
+}

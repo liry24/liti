@@ -1,0 +1,38 @@
+diff --git a/dist/agent-driver-ghtKCAbH.js b/dist/agent-driver-ghtKCAbH.js
+index 3999ee88c6a7e1a64cf95fca86a8f5e23dce0341..7990c8a49fb2ce3766c57e1068f4d8eab64a34cc 100644
+--- a/dist/agent-driver-ghtKCAbH.js
++++ b/dist/agent-driver-ghtKCAbH.js
+@@ -26,7 +26,8 @@ const typesafeEnvGroup = "typesafe";
+ const typesafeEnvHint = "Declare it in the Vite config with `env: { server: { typesafe: typesafeEnv() } }` from `vite-hub/env`.";
+ async function loadAdvocaat() {
+ 	try {
+-		return await import("advocaat");
++		const packageName = "advocaat";
++		return await import(/* @vite-ignore */ packageName);
+ 	} catch (error) {
+ 		throw agentDiagnostics.AGENT_R0934({
+ 			message: "[vitehub] TypeSafe Jev requests require the advocaat package. Install it with: pnpm add advocaat",
+diff --git a/dist/channels-DEUwO86n.js b/dist/channels-DEUwO86n.js
+index 952003d6d2155af25ede0f6d8eb4dcaa356cd3d9..d0e3fe6ee36203d6f5ede38abde86e714d2a92e8 100644
+--- a/dist/channels-DEUwO86n.js
++++ b/dist/channels-DEUwO86n.js
+@@ -4532,7 +4532,8 @@ function discordAdapterResolver(input) {
+ 	return async (context) => {
+ 		let createDiscordAdapter;
+ 		try {
+-			({createDiscordAdapter} = await import("@chat-adapter/discord"));
++			const packageName = "@chat-adapter/discord";
++			({createDiscordAdapter} = await import(/* @vite-ignore */ packageName));
+ 		} catch (error) {
+ 			throw agentDiagnostics.AGENT_R0365({
+ 				message: "[vitehub] discord({ adapter: true }) requires @chat-adapter/discord to be installed.",
+@@ -4561,7 +4562,8 @@ function isTeamsAdapterOptions(input) {
+ async function createTeamsAdapterFromEnv(options, context) {
+ 	let createTeamsAdapter;
+ 	try {
+-		({createTeamsAdapter} = await import("@chat-adapter/teams"));
++		const packageName = "@chat-adapter/teams";
++		({createTeamsAdapter} = await import(/* @vite-ignore */ packageName));
+ 	} catch (error) {
+ 		throw agentDiagnostics.AGENT_R0365({
+ 			message: "[vitehub] teams() requires @chat-adapter/teams to be installed.",

@@ -265,6 +265,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
+  },
   "overrides": {
     "auth": "1.7.12",
     "better-auth": "1.7.12",
