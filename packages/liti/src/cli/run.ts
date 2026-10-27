@@ -185,6 +185,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
     if (options['dry-run'])
         return ['Dry run: no files, dependencies, configuration evaluation or database changes.', ...plan]
     const changed: string[] = []
+    let installationStarted = false
     try {
         for (const file of changes) {
             if ((await read(file.path)) !== file.before) throw new Error(`File changed after planning: ${file.path}`)
@@ -192,8 +193,13 @@ export async function runCommand(commands: string[], options: Options, manifest:
             await writeFile(file.path, file.source)
             changed.push(file.path)
         }
-        if (packages.length) await addDependency(packages, { cwd, packageManager: manager })
-        else if (command === 'init') await installDependencies({ cwd, packageManager: manager })
+        if (packages.length) {
+            installationStarted = true
+            await addDependency(packages, { cwd, packageManager: manager })
+        } else if (command === 'init') {
+            installationStarted = true
+            await installDependencies({ cwd, packageManager: manager })
+        }
         if (command === 'upgrade') {
             const require = createRequire(projectFile),
                 installed = JSON.parse(await readFile(require.resolve('liti/package.json'), 'utf8')) as Manifest
@@ -226,7 +232,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
         }
     } catch (error) {
         throw new Error(
-            `Command incomplete. Written files: ${changed.join(', ') || 'none'}. ${error instanceof Error ? error.message : String(error)}`,
+            `Command incomplete. Written files: ${changed.join(', ') || 'none'}. ${installationStarted ? 'Dependency installation started; package.json, the lockfile and node_modules may have changed. ' : ''}${error instanceof Error ? error.message : String(error)}`,
             { cause: error },
         )
     }

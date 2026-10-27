@@ -1,9 +1,15 @@
-import { expect, it } from 'vite-plus/test'
+import { expect, it, vi } from 'vite-plus/test'
+import * as nypm from 'nypm'
 import { mkdtemp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { editModules } from '../packages/liti/src/cli/config'
 import { runCommand } from '../packages/liti/src/cli/run'
+
+vi.mock('nypm', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('nypm')>()
+    return { ...actual, addDependency: vi.fn(actual.addDependency) }
+})
 
 const manifest = {
     version: '0.0.3',
@@ -29,6 +35,19 @@ async function project() {
     await writeFile(resolve(patch, 'native.patch'), 'native patch\n')
     return { cwd, patchDirectory: pathToFileURL(patch + '/') }
 }
+it('reports dependency installation changes when the package manager fails after scaffolding', async () => {
+    const { cwd, patchDirectory } = await project()
+    const install = vi.mocked(nypm.addDependency).mockRejectedValueOnce(new Error('Synthetic install failure'))
+    try {
+        await expect(runCommand(['init'], { cwd }, manifest, patchDirectory)).rejects.toThrow(
+            'Dependency installation started; package.json, the lockfile and node_modules may have changed.',
+        )
+        expect(await readFile(resolve(cwd, 'server/content.ts'), 'utf8')).toContain('extends:cms')
+        expect(install).toHaveBeenCalledOnce()
+    } finally {
+        install.mockClear()
+    }
+})
 it('edits literal Nuxt modules idempotently while preserving comments/settings and refuses dynamic configuration', () => {
     const original =
         "// Preserve\nexport default defineNuxtConfig({modules: [['existing', {enabled:true}]], app:{head:{title:'Keep'}}})"
