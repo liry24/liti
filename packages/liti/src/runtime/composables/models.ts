@@ -18,7 +18,10 @@ export function useLitiModels() {
             headers: { origin },
             signal,
             onResponse: ({ response }) =>
-                session.rememberActor(response.headers.get('x-liti-actor') ?? '', requestedScope),
+                session.rememberActor(
+                    response.headers.get('x-liti-actor') ?? (response.status === 401 ? '' : null),
+                    requestedScope,
+                ),
         })
     })
     watch(

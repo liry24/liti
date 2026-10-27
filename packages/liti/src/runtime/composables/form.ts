@@ -48,11 +48,19 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
         const requestedScope = session.scope.value
         const response = await request<Record<string, unknown> | unknown[] | null>(`${base}/manage`, {
             method: 'POST',
-            body: { model, id: id.value, ...(selectedLocale.value ? { locale: selectedLocale.value } : {}), ...body },
+            body: {
+                model,
+                id: id.value,
+                ...(selectedLocale.value ? { locale: selectedLocale.value } : {}),
+                ...body,
+            },
             headers: { origin },
             ...(signal ? { signal } : {}),
             onResponse: ({ response: result }) =>
-                session.rememberActor(result.headers.get('x-liti-actor') ?? '', requestedScope),
+                session.rememberActor(
+                    result.headers.get('x-liti-actor') ?? (result.status === 401 ? '' : null),
+                    requestedScope,
+                ),
         })
         return response as Value
     }
@@ -79,7 +87,7 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
     let submissionFailure: { cause: unknown } | undefined
     const form = useForm({
         defaultValues: defaults(),
-        onSubmit: async ({ value, createValidationError }) => {
+        onSubmit: async ({ value }) => {
             const submittedIdentity = identity.value
             try {
                 const submitted = clone(value)
@@ -133,6 +141,7 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
                     data: reconcile(submitted.data, edited.data, canonical.data),
                     ...(body === undefined ? {} : { body }),
                 })
+                values.value = form.state.values
                 try {
                     await options.onSuccess?.(committed, { hasUnsavedChanges: hasUnsavedChanges.value })
                 } catch (cause) {
@@ -140,7 +149,10 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
                         error.value = cause
                         warnings.value = [
                             ...warnings.value,
-                            { code: 'LITI_POST_COMMIT', message: 'The save committed; the success callback failed.' },
+                            {
+                                code: 'LITI_POST_COMMIT',
+                                message: 'The save committed; the success callback failed.',
+                            },
                         ]
                     }
                 }
@@ -151,7 +163,10 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
                         error.value = cause
                         warnings.value = [
                             ...warnings.value,
-                            { code: 'LITI_POST_COMMIT', message: 'The save committed; refreshing public data failed.' },
+                            {
+                                code: 'LITI_POST_COMMIT',
+                                message: 'The save committed; refreshing public data failed.',
+                            },
                         ]
                     }
                 }
@@ -168,7 +183,7 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
                             },
                         ]
                 }
-                if (!lastReceipt) return createValidationError('The entry was not saved.')
+                if (!lastReceipt) throw cause
             }
         },
     })
@@ -254,7 +269,10 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
         if (descriptor.value?.storage !== 'content')
             throw new Error('Records are immediately visible and do not publish.')
         const reviewed = digests ?? { [locale.value]: receipt.value.digest ?? null }
-        const result = await requestBody<{ revision: string; postCommitErrors?: WriteReceipt['postCommitErrors'] }>({
+        const result = await requestBody<{
+            revision: string
+            postCommitErrors?: WriteReceipt['postCommitErrors']
+        }>({
             action: at ? 'schedule' : 'publish',
             digests: reviewed,
             ...(at ? { at: at.toISOString() } : {}),
@@ -265,7 +283,10 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
             error.value = cause
             warnings.value = [
                 ...warnings.value,
-                { code: 'LITI_POST_COMMIT', message: 'The operation committed; refreshing public data failed.' },
+                {
+                    code: 'LITI_POST_COMMIT',
+                    message: 'The operation committed; refreshing public data failed.',
+                },
             ]
         }
         return result

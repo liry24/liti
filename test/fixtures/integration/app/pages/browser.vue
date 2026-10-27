@@ -18,7 +18,11 @@ const canceledId = ref<string | null>(null),
     cancelController = new AbortController()
 const race = await useLitiQuery('posts', { mode: 'one', id: raceId, locale: 'ja' })
 const timed = await useLitiQuery('posts', { mode: 'one', id: slowId, timeout: 35 })
-const canceled = await useLitiQuery('posts', { mode: 'one', id: canceledId, signal: cancelController.signal })
+const canceled = await useLitiQuery('posts', {
+    mode: 'one',
+    id: canceledId,
+    signal: cancelController.signal,
+})
 const { form, values, receipt, save, hasUnsavedChanges } = resource
 const pause = (milliseconds: number) => new Promise((done) => setTimeout(done, milliseconds))
 const check = (value: unknown, message: string) => {
@@ -68,7 +72,12 @@ onMounted(async () => {
             data: { title: 'Browser initial', slug: id, tags: [] },
             body: 'Original browser body',
         })
-        await manage({ action: 'publish', model: 'posts', id, digests: { ja: initial.digest, en: null } })
+        await manage({
+            action: 'publish',
+            model: 'posts',
+            id,
+            digests: { ja: initial.digest, en: null },
+        })
         selected.value = id
         await until(
             () =>
@@ -86,7 +95,13 @@ onMounted(async () => {
         check(saved?.digest, 'The committed save receipt was lost')
         check(values.value.data.title === 'Keep later browser edit', 'An in-flight edit was overwritten')
         check(hasUnsavedChanges.value && callbacks.at(-1) === true, 'Success callback lost the unsaved-change snapshot')
-        const committed = await manage({ action: 'read', model: 'posts', id, locale: 'ja', revision: saved?.revision })
+        const committed = await manage({
+            action: 'read',
+            model: 'posts',
+            id,
+            locale: 'ja',
+            revision: saved?.revision,
+        })
         check(
             (committed.data as { title: string }).title === 'Submitted browser',
             'Read the committed immutable revision',
@@ -108,8 +123,16 @@ onMounted(async () => {
         )
         check(values.value.data.title === '' && hasUnsavedChanges.value, 'A failed save discarded the editable values')
         form.setFieldValue('data.title', 'Recovered browser')
+        saveRejected = false
+        try {
+            await save()
+        } catch {
+            saveRejected = true
+        }
+        check(saveRejected && receipt.value?.digest === reviewedDigest, 'A transient failure changed the receipt')
         const retry = await save()
-        check(retry?.digest && !resource.error.value, 'A corrected submission must save normally')
+        check(retry?.digest && !resource.error.value, 'Retrying unchanged valid values must save normally')
+        check(callbacks.at(-1) === false, 'A saved form without later edits must report no unsaved changes')
         form.setFieldValue('data.title', 'Keep later browser edit')
         await until(() => values.value.data.title === 'Keep later browser edit' && hasUnsavedChanges.value)
         checks.push('failed native form save rejects, keeps edits and the reviewed receipt, and retries successfully')
@@ -158,7 +181,11 @@ onMounted(async () => {
         await until(() => resource.status.value === 'success' && values.value.data.title === 'Recovered browser')
         check(!hasUnsavedChanges.value, 'Another actor inherited the prior actor draft')
         checks.push('authentication change clears the prior actor draft')
-        ;(window as unknown as { __litiProbe: object }).__litiProbe = { done: true, success: true, checks }
+        ;(window as unknown as { __litiProbe: object }).__litiProbe = {
+            done: true,
+            success: true,
+            checks,
+        }
     } catch (error) {
         ;(window as unknown as { __litiProbe: object }).__litiProbe = {
             done: true,
