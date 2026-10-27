@@ -100,9 +100,21 @@ jobs:
             - run: bun run test:packed
               env:
                   CHROMIUM_PATH: google-chrome
+    vitehub:
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with: { persist-credentials: false }
+            - uses: ./.github/actions/setup
+            - run: bun run test:vitehub
+            - run: bun run test:vitehub:cloudflare
     check:
         if: always()
-        needs: [codeql, build, nuxt, cloudflare, consumer]
+        needs: [codeql, build, nuxt, cloudflare, consumer, vitehub]
         runs-on: ubuntu-latest
         steps:
             - name: Require every blocking job

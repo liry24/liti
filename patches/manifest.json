@@ -72,7 +72,7 @@
             "patch": "patches/vitehub-agent-24ddab7.patch",
             "consumerPatch": "test/fixtures/vitehub/patches/vitehub-agent-24ddab7.patch",
             "regressions": ["test/vitehub.mjs --cloudflare"],
-            "verification": "The same Worker build advances beyond optional peers but still fails at the separately recorded Nitro 3 / H3 integration blocker. Worker acceptance is not claimed.",
+            "verification": "The built Console Worker boots under workerd without these unused optional peers; Auth, Content, Database constraints and offline mock Agents execute.",
             "upstream": {
                 "status": "not-reported",
                 "issue": null,
@@ -80,23 +80,82 @@
                 "fixedVersion": null
             },
             "removalCondition": "Remove consumer patchedDependencies and both patch copies, reinstall the selected fixed distribution, then pass Cloudflare build and workerd Auth/Content/Console/mock-Agent tests with those optional peers absent. Retain the regression. App patch propagation is pending the package gate."
-        }
-    ],
-    "blockers": [
+        },
         {
             "id": "console-nitro3-runtime-in-nitro2",
-            "kind": "integration-bug",
-            "packages": ["vite-hub@0.0.4", "nitro@3.0.260903-beta", "nuxt@4.6.2", "nitropack@2.13.5"],
-            "symptom": "Cloudflare compilation resolves h3/rules imported by nitro/dist/runtime/internal/app.mjs through the Nuxt H3 1 alias, producing h3/dist/index.mjs/rules, which does not exist. Externals are forbidden in the Worker build.",
-            "reproduction": "bun run test:vitehub:cloudflare with the pinned fixture and both Bun patches",
-            "workaround": null,
+            "kind": "public-hook-workaround",
+            "packages": ["@vite-hub/source@0.0.4", "nuxt@4.6.2", "nitropack@2.13.5"],
+            "symptom": "cachedSource imports nitro/cache (Nitro 3), pulling its H3 2 runtime through Nuxt Nitro 2/H3 1 aliases and failing at h3/rules.",
+            "reproduction": "Remove nitroCache registration and build the Cloudflare fixture: h3/dist/index.mjs/rules cannot resolve.",
+            "workaround": "test/fixtures/vitehub/workarounds/nitro-cache.ts",
+            "registration": "test/fixtures/vitehub/nuxt.config.ts",
+            "regressions": [
+                "test/fixtures/vitehub/server/utils/contracts.ts",
+                "test/fixtures/vitehub/verify-cloudflare.mjs"
+            ],
             "upstream": {
                 "status": "not-reported",
                 "issue": null,
                 "pullRequest": null,
                 "fixedVersion": null
             },
-            "acceptance": "The same installed-distribution fixture must build and boot under workerd with Console enabled; native D1/R2 and durable Auth POST/session must pass. Do not alias missing APIs to empty modules or claim Node success as Worker acceptance."
+            "removalCondition": "Remove registration/file and pass Node/Worker builds plus the real cachedSource key-isolation/runtime check. The alias targets the host's native Nitro cache implementation, never an empty module."
+        },
+        {
+            "id": "nuxt-server-env-transform",
+            "kind": "bun-patch",
+            "packages": [
+                "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "The Nuxt bridge forwards resolver hooks but omits the Env Vite transform. Wrangler then cannot resolve the computed #vitehub/env/server import in built server code.",
+            "reproduction": "With the cache workaround but without this patch, build the Cloudflare fixture and start verify-cloudflare.mjs: unresolved #vitehub/env/server.",
+            "patch": "patches/vitehub-nuxt-24ddab7.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/vitehub-nuxt-24ddab7.patch",
+            "regressions": ["test/fixtures/vitehub/verify-cloudflare.mjs"],
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove the consumer entry and both copies, reinstall the fixed distribution and boot the built Node/Console Worker without unresolved Env imports. The patch forwards only the installed Env plugin transform."
+        },
+        {
+            "id": "nitro-cloudflare-modern-node-compat",
+            "kind": "bun-patch",
+            "packages": ["nitropack@2.13.5"],
+            "symptom": "Nitro adds no_nodejs_compat_v2 even for modern compatibility dates, disabling the native Node modules required by the compiled ViteHub Console. Wrangler fails at fs/child_process in detect-libc.",
+            "reproduction": "Without this patch hunk, boot the generated Cloudflare fixture: bare fs/child_process fail. Explicit nodejs_compat_v2 also conflicts with ViteHub's nodejs_compat flag.",
+            "patch": "patches/nitropack@2.13.5.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/nitropack@2.13.5.patch",
+            "regressions": ["test/fixtures/vitehub/verify-cloudflare.mjs"],
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove this hunk from both copies and pass the modern-date generated-config assertions and workerd probe without overriding the generated flags. Legacy dates retain the old default."
+        },
+        {
+            "id": "schedule-generated-nitro-plugin",
+            "kind": "public-hook-workaround",
+            "packages": ["@vite-hub/schedule@0.0.4", "nuxt@4.6.2", "nitropack@2.13.5"],
+            "symptom": "The generated Schedule plugin imports definePlugin from Nitro 3 even in Nuxt's Nitro 2 host. Build fails because H3 1 has no toRequest export.",
+            "reproduction": "Enable schedule: true and remove schedulePlugin from Nuxt modules; the Cloudflare build fails at nitro/dist/runtime/nitro.mjs importing toRequest.",
+            "workaround": "test/fixtures/vitehub/workarounds/schedule-plugin.ts",
+            "registration": "test/fixtures/vitehub/nuxt.config.ts",
+            "regressions": [
+                "test/upstream-regressions/vitehub-schedule-plugin.test.mjs",
+                "test/fixtures/vitehub/verify-cloudflare.mjs"
+            ],
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove registration/file and pass builds and the discovered Worker scheduled handler with native Nitro 2. Only the generated Schedule plugin import is transformed; native defineNitroPlugin and the original handler remain intact."
+        }
+    ],
+    "featureGaps": [
+        {
+            "id": "console-model-controls",
+            "evidence": "Installed Content DocumentsOptions offers schema fields and Markdown components. ConsoleSchemaFieldKind and ConsoleDocumentActionName enumerate fixed field/action sets; contributed sections/pages also use fixed built-in views. No arbitrary relation-picker, translation-operation or proofreading-button slot is exposed by these contracts.",
+            "decision": "Prefer native Console for models whose invariants it can enforce. Implement only missing model controls in Liti Nuxt admin pages behind the same server authorization/validation boundary; do not copy Console internals or patch new features into upstream.",
+            "owner": "liti; phase 4"
+        },
+        {
+            "id": "immutable-scheduled-content",
+            "evidence": "Native Content schedule calls publish({ expect }) and intentionally fails after draft edits. This is not a bug.",
+            "decision": "Use a native Schedule Definition to publish an immutable Workspace revision. Store queue metadata in a Workspace ref and commit a receipt with published content in one native history CAS commit; later drafts are untouched. Revalidate authorization/model rules at execution. Do not rely on the scheduler's default run store for exactly-once publication.",
+            "prototype": "test/fixtures/vitehub/server/utils/snapshots.ts",
+            "owner": "Model publication integrity + ViteHub Schedule; production implementation in phase 3"
         }
     ],
     "artifacts": [

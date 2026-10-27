@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { registerWorkspacePlugin, useWorkspace } from 'vite-hub/workspace'
+import { cachedSource } from 'vite-hub/source/server'
+import { blob } from 'vite-hub/blob'
 import { content } from '../content'
 
 export async function verifyContentContracts() {
@@ -7,6 +9,36 @@ export async function verifyContentContracts() {
     const posts = content.collection('posts')
     const records = content.collection('records')
     const id = crypto.randomUUID()
+    let reads = 0
+    const cached = cachedSource(
+        {
+            async get(key: string) {
+                return { key, reads: ++reads }
+            },
+        },
+        {
+            name: `liti-probe-${id}`,
+            maxAge: 60,
+            getKey: (key) => key,
+        },
+    )
+    assert.deepEqual(await cached.get('one'), await cached.get('one'))
+    assert.equal(reads, 1)
+    assert.equal((await cached.get('two')).reads, 2)
+    checks.push('Source uses the host Nitro cache with separate keys')
+
+    const pathname = `probe/${id}.bin`
+    const bytes = new Uint8Array([0, 1, 2, 127, 255])
+    const [putError, stored] = await blob.put(pathname, bytes, { contentType: 'application/octet-stream' })
+    assert.equal(putError, null)
+    assert.equal(stored?.size, bytes.byteLength)
+    const [getError, file] = await blob.get(pathname)
+    assert.equal(getError, null)
+    assert.ok(file)
+    assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes)
+    const [deleteError] = await blob.del(pathname)
+    assert.equal(deleteError, null)
+    checks.push('native Blob byte storage and deletion')
     assert.equal(await content.can({ collection: 'posts', action: 'write' }), false)
     assert.equal(
         await content.can({
@@ -18,7 +50,15 @@ export async function verifyContentContracts() {
     )
     checks.push('explicit authorization policy')
 
-    const first = await posts.save(id, { data: { title: 'Reviewed' }, body: '![Cover](/synthetic-cover.png)\n' })
+    const imagePath = `probe/${id}.png`
+    const png = Uint8Array.from(
+        atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGf8AAAAASUVORK5CYII='),
+        (byte) => byte.charCodeAt(0),
+    )
+    const [imageError, cover] = await blob.put(imagePath, png, { contentType: 'image/png' })
+    assert.equal(imageError, null)
+    assert.ok(cover)
+    const first = await posts.save(id, { data: { title: 'Reviewed', cover }, body: `![Cover](${imagePath})\n` })
     assert.equal(await posts.get(id), null)
     assert.equal((await posts.get(id, { ref: 'draft' }))?.body, first.body)
     const json = await records.save(id, { data: { name: 'Synthetic record' } })
@@ -29,6 +69,11 @@ export async function verifyContentContracts() {
         ],
     })
     assert.equal((await posts.get(id))?.data.title, 'Reviewed')
+    assert.equal((await posts.get(id))?.data.cover?.pathname, imagePath)
+    const [imageReadError, imageFile] = await blob.get(imagePath)
+    assert.equal(imageReadError, null)
+    assert.ok(imageFile)
+    assert.deepEqual(new Uint8Array(await imageFile.arrayBuffer()), png)
     assert.equal((await records.get(id))?.data.name, 'Synthetic record')
     checks.push('Markdown/JSON draft separation and atomic publish')
 
@@ -47,7 +92,7 @@ export async function verifyContentContracts() {
 
     const reviewed = await posts.save(
         id,
-        { data: { title: 'Scheduled snapshot' }, body: first.body },
+        { data: { title: 'Scheduled snapshot', cover: first.data.cover }, body: first.body },
         { ifDigest: restored.digest },
     )
     const at = new Date(Date.now() + 60_000)
@@ -106,5 +151,5 @@ export async function verifyContentContracts() {
     }
     assert.equal((await posts.get(id, { ref: 'draft' }))?.digest, later.digest)
     checks.push('public Workspace hook blocks Content and direct publication writes')
-    return { checks }
+    return { checks, image: { pathname: imagePath, documentId: id } }
 }

@@ -2,17 +2,22 @@ import { fileURLToPath } from 'node:url'
 import viteHubNuxt from 'vite-hub/nuxt'
 import generatedPaths from './workarounds/generated-paths'
 import libsqlNative from './workarounds/libsql-native'
+import nitroCache from './workarounds/nitro-cache'
+import schedulePlugin from './workarounds/schedule-plugin'
+import { databaseContribution } from './probe-database'
 
 const cloudflare = process.env.LITI_PROBE_PRESET === 'cloudflare'
 
 export default defineNuxtConfig({
-    compatibilityDate: '2026-10-27',
+    vite: { plugins: [databaseContribution] },
+    compatibilityDate: '2026-10-26',
     modules: [
         [
             viteHubNuxt,
             {
                 preset: cloudflare ? 'cloudflare' : 'node',
                 auth: true,
+                schedule: true,
                 console: {
                     auth: 'app',
                     authorize: fileURLToPath(new URL('./server/console-authorize.ts', import.meta.url)),
@@ -29,6 +34,8 @@ export default defineNuxtConfig({
         ],
         generatedPaths,
         libsqlNative,
+        nitroCache,
+        schedulePlugin,
     ],
     devtools: { enabled: false },
 })

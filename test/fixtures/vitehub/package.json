@@ -8,13 +8,17 @@
         "dev": "nuxt dev",
         "build": "nuxt build",
         "typecheck": "nuxt typecheck",
-        "verify": "node verify-node.mjs"
+        "verify": "node verify-node.mjs",
+        "verify:cloudflare": "node verify-cloudflare.mjs",
+        "auth:generate": "node node_modules/auth/dist/index.mjs generate --config ./auth-schema.config.ts --adapter drizzle --dialect sqlite --output ./server/database/auth-schema.ts --yes"
     },
     "dependencies": {
         "@iconify-json/lucide": "1.2.147",
         "@iconify-json/ph": "1.2.2",
         "@nuxt/ui": "4.12.0",
+        "better-auth": "1.7.7",
         "comark-content": "0.4.1",
+        "drizzle-orm": "0.45.4",
         "nuxt": "4.6.2",
         "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
         "vue": "3.5.44",
@@ -23,6 +27,9 @@
     "devDependencies": {
         "@nuxt/kit": "4.6.2",
         "@nuxt/nitro-server": "4.6.2",
+        "@vite-hub/database": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/database@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "ai": "7.0.130",
+        "auth": "1.7.7",
         "nitropack": "2.13.5",
         "typescript": "6.0.3",
         "vite": "8.3.5",
@@ -32,6 +39,7 @@
     "packageManager": "bun@1.4.4",
     "patchedDependencies": {
         "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
-        "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch"
+        "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch",
+        "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-nuxt-24ddab7.patch"
     }
 }
