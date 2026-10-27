@@ -133,6 +133,7 @@ onMounted(async () => {
         const retry = await save()
         check(retry?.digest && !resource.error.value, 'Retrying unchanged valid values must save normally')
         check(callbacks.at(-1) === false, 'A saved form without later edits must report no unsaved changes')
+        check(values.value.data.secret === 'FORM_CANONICAL_DEFAULT', 'A canonical server field was lost')
         form.setFieldValue('data.title', 'Keep later browser edit')
         await until(() => values.value.data.title === 'Keep later browser edit' && hasUnsavedChanges.value)
         checks.push('failed native form save rejects, keeps edits and the reviewed receipt, and retries successfully')
@@ -142,6 +143,17 @@ onMounted(async () => {
         await save()
         const translated = await manage({ action: 'read', model: 'posts', id, locale: 'en' })
         check(!Object.hasOwn(translated, 'body'), 'Untouched body fallback was saved as an empty translation')
+        form.setFieldValue('data.title', 'English browser updated')
+        await save()
+        const translatedAgain = await manage({ action: 'read', model: 'posts', id, locale: 'en' })
+        const translatedData = translatedAgain.data
+        check(
+            !Object.hasOwn(translatedAgain, 'body') &&
+                translatedData !== null &&
+                typeof translatedData === 'object' &&
+                !Object.hasOwn(translatedData, 'secret'),
+            'A repeated translated save persisted inherited body or shared fields',
+        )
         check(callbacks.at(-1) === true, 'Other-locale unsaved edits were omitted from the callback')
         locale.value = 'ja'
         await until(() => values.value.data.title === 'Keep later browser edit')
@@ -196,4 +208,14 @@ onMounted(async () => {
     }
 })
 </script>
-<template><main>Browser contract probe</main></template>
+<template>
+    <main>
+        Browser contract probe
+        <form.Field name="data.title" v-slot="{ field }">
+            <input :value="field.value" @input="field.handleChange(($event.target as HTMLInputElement).value)" />
+        </form.Field>
+        <form.Field name="data.secret" v-slot="{ field }">
+            <input :value="field.value" @input="field.handleChange(($event.target as HTMLInputElement).value)" />
+        </form.Field>
+    </main>
+</template>

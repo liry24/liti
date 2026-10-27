@@ -5,6 +5,13 @@ import { createError, defineEventHandler, readBody, setResponseHeader, getReques
 import runtime from '#liti/runtime'
 import { object, text, respond } from './http'
 
+const publicationSelection = (value: unknown): PublishSelection => {
+    const input = object(value),
+        digests = object(input.digests)
+    for (const digest of Object.values(digests)) if (digest !== null) text(digest)
+    return { model: text(input.model), id: text(input.id), digests: digests as Record<string, string | null> }
+}
+
 export default defineEventHandler((event) =>
     respond(event, async () => {
         const headers = new Headers()
@@ -19,6 +26,14 @@ export default defineEventHandler((event) =>
         const input = object(await readBody(event)),
             action = text(input.action)
         if (action === 'models') return await runtime.descriptors(actor)
+        if (action === 'publishMany') {
+            if (!Array.isArray(input.entries) || !input.entries.length || input.entries.length > 1000)
+                throw new ModelError('LITI_INVALID_INPUT', 'Select between 1 and 1000 reviewed entries.')
+            return await runtime.content.publish(input.entries.map(publicationSelection), {
+                actor,
+                ifDraftRevision: text(input.revision),
+            })
+        }
         const name = text(input.model),
             model = runtime.definition(name),
             operation = { actor }
@@ -70,11 +85,7 @@ export default defineEventHandler((event) =>
             return await runtime.content.unpublish(name, id, { ...operation, ifHead: text(input.ifHead) })
         if (action === 'cancelSchedule') return await runtime.content.cancelSchedule(text(input.schedule), operation)
         if (action === 'publish' || action === 'schedule') {
-            const digests = object(input.digests)
-            for (const digest of Object.values(digests)) if (digest !== null) text(digest)
-            const selection: PublishSelection[] = [
-                { model: name, id, digests: digests as Record<string, string | null> },
-            ]
+            const selection = [publicationSelection(input)]
             return action === 'publish'
                 ? await runtime.content.publish(selection, operation)
                 : await runtime.content.schedule(selection, new Date(text(input.at)), operation)

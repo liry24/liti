@@ -689,9 +689,14 @@ export function createModelContent(options: ContentBindingOptions) {
             ],
         }
     }
-    const publish = async (selection: readonly PublishSelection[], operation: ModelOperation) => {
+    const publish = async (
+        selection: readonly PublishSelection[],
+        operation: ModelOperation & { ifDraftRevision?: string },
+    ) => {
         const source = await view('draft')
         if (!source) throw new ModelError('LITI_NOT_FOUND', 'No draft to publish.')
+        if (operation.ifDraftRevision !== undefined && source.revision.id !== operation.ifDraftRevision)
+            throw new ModelError('LITI_CONFLICT', 'The reviewed draft list changed.')
         return await publishSnapshot(selection, source, operation)
     }
     const schedule = async (selection: readonly PublishSelection[], at: Date, operation: ModelOperation) => {

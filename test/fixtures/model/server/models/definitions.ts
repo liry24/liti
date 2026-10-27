@@ -53,6 +53,8 @@ export const posts = defineContentModel({
     prepare: (input, context) => {
         if (input.data.secret === 'EXPECT_BODY_CONTEXT' && context.body !== 'Retained Markdown body')
             throw new Error('Preparation must receive the retained Markdown body.')
+        if (input.data.title === 'Recovered browser')
+            return { ...input, data: { ...input.data, secret: 'FORM_CANONICAL_DEFAULT' } }
         return input
     },
     validate: (data) => {

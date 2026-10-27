@@ -137,11 +137,12 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
                 const edited = clone(form.state.values)
                 baseline.value = clone(canonical)
                 const body = submitted.body === edited.body ? canonical.body : edited.body
-                form.reset({
+                const reconciled = {
                     data: reconcile(submitted.data, edited.data, canonical.data),
                     ...(body === undefined ? {} : { body }),
-                })
-                values.value = form.state.values
+                }
+                form.reset(reconciled)
+                values.value = reconciled
                 try {
                     await options.onSuccess?.(committed, { hasUnsavedChanges: hasUnsavedChanges.value })
                 } catch (cause) {

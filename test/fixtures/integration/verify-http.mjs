@@ -142,6 +142,53 @@ export async function verifyHttp(origin, token, logs) {
         'Managed Console',
     )
     console.log('PASS native Console editor routes valid saves/publications through Model and rejects invalid fields')
+    const batch = []
+    let batchRevision
+    for (let index = 0; index < 2; index++) {
+        const entryId = crypto.randomUUID()
+        const response = await manage({
+            action: 'save',
+            model: 'posts',
+            id: entryId,
+            locale: 'ja',
+            ifDigest: null,
+            data: { title: `Reviewed list ${index}`, slug: entryId, tags: [] },
+        })
+        assert.equal(response.status, 200, await response.clone().text())
+        const saved = await response.json()
+        batchRevision = saved.revision
+        batch.push({ model: 'posts', id: entryId, digests: { ja: saved.digest, en: null } })
+    }
+    const publishMany = (entries, revision = batchRevision) => manage({ action: 'publishMany', entries, revision })
+    assert.equal((await publishMany(batch, 'stale-review')).status, 409)
+    assert.equal((await publishMany([batch[0], batch[0]])).status, 400)
+    assert.equal((await publishMany([batch[0], { ...batch[1], digests: { ja: 'stale', en: null } }])).status, 409)
+    const otherDraft = await (await manage({ action: 'read', model: 'memos', id: secondUser.id }, secondCookie)).json()
+    assert.equal(
+        (
+            await publishMany([
+                batch[0],
+                {
+                    model: 'memos',
+                    id: secondUser.id,
+                    digests: { und: otherDraft.digest },
+                },
+            ])
+        ).status,
+        403,
+    )
+    for (const entry of batch)
+        assert.equal(await (await fetch(`${origin}/api/_liti?model=posts&mode=one&id=${entry.id}`)).json(), null)
+    const publishedBatch = await publishMany(batch)
+    assert.equal(publishedBatch.status, 200, await publishedBatch.clone().text())
+    for (const entry of batch)
+        assert.equal(
+            (await (await fetch(`${origin}/api/_liti?model=posts&mode=one&id=${entry.id}`)).json()).id,
+            entry.id,
+        )
+    console.log(
+        'PASS reviewed batch publication rejects stale order, duplicate entries, changed documents and unauthorized entries without partial publication',
+    )
     const read = await manage({ action: 'read', model: 'posts', id, locale: 'ja', revision: receipt.revision })
     assert.equal((await read.json()).data.secret, 'SERVER_PRIVATE_MODEL_MARKER')
     const unpublished = await fetch(`${origin}/api/_liti?model=posts&mode=one&id=${id}&locale=ja`)
