@@ -1,0 +1,63 @@
+{
+    "name": "@litijs/model",
+    "version": "0.0.3",
+    "description": "Model contracts and native ViteHub integration",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/liti.git",
+        "directory": "packages/model"
+    },
+    "files": [
+        "dist"
+    ],
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        },
+        "./content": {
+            "types": "./dist/content.d.ts",
+            "import": "./dist/content.js",
+            "default": "./dist/content.js"
+        },
+        "./records": {
+            "types": "./dist/records.d.ts",
+            "import": "./dist/records.js",
+            "default": "./dist/records.js"
+        },
+        "./records/schema": {
+            "types": "./dist/records/schema.d.ts",
+            "import": "./dist/records/schema.js",
+            "default": "./dist/records/schema.js"
+        },
+        "./vite": {
+            "types": "./dist/vite.d.ts",
+            "import": "./dist/vite.js",
+            "default": "./dist/vite.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "vp pack",
+        "prepack": "bun run build",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+        "@vite-hub/content": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "@vite-hub/database": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/database@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "@vite-hub/workspace": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/workspace@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "drizzle-orm": "0.45.4"
+    },
+    "engines": {
+        "node": ">=24.21.0"
+    }
+}

@@ -32,7 +32,16 @@ export default defineConfig({
         trailingComma: 'all',
     },
     lint: {
-        ignorePatterns: ['**/dist/**', '**/.nuxt/**', '**/.output/**', '**/.data/**', '**/.wrangler/**', '**/.tmp/**'],
+        // The Model overlay is typechecked after packing into its generated native Nuxt consumer.
+        ignorePatterns: [
+            '**/dist/**',
+            '**/.nuxt/**',
+            '**/.output/**',
+            '**/.data/**',
+            '**/.wrangler/**',
+            '**/.tmp/**',
+            'test/fixtures/model/**',
+        ],
         options: { typeAware: true, typeCheck: true },
         jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],
         plugins: ['import', 'typescript'],

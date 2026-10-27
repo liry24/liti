@@ -1,7 +1,12 @@
 {
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "ignoreExportsUsedInFile": true,
-    "ignore": ["packages/*/dist/**", "test/fixtures/**/.nuxt/**", "test/fixtures/**/.void/**"],
+    "ignore": [
+        "packages/*/dist/**",
+        "test/fixtures/**/.nuxt/**",
+        "test/fixtures/**/.void/**",
+        "test/fixtures/model/**"
+    ],
     "workspaces": {
         ".": {
             "entry": [
@@ -26,6 +31,16 @@
             "ignoreIssues": {
                 "package.json": ["optionalPeerDependencies"]
             }
+        },
+        "packages/model": {
+            "entry": [
+                "src/index.ts!",
+                "src/content/index.ts!",
+                "src/records/index.ts!",
+                "src/records/schema.ts!",
+                "src/vite/index.ts!"
+            ],
+            "project": ["src/**/*.ts!"]
         },
         "packages/cli": {
             "entry": ["src/index.ts!"],

@@ -15,6 +15,11 @@
         "target": "ES2024",
         "types": ["node"],
         "paths": {
+            "@litijs/model": ["./packages/model/src/index.ts"],
+            "@litijs/model/content": ["./packages/model/src/content/index.ts"],
+            "@litijs/model/records": ["./packages/model/src/records/index.ts"],
+            "@litijs/model/records/schema": ["./packages/model/src/records/schema.ts"],
+            "@litijs/model/vite": ["./packages/model/src/vite/index.ts"],
             "liti": ["./packages/liti/src/index.ts"],
             "liti/server": ["./packages/liti/src/server/index.ts"],
             "liti/adapter": ["./packages/liti/src/adapter.ts"],

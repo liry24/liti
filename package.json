@@ -25,7 +25,8 @@
         "typecheck": "bun --filter '*' typecheck && tsc --noEmit -p test/tsconfig.json",
         "bundle:size": "bun run build && bun scripts/measure-bundles.mjs --workspace-root .",
         "test:vitehub": "node test/vitehub.mjs",
-        "test:vitehub:cloudflare": "node test/vitehub.mjs --cloudflare"
+        "test:vitehub:cloudflare": "node test/vitehub.mjs --cloudflare",
+        "test:model:native": "node test/model-native.mjs"
     },
     "devDependencies": {
         "@arethetypeswrong/cli": "^0.18.5",
@@ -33,6 +34,7 @@
         "@litijs/ai": "workspace:*",
         "@litijs/blog": "workspace:*",
         "@litijs/drizzle": "workspace:*",
+        "@litijs/model": "workspace:*",
         "@litijs/sqlite": "workspace:*",
         "@litijs/test-utils": "workspace:*",
         "@litijs/void": "workspace:*",
@@ -93,6 +95,7 @@
     },
     "packageManager": "bun@1.4.4",
     "patchedDependencies": {
-        "nitropack@2.13.5": "patches/nitropack@2.13.5.patch"
+        "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
+        "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-content-publication-24ddab7.patch"
     }
 }

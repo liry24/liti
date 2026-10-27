@@ -38,6 +38,13 @@
             "@litijs/test-utils/vitest": ["../packages/test-utils/src/vitest.ts"]
         }
     },
-    "exclude": ["fixtures/vitehub/**", "**/.data/**", "**/.nuxt/**", "**/.output/**", "**/node_modules/**"],
+    "exclude": [
+        "fixtures/vitehub/**",
+        "fixtures/model/**",
+        "**/.data/**",
+        "**/.nuxt/**",
+        "**/.output/**",
+        "**/node_modules/**"
+    ],
     "include": ["**/*.ts", "../vite.config.ts"]
 }

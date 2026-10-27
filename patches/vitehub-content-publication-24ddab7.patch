@@ -1,0 +1,75 @@
+diff --git a/dist/collections-types-DLm5RvXv.d.ts b/dist/collections-types-DLm5RvXv.d.ts
+index 51c451c..c95be37 100644
+--- a/dist/collections-types-DLm5RvXv.d.ts
++++ b/dist/collections-types-DLm5RvXv.d.ts
+@@ -533,6 +533,9 @@ interface ContentCollectionsRuntime extends Omit<ContentSchedulesRuntime, "docum
+   readonly collections: ReadonlyMap<string, AnyContentCollection>;
+   collection(name: string): AnyContentCollection;
+   publish(options?: ContentPublishOptions): Promise<ContentPublishResult>;
++  /** Trusted publication transaction for integrations. Authorize before calling; every Workspace validator still runs. Post-commit listener failures are returned with the committed revision. */
++  commitPublished(options: { ifHead: string | null; ifHeads?: Record<string, string | null>; changes: { put?: Record<string, string | Uint8Array>; delete?: string[] }; metadata?: Record<string, unknown>; message?: string }): Promise<{ revision: ContentRevision; postCommitErrors: unknown[] }>;
++
+   /** Revisions of one document. `id` may be omitted for a singleton. */
+   revisions(collection: string, id: string | undefined, options?: ContentRevisionsOptions): Promise<ContentRevisionsResult>;
+   /** Content revisions of every collection on one ref, newest first. */
+diff --git a/dist/collections.js b/dist/collections.js
+index 52f3ef6..122e4f7 100644
+--- a/dist/collections.js
++++ b/dist/collections.js
+@@ -1775,6 +1775,30 @@ function createContentCollections(options) {
+ 		collections: new Map([...collections].map(([name, runtime]) => [name, runtime.collection])),
+ 		collection: (name) => requireCollection(name).collection,
+ 		publish,
++		commitPublished: async (options) => {
++			const retained = await history();
++			const paths = [...Object.keys(options.changes.put ?? {}), ...(options.changes.delete ?? [])];
++			const documents = [...collections.values()].flatMap((collection) => paths.filter((path) => collection.compiled.match(path)).map((path) => ({ collection: collection.name, id: collection.idFor(path) })));
++			const postCommitErrors = [];
++			const transaction = crypto.randomUUID();
++			let revision;
++			try {
++				revision = await contentPublishes.run(true, () => retained.commit({ ...options, ref: "published", metadata: writeMetadata({ ...options.metadata, contentPublicationTransaction: transaction }, { action: "publish", documents }) }));
++			} catch (error) {
++				let current = await retained.head({ ref: "published" });
++				while (current && current.id !== options.ifHead) {
++					if (current.metadata?.contentPublicationTransaction === transaction) { revision = current; break; }
++					current = current.parentId ? (await retained.open(current.parentId)).revision : null;
++				}
++				if (!revision) throw error;
++				postCommitErrors.push(error);
++			}
++			for (const listener of publishListeners) {
++				try { await listener([...new Set(documents.map((document) => document.collection))]); }
++				catch (error) { postCommitErrors.push(error); }
++			}
++			return { revision, postCommitErrors };
++		},
+ 		schedule: schedules.schedule,
+ 		schedules: schedules.schedules,
+ 		unschedule: schedules.unschedule,
+diff --git a/dist/index-DV5CKubp.d.ts b/dist/index-DV5CKubp.d.ts
+index 8d36a6a..19b193b 100644
+--- a/dist/index-DV5CKubp.d.ts
++++ b/dist/index-DV5CKubp.d.ts
+@@ -257,6 +257,9 @@ interface ContentDocumentsRuntime<TCollections extends ContentCollections = Cont
+   collection<TName extends CollectionName<TCollections>>(name: TName): CollectionOf<TCollections[TName]>;
+   /** Copy draft documents to the `published` ref in one revision. Pass `expect` to publish exactly what was reviewed. */
+   publish(options?: ContentPublishOptions<CollectionName<TCollections>>): Promise<ContentPublishResult>;
++  /** Trusted publication transaction for integrations. Authorize before calling; every Workspace validator still runs. Post-commit listener failures are returned with the committed revision. */
++  commitPublished(options: { ifHead: string | null; ifHeads?: Record<string, string | null>; changes: { put?: Record<string, string | Uint8Array>; delete?: string[] }; metadata?: Record<string, unknown>; message?: string }): Promise<{ revision: ContentRevision; postCommitErrors: unknown[] }>;
++
+   /**
+    * Publish exactly these reviewed drafts at a later time. The draft digests must match now. At its time,
+    * `publishDue()` calls `publish({ expect })`; a draft saved after scheduling makes the schedule `failed` instead.
+diff --git a/dist/index.js b/dist/index.js
+index 008883f..6bfc488 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -708,6 +708,7 @@ function defineContent(options = {}) {
+ 		},
+ 		collection: (name) => requireDocuments().collection(name),
+ 		publish: (publishOptions) => requireDocuments().publish(publishOptions),
++		commitPublished: (options) => requireDocuments().commitPublished(options),
+ 		schedule: (scheduleOptions) => requireDocuments().schedule(scheduleOptions),
+ 		schedules: (schedulesOptions) => requireDocuments().schedules(schedulesOptions),
+ 		unschedule: (id, unscheduleOptions) => requireDocuments().unschedule(id, unscheduleOptions),

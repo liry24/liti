@@ -2,6 +2,23 @@
     "vitehubCommit": "24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
     "fixes": [
         {
+            "id": "content-publication-transaction",
+            "kind": "bounded-feature-extension",
+            "packages": [
+                "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "The pinned public API cannot unpublish a document while retaining its newer draft, or atomically commit Model publication integrity metadata with the native Content publish scope. Raw Workspace deletion from published is correctly rejected with CONTENT_R0013. This is an explicitly tracked API feature gap, not a native bug or replacement CMS implementation.",
+            "environment": "Installed full-commit distribution; Node 24.22.1 and workerd with native D1/R2.",
+            "reproduction": "Model unpublish using the public Workspace history.commit({ ref: 'published', changes: { delete: [documentPath] } }) rejects with CONTENT_R0013. Deleting the draft first is not acceptable because it loses later edits.",
+            "patch": "patches/vitehub-content-publication-24ddab7.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/vitehub-content-publication-24ddab7.patch",
+            "scope": "Expose commitPublished on the installed Content runtime and its declarations. It uses the existing native publication scope, conditional Workspace commit, validators and publish listeners. Direct Workspace deletion guards remain unchanged. Confirm an exact transaction receipt after a write:after failure and return explicit postCommitErrors; still notify native listeners after a committed transaction.",
+            "regressions": ["test/model-native.mjs", "test/fixtures/model/server/api/__probe.post.ts"],
+            "verification": "Packed independent consumer rejects unauthorized direct Content, Console, raw Workspace deletion and commitPublished calls; Model unpublish preserves the draft, atomically checks incoming references and keeps the original publication date. A failing post-commit hook returns a committed receipt with sanitized warnings on Node and workerd.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Adopt an installed upstream public publication transaction with equivalent validators, CAS, draft-preserving deletion, atomic metadata and post-commit notification semantics. Replace the single Model integration call, remove both patch copies and root/consumer patch entries together, then pass the same packed Node/workerd contracts without the patch. Keep every regression. Until then, consumer roots must explicitly apply this identical patch; npm/pnpm without an equivalent configured patch are unsupported for Content writes."
+        },
+        {
             "id": "generated-nitro-paths",
             "kind": "public-hook-workaround",
             "packages": [
