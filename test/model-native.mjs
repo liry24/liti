@@ -95,8 +95,8 @@ const nuxtConfig = resolve(consumer, 'nuxt.config.ts')
 writeFileSync(
     nuxtConfig,
     readFileSync(nuxtConfig, 'utf8').replace(
-        'export default defineNuxtConfig({',
-        "export default defineNuxtConfig({\n    nitro: { externals: { inline: ['@litijs/model'] } },",
+        'nitro: { prerender:',
+        "nitro: { externals: { inline: ['@litijs/model'] }, prerender:",
     ),
 )
 const archive = pack('model', '@litijs/model')

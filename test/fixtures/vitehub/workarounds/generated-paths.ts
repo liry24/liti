@@ -1,7 +1,7 @@
 import type {} from '@nuxt/nitro-server/augments'
 import { isAbsolute, resolve } from 'node:path'
 import { defineNuxtModule } from '@nuxt/kit'
-import type { NitroConfig } from 'nitropack'
+import type { Nitro, NitroConfig } from 'nitropack'
 
 export function normalizeGeneratedPaths(root: string, config: NitroConfig) {
     const normalize = (path: string) =>
@@ -15,6 +15,12 @@ export function normalizeGeneratedPaths(root: string, config: NitroConfig) {
 export default defineNuxtModule({
     meta: { name: 'liti-probe-vitehub-generated-paths' },
     setup(_options, nuxt) {
+        nuxt.hook('nitro:init', (nitro) => {
+            nitro.hooks.hook('build:before', () => normalizeGeneratedPaths(nuxt.options.rootDir, nitro.options))
+            nitro.hooks.hook('prerender:init', (renderer: Nitro) =>
+                normalizeGeneratedPaths(nuxt.options.rootDir, renderer.options),
+            )
+        })
         nuxt.hook('nitro:build:before', (nitro) => normalizeGeneratedPaths(nuxt.options.rootDir, nitro.options))
         // Database installs its config hook at modules:done; register after it.
         nuxt.hook('modules:done', () => {

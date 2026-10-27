@@ -10,6 +10,7 @@ import { databaseContribution } from './probe-database'
 const cloudflare = process.env.LITI_PROBE_PRESET === 'cloudflare'
 
 export default defineNuxtConfig({
+    nitro: { prerender: { routes: ['/'] } },
     vite: { plugins: [databaseContribution] },
     compatibilityDate: '2026-10-26',
     modules: [

@@ -4,6 +4,7 @@ import liti from 'liti/nuxt'
 import blog from '@litijs/blog/nuxt'
 const cloudflare = process.env.LITI_PROBE_PRESET === 'cloudflare'
 export default defineNuxtConfig({
+    nitro: { prerender: { routes: ['/'] } },
     compatibilityDate: '2026-10-26',
     modules: [
         [
