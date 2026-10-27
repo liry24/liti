@@ -1,5 +1,12 @@
 {
     "extends": "../../tsconfig.json",
     "compilerOptions": { "rootDir": "../.." },
-    "include": ["src/public.ts", "src/nuxt/**/*.ts", "src/runtime/**/*.ts", "src/internal/**/*.ts", "vite.config.ts"]
+    "include": [
+        "src/public.ts",
+        "src/nuxt/**/*.ts",
+        "src/runtime/**/*.ts",
+        "src/internal/**/*.ts",
+        "src/cli/**/*.ts",
+        "vite.config.ts"
+    ]
 }

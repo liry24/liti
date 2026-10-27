@@ -78,6 +78,14 @@ if (integrated) {
     renameSync(litiPacked, resolve(consumer, litiArchive))
     manifest.dependencies.liti = `file:./${litiArchive}`
     manifest.overrides = { ...manifest.overrides, '@litijs/model': `file:./${archive}` }
+    run('bun', ['run', 'typecheck'], resolve(root, 'packages/blog'))
+    run('bun', ['run', 'build'], resolve(root, 'packages/blog'))
+    run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/blog'))
+    const blogVersion = JSON.parse(readFileSync(resolve(root, 'packages/blog/package.json'), 'utf8')).version
+    const blogPacked = resolve(consumer, `litijs-blog-${blogVersion}.tgz`)
+    const blogArchive = `blog-${createHash('sha256').update(readFileSync(blogPacked)).digest('hex').slice(0, 16)}.tgz`
+    renameSync(blogPacked, resolve(consumer, blogArchive))
+    manifest.dependencies['@litijs/blog'] = `file:./${blogArchive}`
     copy(resolve(consumer, 'verify-http.mjs'), resolve(consumer, 'verify-model-http.mjs'))
     copy(resolve(root, 'test/fixtures/integration'), consumer)
     copy(resolve(root, 'test/chromium.mjs'), resolve(consumer, 'verify-browser.mjs'))
@@ -90,7 +98,12 @@ writeFileSync(resolve(consumer, 'package.json'), JSON.stringify(manifest, null, 
 console.log(`Packed Model consumer: ${consumer}`)
 run('bun', ['install'])
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'typecheck'])
-run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'generate'])
+run(
+    process.execPath,
+    integrated
+        ? ['node_modules/liti/dist/cli/index.js', 'generate']
+        : ['node_modules/vite-hub/dist/bin.js', 'db', 'generate'],
+)
 run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'migrate'])
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
 run(process.execPath, ['verify-node.mjs'])

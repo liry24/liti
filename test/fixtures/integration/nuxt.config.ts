@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import viteHubNuxt from 'vite-hub/nuxt'
 import liti from 'liti/nuxt'
+import blog from '@litijs/blog/nuxt'
 const cloudflare = process.env.LITI_PROBE_PRESET === 'cloudflare'
 export default defineNuxtConfig({
     compatibilityDate: '2026-10-26',
@@ -26,6 +27,7 @@ export default defineNuxtConfig({
             },
         ],
         liti,
+        blog,
     ],
     devtools: { enabled: false },
 })

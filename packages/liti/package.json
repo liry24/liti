@@ -9,6 +9,9 @@
         "url": "git+https://github.com/liry24/liti.git",
         "directory": "packages/liti"
     },
+    "bin": {
+        "liti": "./dist/cli/index.js"
+    },
     "files": [
         "dist",
         "README.md"
@@ -55,6 +58,8 @@
         "@vite-hub/auth": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/auth@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
         "@vite-hub/content": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
         "h3": "^1.15.11",
+        "magicast": "0.5.5",
+        "nypm": "0.6.11",
         "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
     },
     "peerDependencies": {

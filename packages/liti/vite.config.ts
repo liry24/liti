@@ -1,15 +1,18 @@
 import { defineConfig } from 'vite-plus'
 import { readFileSync } from 'node:fs'
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+const { patchedDependencies } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
 export default defineConfig({
     pack: {
         copy: [
             { from: '../../LICENSE', to: '.' },
             { from: '../../README.md', to: '.' },
             { from: 'src/runtime/admin', to: 'dist/runtime' },
+            { from: '../../patches', to: 'dist' },
         ],
         entry: {
             index: 'src/public.ts',
+            'cli/index': 'src/cli/index.ts',
             'nuxt/index': 'src/nuxt/index.ts',
             'nuxt/types': 'src/nuxt/types.ts',
             'nuxt/server': 'src/nuxt/server.ts',
@@ -32,6 +35,11 @@ export default defineConfig({
             {
                 name: 'liti-module-metadata',
                 generateBundle() {
+                    this.emitFile({
+                        type: 'asset',
+                        fileName: 'patches/required.json',
+                        source: JSON.stringify(patchedDependencies),
+                    })
                     this.emitFile({
                         type: 'asset',
                         fileName: 'module.json',

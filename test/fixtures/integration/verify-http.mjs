@@ -2,6 +2,13 @@ import assert from 'node:assert/strict'
 import { verifyHttp as verifyModel } from './verify-model-http.mjs'
 export async function verifyHttp(origin, token, logs) {
     const context = await verifyModel(origin, token, logs)
+    for (const query of ['filter=%7B', 'fallback=invalid', 'id=one', 'mode=one&id=one&path=%2Fone']) {
+        const invalidQuery = await fetch(`${origin}/api/_liti?model=posts&${query}`)
+        assert.equal(invalidQuery.status, 400, await invalidQuery.clone().text())
+    }
+    const blog = await fetch(`${origin}/api/__blog`, { method: 'POST', headers: { 'x-liti-probe': token } })
+    assert.equal(blog.status, 200, `${await blog.clone().text()}\n${logs()}`)
+    for (const check of (await blog.json()).checks) console.log(`PASS ${check}`)
     const manage = (body, cookie = context.editor, requestOrigin = origin) =>
         fetch(`${origin}/api/_liti/manage`, {
             method: 'POST',
@@ -108,5 +115,8 @@ export async function verifyHttp(origin, token, logs) {
     const browser = await chromiumProbe(`${origin}/browser`, process.cwd())
     assert.equal(browser.success, true, JSON.stringify(browser))
     for (const check of browser.checks) console.log(`PASS ${check}`)
+    const review = await chromiumProbe(`${origin}/review`, process.cwd())
+    assert.equal(review.success, true, JSON.stringify(review))
+    for (const check of review.checks) console.log(`PASS ${check}`)
     return context
 }

@@ -16,11 +16,23 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        },
+        "./agents": {
+            "types": "./dist/agents/index.d.ts",
+            "import": "./dist/agents/index.js",
+            "default": "./dist/agents/index.js"
         },
         "./vue": {
-            "types": "./dist/vue.d.ts",
-            "import": "./dist/vue.js"
+            "types": "./dist/vue/index.d.ts",
+            "import": "./dist/vue/index.js",
+            "default": "./dist/vue/index.js"
+        },
+        "./nuxt": {
+            "types": "./dist/nuxt/index.d.ts",
+            "import": "./dist/nuxt/index.js",
+            "default": "./dist/nuxt/index.js"
         },
         "./package.json": "./package.json"
     },
@@ -34,39 +46,30 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@standard-schema/spec": "^1.1.0",
+        "@litijs/model": "workspace:*",
         "comark": "^0.8.1",
-        "nanoid": "^6.0.2"
+        "zod": "^4.6.7"
     },
     "devDependencies": {
-        "liti": "workspace:*",
+        "@types/markdown-it": "14.2.0",
+        "nuxt": "4.6.2",
+        "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
         "vue": "3.6.0-rc.12"
     },
     "peerDependencies": {
-        "@litijs/ai": "^0.0.3",
-        "liti": "^0.0.3",
+        "nuxt": "^4.6.2",
+        "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
         "vue": "^3.5.44 || ^3.6.0-rc.2"
     },
     "peerDependenciesMeta": {
-        "@litijs/ai": {
+        "vite-hub": {
             "optional": true
         },
         "vue": {
             "optional": true
-        }
-    },
-    "liti": {
-        "id": "blog",
-        "apiVersion": 1,
-        "kind": "plugin",
-        "liti": "^0.0.3 || ^0.1.0",
-        "factory": "blog",
-        "config": "@litijs/blog",
-        "options": {
-            "models": {
-                "posts": {}
-            }
         },
-        "vue": "@litijs/blog/vue"
+        "nuxt": {
+            "optional": true
+        }
     }
 }
