@@ -108,6 +108,12 @@ export default defineEventHandler(async (event) => {
         ),
     )
     assert.equal(nonNullUnique.filter((item) => item.status === 'fulfilled').length, 1)
+    assert.equal(
+        (await records.query('games', { filter: { slug: String((await records.read('games', gameId))!.data.slug) } }))
+            .total,
+        1,
+    )
+    await assert.rejects(records.query('games', { filter: { privateNote: 'private' } }), /public model field/)
     checks.push('native record uniqueness, composite FK, versions, redaction and cross-store deletion refusal')
 
     await assert.rejects(
@@ -135,7 +141,7 @@ export default defineEventHandler(async (event) => {
         { data: originalData, body: 'Original body' },
         { ...operation, ifDigest: null, locale: 'ja' },
     )
-    const english = await models.save(
+    let english = await models.save(
         'posts',
         id,
         { data: { title: 'English title' } },
@@ -150,7 +156,25 @@ export default defineEventHandler(async (event) => {
     assert.equal(published.data.secret, undefined)
     assert.deepEqual(published.data.tags, ['shared'])
     assert.equal(published.body, 'Original body')
+    await assert.rejects(models.query('posts', { filter: { secret: 'private' } }), /public model field/)
     assert.deepEqual((await models.readDraft('posts', id, operation, 'en'))?.data, { title: 'English title' })
+    const emptyBody = await models.save(
+        'posts',
+        id,
+        { data: { title: 'English title' }, body: '' },
+        { ...operation, ifDigest: english.digest, locale: 'en' },
+    )
+    await models.publish([{ model: 'posts', id, digests: { ja: first.digest, en: emptyBody.digest } }], operation)
+    assert.equal((await models.read('posts', id, 'en'))?.body, '')
+    english = await models.save(
+        'posts',
+        id,
+        { data: { title: 'English title' }, body: null },
+        { ...operation, ifDigest: emptyBody.digest, locale: 'en' },
+    )
+    assert.equal((await models.readDraft('posts', id, operation, 'en'))?.body, undefined)
+    await models.publish([{ model: 'posts', id, digests: { ja: first.digest, en: english.digest } }], operation)
+    assert.equal((await models.read('posts', id, 'en'))?.body, 'Original body')
     await assert.rejects(
         models.save(
             'posts',

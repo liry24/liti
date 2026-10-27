@@ -13,7 +13,7 @@ export default defineConfig({
         format: ['esm'],
         unbundle: true,
         platform: 'neutral',
-        dts: { tsconfig: '../../tsconfig.build.json' },
+        dts: { tsconfig: './tsconfig.json' },
         deps: { neverBundle: true },
         exports: false,
     },

@@ -113,6 +113,9 @@ jobs:
             - run: bun run test:vitehub
             - run: bun run test:vitehub:cloudflare
             - run: bun run test:model:native
+            - run: bun run test:liti:native
+              env:
+                  CHROMIUM_PATH: ${{ runner.os == 'Windows' && 'C:/Program Files/Google/Chrome/Application/chrome.exe' || 'google-chrome' }}
     check:
         if: always()
         needs: [codeql, build, nuxt, cloudflare, consumer, vitehub]

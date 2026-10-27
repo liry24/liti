@@ -5,7 +5,8 @@
         "packages/*/dist/**",
         "test/fixtures/**/.nuxt/**",
         "test/fixtures/**/.void/**",
-        "test/fixtures/model/**"
+        "test/fixtures/model/**",
+        "test/fixtures/integration/**"
     ],
     "workspaces": {
         ".": {

@@ -2,8 +2,11 @@ import { defineContentModel, defineRecordModel, field } from '@litijs/model'
 import { recordSchema } from '@litijs/model/records/schema'
 import { z } from 'zod'
 
-const authorize = ({ actor, action }: { actor: { id: string }; action: string }) =>
-    actor.id === 'writer' || actor.id === 'scheduler' || (actor.id === 'write-only' && action === 'save')
+const authorize = ({ actor, action }: { actor: { id: string; email?: unknown }; action: string }) =>
+    actor.id === 'writer' ||
+    actor.id === 'scheduler' ||
+    (typeof actor.email === 'string' && actor.email.startsWith('editor-')) ||
+    (actor.id === 'write-only' && action === 'save')
 export const games = defineRecordModel({
     name: 'games',
     fields: {

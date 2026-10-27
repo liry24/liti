@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
+import { recordSchema } from '../packages/model/src/records/schema'
 import {
     defineContentModel,
     defineRecordModel,
@@ -21,6 +22,26 @@ const fields = {
 }
 const policy = () => true
 describe('ViteHub model definitions', () => {
+    it('refuses physical SQL names that collide despite different logical casing', () => {
+        const record = (name: string) =>
+            defineRecordModel({ name, fields: { slug: field(z.string()) }, authorize: policy })
+        expect(() => recordSchema([record('gameStats'), record('gamestats')])).toThrow('collide in native SQL')
+        for (const key of ['ID', 'created_at'])
+            expect(() =>
+                recordSchema([
+                    defineRecordModel({ name: 'games', fields: { [key]: field(z.string()) }, authorize: policy }),
+                ]),
+            ).toThrow('collide in native SQL')
+        expect(() =>
+            recordSchema([
+                defineRecordModel({
+                    name: 'games',
+                    fields: { slug: field(z.string()), Slug: field(z.string()) },
+                    authorize: policy,
+                }),
+            ]),
+        ).toThrow('collide in native SQL')
+    })
     it('derives validation and a public descriptor from one field definition', async () => {
         const model = defineContentModel({
             name: 'posts',

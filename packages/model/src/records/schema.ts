@@ -54,10 +54,17 @@ function sqlKind(input: unknown): string | undefined {
 /** Native Drizzle tables are contributed to ViteHub Database; no driver or migration executor lives here. */
 export function recordSchema(models: readonly RecordModel[]): RecordTables {
     const tables: RecordTables = {}
+    const names = new Set<string>()
     for (const model of models) {
-        if (tables[model.name]) throw new ModelError('LITI_INVALID_MODEL', 'Duplicate record model.')
+        if (names.has(model.name.toLowerCase()))
+            throw new ModelError('LITI_INVALID_MODEL', 'Record names collide in native SQL.')
+        names.add(model.name.toLowerCase())
         const columns: Record<string, SQLiteColumnBuilderBase> = {}
+        const columnNames = new Set(['id', 'version', 'created_at', 'updated_at'])
         for (const [key, field] of Object.entries(model.fields)) {
+            if (columnNames.has(key.toLowerCase()))
+                throw new ModelError('LITI_INVALID_MODEL', 'Record field names collide in native SQL.')
+            columnNames.add(key.toLowerCase())
             const kind = sqlKind(field.schema['~standard'].jsonSchema.output({ target: 'draft-2020-12' }))
             if (field.reference) {
                 if (kind !== 'string' || !models.some((target) => target.name === field.reference))

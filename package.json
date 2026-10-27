@@ -6,7 +6,7 @@
     ],
     "type": "module",
     "scripts": {
-        "build": "bun --filter liti build && bun --filter '@litijs/*' build",
+        "build": "bun --filter @litijs/model build && bun --filter liti build && bun --filter @litijs/blog build",
         "check": "bun run format:check && bun run lint && bun run workspace:check && bun run unused && bun run typecheck && bun run test && bun run build && bun run test:nuxt && bun run test:cloudflare && bun run package:check && bun run test:packed",
         "deps:update": "taze",
         "format": "vp fmt . --write",
@@ -15,7 +15,7 @@
         "lint:fix": "vp lint . --fix",
         "unused": "knip && knip --production",
         "workspace:check": "sherif -i drizzle-orm -i drizzle-kit",
-        "preview:package": "pkg-pr-new publish ./packages/liti ./packages/sqlite ./packages/drizzle ./packages/void ./packages/ai ./packages/blog ./packages/test-utils --bun --no-compact --previewVersion --peerDeps --comment=update",
+        "preview:package": "pkg-pr-new publish ./packages/model ./packages/liti ./packages/blog --bun --no-compact --previewVersion --peerDeps --comment=update",
         "package:check": "node scripts/check-packages.mjs",
         "test": "vp test run",
         "test:bun-sqlite": "bun test test/adapter.test.ts -t 'sqlite domain storage conformance'",
@@ -26,7 +26,8 @@
         "bundle:size": "bun run build && bun scripts/measure-bundles.mjs --workspace-root .",
         "test:vitehub": "node test/vitehub.mjs",
         "test:vitehub:cloudflare": "node test/vitehub.mjs --cloudflare",
-        "test:model:native": "node test/model-native.mjs"
+        "test:model:native": "node test/model-native.mjs",
+        "test:liti:native": "node test/model-native.mjs --nuxt"
     },
     "devDependencies": {
         "@arethetypeswrong/cli": "^0.18.5",
@@ -96,6 +97,8 @@
     "packageManager": "bun@1.4.4",
     "patchedDependencies": {
         "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
-        "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-content-publication-24ddab7.patch"
+        "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-content-publication-24ddab7.patch",
+        "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch",
+        "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-nuxt-24ddab7.patch"
     }
 }

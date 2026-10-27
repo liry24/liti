@@ -12,7 +12,7 @@ import {
 import { authorize } from '../authorization/index'
 import { assertIdentity, ModelError } from '../definition/errors'
 import { normalizeModelUrl } from '../definition/url'
-import { assertJson, referenceValues, validateData } from '../definition/validation'
+import { assertJson, referenceValues, validateData, queryFilter } from '../definition/validation'
 import type { Actor, ContentModel, ModelAction, ModelSaveInput } from '../definition/model'
 import { documentId, modelLocale, resolveTranslation, splitDocumentId } from '../i18n/index'
 
@@ -168,7 +168,15 @@ export function createModelContent(options: ContentBindingOptions) {
             },
             async () => {
                 operation.signal?.throwIfAborted()
-                return await task()
+                try {
+                    return await task()
+                } catch (error) {
+                    if (isWorkspaceConflict(error))
+                        throw new ModelError('LITI_CONFLICT', 'The Workspace changed before commit.', [], {
+                            cause: error,
+                        })
+                    throw error
+                }
             },
         )
     const commit = async <T>(
@@ -258,7 +266,12 @@ export function createModelContent(options: ContentBindingOptions) {
             ),
         )
         const body = translated?.data['_litiBody'] ? translated.body : fallback ? original.body : ''
-        const url = normalizeModelUrl(model.url?.({ id, locale, data }))
+        const routeData = Object.fromEntries(
+            Object.entries(resolveTranslation(model, dataOf(original), dataOf(translated), true)).filter(
+                ([key]) => model.fields[key]?.public !== false,
+            ),
+        )
+        const url = normalizeModelUrl(model.url?.({ id, locale, data: routeData }))
         const ordering = await json<Record<string, number>>(snapshot, orderPath(model.name))
         return {
             id,
@@ -307,6 +320,7 @@ export function createModelContent(options: ContentBindingOptions) {
     ) => {
         const model = modelOf(name),
             snapshot = await view('published')
+        const filter = await queryFilter(model.fields, queryOptions.filter)
         const suffix = `/${originalLocale(model)}.${model.format === 'json' ? 'json' : 'md'}`
         const ids = (await files(snapshot))
             .filter((file) => file.type === 'file' && file.path.startsWith(`${name}/`) && file.path.endsWith(suffix))
@@ -325,9 +339,7 @@ export function createModelContent(options: ContentBindingOptions) {
             )
         ).filter((entry) => entry !== null)
         const filtered = entries.filter((entry) =>
-            Object.entries(queryOptions.filter ?? {}).every(
-                ([key, value]) => JSON.stringify(entry.data[key]) === JSON.stringify(value),
-            ),
+            Object.entries(filter).every(([key, value]) => entry.data[key] === value),
         )
         filtered.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
         const limit = queryOptions.limit ?? 50,
@@ -345,11 +357,14 @@ export function createModelContent(options: ContentBindingOptions) {
         id: string,
         operation: ModelOperation,
         locale?: string,
+        readOptions: { revision?: string } = {},
     ): Promise<DraftEntry | null> => {
         const model = modelOf(name),
             selected = modelLocale(model, locale)
         await check(model, 'readDraft', id, selected, operation)
-        const snapshot = await view('draft'),
+        const snapshot = readOptions.revision
+                ? await workspace().history.open(readOptions.revision)
+                : await view('draft'),
             document = await stored(model, id, selected, snapshot)
         const ordering = await json<Record<string, number>>(snapshot, orderPath(name))
         return document
@@ -381,7 +396,8 @@ export function createModelContent(options: ContentBindingOptions) {
         const snapshot = await view('draft'),
             before = await stored(model, id, locale, snapshot)
         if ((before?.digest ?? null) !== write.ifDigest) throw new ModelError('LITI_CONFLICT', 'The draft changed.')
-        if (!isOriginal && !(await stored(model, id, originalLocale(model), snapshot)))
+        const original = isOriginal ? before : await stored(model, id, originalLocale(model), snapshot)
+        if (!isOriginal && !original)
             throw new ModelError('LITI_REFERENCE', 'Create the original translation group first.')
         const context = {
             ...write,
@@ -393,13 +409,22 @@ export function createModelContent(options: ContentBindingOptions) {
         }
         input = model.prepare ? await model.prepare(input, context) : input
         const data = await validateData(model.fields, input.data, { sparse: !isOriginal, localizedOnly: !isOriginal })
-        const body = input.body ?? before?.body ?? ''
+        if (input.body !== undefined && input.body !== null && typeof input.body !== 'string')
+            throw new ModelError('LITI_INVALID_INPUT', 'A Markdown body must be a string.')
+        if (isOriginal && input.body === null)
+            throw new ModelError('LITI_INVALID_INPUT', 'Only translations can inherit a body.')
+        const hasBody =
+            input.body === null ? false : input.body !== undefined || Boolean(before?.data['_litiBody']) || isOriginal
+        const body = hasBody ? (input.body ?? before?.body ?? '') : ''
         if (model.format === 'json' && body)
             throw new ModelError('LITI_INVALID_INPUT', 'JSON models have no Markdown body.')
         const order = input.order ?? Number(before?.data['_litiOrder'] ?? 0)
         if (!Number.isFinite(order)) throw new ModelError('LITI_INVALID_INPUT', 'Invalid ordering value.')
-        await validateReferences(model, data, snapshot)
-        await model.validate?.(data, { ...context, body })
+        const effectiveData = isOriginal
+            ? data
+            : await validateData(model.fields, resolveTranslation(model, dataOf(original), data, true))
+        await validateReferences(model, effectiveData, snapshot)
+        await model.validate?.(effectiveData, { ...context, body: hasBody ? body : (original?.body ?? '') })
         const path = pathsFor(model, id, [locale])[0]!
         const receipt = await run(write, { draft: snapshot?.revision.id ?? null }, [path], () =>
             commit(
@@ -412,7 +437,7 @@ export function createModelContent(options: ContentBindingOptions) {
                             data: {
                                 ...data,
                                 _litiOrder: order,
-                                _litiBody: input.body !== undefined || Boolean(before?.data['_litiBody']) || isOriginal,
+                                _litiBody: hasBody,
                             },
                             body,
                         },

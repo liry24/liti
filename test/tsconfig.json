@@ -41,6 +41,7 @@
     "exclude": [
         "fixtures/vitehub/**",
         "fixtures/model/**",
+        "fixtures/integration/**",
         "**/.data/**",
         "**/.nuxt/**",
         "**/.output/**",

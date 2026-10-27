@@ -1,8 +1,9 @@
-import { and, eq, asc, count } from 'drizzle-orm'
+import { and, eq, asc, count, isNull, getTableColumns } from 'drizzle-orm'
 import { databases } from '@vite-hub/database/drizzle'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import type { RecordModel, ContentModel, Actor } from '../definition/model'
 import { assertIdentity, ModelError } from '../definition/errors'
-import { validateData } from '../definition/validation'
+import { validateData, queryFilter } from '../definition/validation'
 import { authorize } from '../authorization/index'
 import type { RecordTables } from './schema'
 import { sqlCommit } from './errors'
@@ -70,16 +71,34 @@ export function createModelRecords(options: {
             .where(eq(table.id, assertIdentity(id)))
         return row ? await project(model, row) : null
     }
-    const query = async (name: string, page: { limit?: number; offset?: number } = {}) => {
+    const query = async (
+        name: string,
+        page: { limit?: number; offset?: number; filter?: Record<string, unknown> } = {},
+    ) => {
         const { model, table } = modelOf(name),
             limit = page.limit ?? 50,
             offset = page.offset ?? 0
         if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !Number.isInteger(offset) || offset < 0)
             throw new ModelError('LITI_INVALID_INPUT', 'Invalid record page.')
         const db = native()
+        const columns: Record<string, AnySQLiteColumn> = getTableColumns(table)
+        const conditions = Object.entries(await queryFilter(model.fields, page.filter)).map(([key, value]) => {
+            const column = columns[key]
+            if (!column) throw new ModelError('LITI_INVALID_MODEL', 'The native record column is missing.')
+            return value === null ? isNull(column) : eq(column, value)
+        })
         const [rows, totals] = await db.batch([
-            db.select().from(table).orderBy(asc(table.id)).limit(limit).offset(offset),
-            db.select({ value: count() }).from(table),
+            db
+                .select()
+                .from(table)
+                .where(and(...conditions))
+                .orderBy(asc(table.id))
+                .limit(limit)
+                .offset(offset),
+            db
+                .select({ value: count() })
+                .from(table)
+                .where(and(...conditions)),
         ])
         return { items: await Promise.all(rows.map((row) => project(model, row))), total: totals[0]!.value }
     }

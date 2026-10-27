@@ -41,6 +41,7 @@ export default defineConfig({
             '**/.wrangler/**',
             '**/.tmp/**',
             'test/fixtures/model/**',
+            'test/fixtures/integration/**',
         ],
         options: { typeAware: true, typeCheck: true },
         jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],

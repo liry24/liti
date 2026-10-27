@@ -15,6 +15,7 @@
         "target": "ES2024",
         "types": ["node"],
         "paths": {
+            "#liti/runtime": ["./packages/liti/src/runtime/server/context.d.ts"],
             "@litijs/model": ["./packages/model/src/index.ts"],
             "@litijs/model/content": ["./packages/model/src/content/index.ts"],
             "@litijs/model/records": ["./packages/model/src/records/index.ts"],

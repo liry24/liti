@@ -1,0 +1,12 @@
+{
+    "extends": "./tsconfig.rebuild.json",
+    "compilerOptions": {
+        "paths": {
+            "@litijs/model": ["../model/dist/index.d.ts"],
+            "@litijs/model/*": ["../model/dist/*"],
+            "#app": ["../../node_modules/nuxt/dist/app/index.d.ts"],
+            "#app/*": ["../../node_modules/nuxt/dist/app/*"],
+            "#liti/runtime": ["./src/runtime/server/context.d.ts"]
+        }
+    }
+}

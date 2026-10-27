@@ -1,6 +1,27 @@
 import { ModelError, type ModelIssue } from './errors'
 import type { Fields, InferData } from './model'
 
+export async function queryFilter(fields: Fields, input: Record<string, unknown> = {}) {
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+        throw new ModelError('LITI_INVALID_INPUT', 'Filters must be a JSON object.')
+    assertJson(input)
+    const result: Record<string, string | number | boolean | null> = {}
+    for (const [key, value] of Object.entries(input)) {
+        const field = fields[key]
+        if (!field || field.public === false)
+            throw new ModelError('LITI_INVALID_INPUT', 'Filters require a public model field.')
+        const checked = await field.schema['~standard'].validate(value)
+        if (
+            checked.issues ||
+            (checked.value !== null && !['string', 'number', 'boolean'].includes(typeof checked.value))
+        )
+            throw new ModelError('LITI_INVALID_INPUT', 'Filters require a valid scalar field value.')
+        result[key] = checked.value as string | number | boolean | null
+    }
+    assertJson(result)
+    return result
+}
+
 export function assertJson(value: unknown, path: (string | number)[] = []): void {
     if (
         value === null ||

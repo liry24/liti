@@ -32,9 +32,15 @@ type OptionalInputKeys<F extends Fields> = {
 export type InferInput<F extends Fields> = {
     [K in Exclude<keyof F, OptionalInputKeys<F>>]: StandardSchemaV1.InferInput<F[K]['schema']>
 } & { [K in OptionalInputKeys<F>]?: StandardSchemaV1.InferInput<F[K]['schema']> }
-export type ModelData<M extends { fields: Fields }> = InferData<M['fields']>
-export type ModelInput<M extends { fields: Fields }> = InferInput<M['fields']>
-export type ModelPublicData<M extends { fields: Fields }> = InferPublicData<M['fields']>
+export type ModelData<M extends { fields: Fields }> = string extends keyof M['fields']
+    ? Record<string, unknown>
+    : InferData<M['fields']>
+export type ModelInput<M extends { fields: Fields }> = string extends keyof M['fields']
+    ? Record<string, unknown>
+    : InferInput<M['fields']>
+export type ModelPublicData<M extends { fields: Fields }> = string extends keyof M['fields']
+    ? Record<string, unknown>
+    : InferPublicData<M['fields']>
 export const field = <S extends FieldSchema, const O extends FieldOptions = {}>(
     schema: S,
     options?: O,
@@ -77,7 +83,8 @@ export interface ModelValidationContext {
 }
 export interface ModelSaveInput {
     data: Record<string, unknown>
-    body?: string
+    /** Null clears a translated body override; omission retains its current presence. */
+    body?: string | null
     order?: number
 }
 export interface ModelOptions<F extends Fields = Fields> {
@@ -93,7 +100,7 @@ export interface ModelOptions<F extends Fields = Fields> {
 export interface ContentModelOptions<F extends Fields = Fields> extends ModelOptions<F> {
     locales?: { default: string; supported: readonly string[] }
     format?: 'markdown' | 'json'
-    url?(entry: { id: string; locale: string; data: InferData<F> }): string | null
+    url?(entry: { id: string; locale: string; data: InferPublicData<F> }): string | null
 }
 export interface RecordModelOptions<F extends Fields = Fields> extends ModelOptions<F> {
     unique?: readonly (readonly (keyof F & string)[])[]

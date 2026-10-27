@@ -2,6 +2,22 @@
     "vitehubCommit": "24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
     "fixes": [
         {
+            "id": "console-action-error-marker",
+            "kind": "bun-patch",
+            "packages": [
+                "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "The public consoleActionError helper does not mark its H3 error for the owning action adapter. A valid Console editor save reaches Model validation, but an invalid field is returned as a generic 500 with its issues discarded.",
+            "reproduction": "In the packed Liti consumer, save a valid Console post, then save an empty required title with its reviewed digest. Without this hunk the response is 500; the expected response is 400 with validation details.",
+            "patch": "patches/vitehub-nuxt-24ddab7.patch",
+            "consumerPatch": "test/fixtures/vitehub/patches/vitehub-nuxt-24ddab7.patch",
+            "scope": "One line marks the public helper's error with the existing private actionFailureKey. Native readActionFailure still restricts exposed failures to 4xx; authorization and error handling remain active.",
+            "regressions": ["test/fixtures/integration/verify-http.mjs", "test/model-native.mjs --nuxt"],
+            "verification": "The installed distributed Console RPC returns 400 on invalid fields and still saves/publishes valid input on Node and workerd.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove this hunk from both patch copies, reinstall a fixed installed distribution and pass the same native Console RPC validation/save/publication tests on Node and workerd. Remove the patch entry only when its Env transform hunk is also obsolete."
+        },
+        {
             "id": "content-publication-transaction",
             "kind": "bounded-feature-extension",
             "packages": [
@@ -31,6 +47,8 @@
             "environment": "Windows; Node 24.22.1; Bun 1.4.4; Nuxt 4.6.2 / Nitro 2.13.5; Vite 8.3.5; selected full-commit preview",
             "reproduction": "Remove generatedPaths from fixture modules, run bun run build, then node .output/server/index.mjs. Observed unmodified failure before adding the workaround.",
             "workaround": "test/fixtures/vitehub/workarounds/generated-paths.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/generated-paths.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
             "registration": "test/fixtures/vitehub/nuxt.config.ts",
             "regressions": [
                 "test/upstream-regressions/vitehub-generated-paths.test.mjs",
@@ -42,7 +60,7 @@
                 "pullRequest": null,
                 "fixedVersion": null
             },
-            "removalCondition": "On Windows and Linux, remove the module registration/file and verify clean install, prepare, build and the built Node/Worker probes without unresolved generated imports. Retain the runtime regression. The module is fixture-local until phase 1 passes; no application patch has been applied."
+            "removalCondition": "On Windows and Linux, remove fixture and production registrations/files and verify clean install, prepare, build and the packed Node/Worker probes without unresolved generated imports. Retain the runtime regression. No application patch has been applied."
         },
         {
             "id": "nitro-import-meta-initialization",
@@ -68,6 +86,8 @@
             "symptom": "Enabling Console traces libSQL JS and package metadata but omits win32-x64-msvc/index.node; the production server exits with MODULE_NOT_FOUND.",
             "reproduction": "Enable fixture Console without libsqlNative, build, then run verify-node.mjs.",
             "workaround": "test/fixtures/vitehub/workarounds/libsql-native.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/libsql-native.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
             "registration": "test/fixtures/vitehub/nuxt.config.ts",
             "regressions": ["test/fixtures/vitehub/verify-node.mjs"],
             "upstream": {
@@ -105,6 +125,8 @@
             "symptom": "cachedSource imports nitro/cache (Nitro 3), pulling its H3 2 runtime through Nuxt Nitro 2/H3 1 aliases and failing at h3/rules.",
             "reproduction": "Remove nitroCache registration and build the Cloudflare fixture: h3/dist/index.mjs/rules cannot resolve.",
             "workaround": "test/fixtures/vitehub/workarounds/nitro-cache.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/nitro-cache.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
             "registration": "test/fixtures/vitehub/nuxt.config.ts",
             "regressions": [
                 "test/fixtures/vitehub/server/utils/contracts.ts",
@@ -151,6 +173,8 @@
             "symptom": "The generated Schedule plugin imports definePlugin from Nitro 3 even in Nuxt's Nitro 2 host. Build fails because H3 1 has no toRequest export.",
             "reproduction": "Enable schedule: true and remove schedulePlugin from Nuxt modules; the Cloudflare build fails at nitro/dist/runtime/nitro.mjs importing toRequest.",
             "workaround": "test/fixtures/vitehub/workarounds/schedule-plugin.ts",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/schedule-plugin.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
             "registration": "test/fixtures/vitehub/nuxt.config.ts",
             "regressions": [
                 "test/upstream-regressions/vitehub-schedule-plugin.test.mjs",
@@ -161,6 +185,19 @@
         }
     ],
     "featureGaps": [
+        {
+            "id": "console-model-owner",
+            "evidence": "The installed Nuxt bridge imports the built-in Content owner factory by a module specifier; there is no public callback to replace only its write operations with Model-authorized operations. Native Content calls do not authorize themselves.",
+            "decision": "Use Nuxt's public Nitro alias hook to register one small owner factory which delegates to the public @vite-hub/content/runtime/console factory for native editing and wraps management writes in Model authorization, validation and reviewed digests. Direct native writes remain denied by Workspace validation. Translation writes requiring sparse semantics use the supplemental model controls.",
+            "implementation": "packages/liti/src/runtime/server/console.ts",
+            "registration": "packages/liti/src/nuxt/index.ts",
+            "regressions": [
+                "test/fixtures/integration/verify-http.mjs",
+                "test/fixtures/model/server/api/__probe.post.ts"
+            ],
+            "removalCondition": "When an installed public owner/write registration hook exists, replace the single alias registration and retain authenticated native Console, direct-write denial, field validation and publication tests. This bridge adds no Console component copies.",
+            "owner": "liti; phase 4"
+        },
         {
             "id": "console-model-controls",
             "evidence": "Installed Content DocumentsOptions offers schema fields and Markdown components. ConsoleSchemaFieldKind and ConsoleDocumentActionName enumerate fixed field/action sets; contributed sections/pages also use fixed built-in views. No arbitrary relation-picker, translation-operation or proofreading-button slot is exposed by these contracts.",

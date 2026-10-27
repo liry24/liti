@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+const integrated = process.argv.includes('--nuxt')
 const temporary = resolve(root, '.tmp')
 mkdirSync(temporary, { recursive: true })
 const consumer = process.env.LITI_MODEL_CONSUMER
@@ -51,6 +52,7 @@ writeFileSync(
         "export default defineNuxtConfig({\n    nitro: { externals: { inline: ['@litijs/model'] } },",
     ),
 )
+run('bun', ['run', 'typecheck'], resolve(root, 'packages/model'))
 run('bun', ['run', 'build'], resolve(root, 'packages/model'))
 run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/model'))
 const version = JSON.parse(readFileSync(resolve(root, 'packages/model/package.json'), 'utf8')).version
@@ -60,6 +62,30 @@ renameSync(packed, resolve(consumer, archive))
 const manifest = JSON.parse(readFileSync(resolve(base, 'package.json'), 'utf8'))
 manifest.name = 'liti-model-packed-consumer'
 manifest.dependencies['@litijs/model'] = `file:./${archive}`
+if (integrated) {
+    run('bun', ['run', 'typecheck'], resolve(root, 'packages/liti'))
+    run('bun', ['run', 'build'], resolve(root, 'packages/liti'))
+    assert.ok(
+        readFileSync(resolve(root, 'packages/liti/dist/runtime/server/manage.post.js'), 'utf8').includes(
+            'from "#liti/runtime"',
+        ),
+        'Keep the generated server module virtual in the package.',
+    )
+    run('bun', ['pm', 'pack', '--destination', consumer, '--ignore-scripts'], resolve(root, 'packages/liti'))
+    const litiVersion = JSON.parse(readFileSync(resolve(root, 'packages/liti/package.json'), 'utf8')).version
+    const litiPacked = resolve(consumer, `liti-${litiVersion}.tgz`)
+    const litiArchive = `liti-${createHash('sha256').update(readFileSync(litiPacked)).digest('hex').slice(0, 16)}.tgz`
+    renameSync(litiPacked, resolve(consumer, litiArchive))
+    manifest.dependencies.liti = `file:./${litiArchive}`
+    manifest.overrides = { ...manifest.overrides, '@litijs/model': `file:./${archive}` }
+    copy(resolve(consumer, 'verify-http.mjs'), resolve(consumer, 'verify-model-http.mjs'))
+    copy(resolve(root, 'test/fixtures/integration'), consumer)
+    copy(resolve(root, 'test/chromium.mjs'), resolve(consumer, 'verify-browser.mjs'))
+    copy(resolve(root, 'test/stop-process.ts'), resolve(consumer, 'stop-process.ts'))
+    process.env.CHROMIUM_PATH ??=
+        process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : 'google-chrome'
+    rmSync(resolve(consumer, 'server/plugins/model.ts'), { force: true })
+}
 writeFileSync(resolve(consumer, 'package.json'), JSON.stringify(manifest, null, 2))
 console.log(`Packed Model consumer: ${consumer}`)
 run('bun', ['install'])

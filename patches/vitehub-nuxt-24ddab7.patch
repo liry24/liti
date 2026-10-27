@@ -11,3 +11,14 @@ index 97e9ef4585a7b767a34452ff2a900288e9ec8f63..9c3e166110d71eda17f668eb68f1915a
  	if (!resolvers.length) return;
  	const rollupConfig = config.rollupConfig ??= {};
  	const configuredPlugins = rollupConfig.plugins;
+diff --git a/dist/console/runtime/server/documents.js b/dist/console/runtime/server/documents.js
+--- a/dist/console/runtime/server/documents.js
++++ b/dist/console/runtime/server/documents.js
+@@ -46,6 +46,7 @@
+ function consoleActionError(failure) {
+ 	const error = Object.assign(consoleRequestError(failure.status, failure.message), { consoleCode: failure.code });
+ 	if (failure.details) Object.assign(error, { consoleDetails: failure.details });
++	Object.defineProperty(error, actionFailureKey, { value: Object.freeze({ ...failure }) });
+ 	return error;
+ }
+ /** Install the document editor sections of one project. Generated Console output calls this. */
