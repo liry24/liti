@@ -7,6 +7,7 @@ import { validateData, queryFilter } from '../definition/validation'
 import { authorize } from '../authorization/index'
 import type { RecordTables } from './schema'
 import { sqlCommit } from './errors'
+import { notifyCommitted } from '../internal/committed'
 
 export type { RecordTable, RecordTables } from './schema'
 import type { RecordEntry, RecordOperation } from '../definition/entries'
@@ -131,7 +132,17 @@ export function createModelRecords(options: {
                       .returning(),
         )
         if (!rows[0]) throw new ModelError('LITI_CONFLICT', 'The record changed before commit.')
-        return { id, version: rows[0].version, updatedAt: now }
+        const postCommitErrors = await notifyCommitted(
+            model,
+            {
+                action: operation.ifVersion === null ? 'create' : 'update',
+                id,
+                actor: operation.actor,
+                version: rows[0].version,
+            },
+            data,
+        )
+        return { id, version: rows[0].version, updatedAt: now, postCommitErrors }
     }
     const remove = async (name: string, id: string, operation: RecordOperation & { ifVersion: number }) => {
         const { model, table } = modelOf(name)
@@ -157,7 +168,12 @@ export function createModelRecords(options: {
                     .returning(),
         )
         if (!deleted[0]) throw new ModelError('LITI_CONFLICT', 'The record changed before deletion.')
-        return { id, removed: true as const }
+        const postCommitErrors = await notifyCommitted(
+            model,
+            { action: 'remove', id, actor: operation.actor },
+            deleted[0],
+        )
+        return { id, removed: true as const, postCommitErrors }
     }
     const readDraft = async (name: string, id: string, operation: RecordOperation) => {
         const { model, table } = modelOf(name)

@@ -18,6 +18,7 @@ export type {
     Json,
     Model,
     ModelAction,
+    ModelCommit,
     ModelField,
     ModelOptions,
     ModelValidationContext,

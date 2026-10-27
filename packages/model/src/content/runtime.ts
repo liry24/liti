@@ -14,6 +14,7 @@ import { assertIdentity, ModelError } from '../definition/errors'
 import { normalizeModelUrl } from '../definition/url'
 import { assertJson, referenceValues, validateData, queryFilter } from '../definition/validation'
 import type { Actor, ContentModel, ModelAction } from '../definition/model'
+import { notifyCommitted } from '../internal/committed'
 import { documentId, modelLocale, resolveTranslation, splitDocumentId } from '../i18n/index'
 
 import type {
@@ -361,11 +362,12 @@ export function createModelContent(options: ContentBindingOptions) {
               }
             : null
     }
-    const save = async (
+    const saveDraft = async (
         name: string,
         id: string,
         input: SaveInput,
         write: ModelOperation & { ifDigest: string | null; locale?: string },
+        action: 'save' | 'restore',
     ) => {
         const model = modelOf(name),
             locale = modelLocale(model, write.locale),
@@ -439,6 +441,19 @@ export function createModelContent(options: ContentBindingOptions) {
                 },
             ),
         )
+        receipt.postCommitErrors.push(
+            ...(await notifyCommitted(
+                model,
+                {
+                    action: action === 'restore' ? 'restore' : before ? 'update' : 'create',
+                    id,
+                    locale,
+                    actor: write.actor,
+                    revision: receipt.result.revision,
+                },
+                effectiveData,
+            )),
+        )
         return {
             id,
             locale,
@@ -447,6 +462,13 @@ export function createModelContent(options: ContentBindingOptions) {
             postCommitErrors: receipt.postCommitErrors,
         }
     }
+
+    const save = async (
+        name: string,
+        id: string,
+        input: SaveInput,
+        write: ModelOperation & { ifDigest: string | null; locale?: string },
+    ) => await saveDraft(name, id, input, write, 'save')
 
     async function publishSnapshot(
         selection: readonly PublishSelection[],
@@ -644,14 +666,27 @@ export function createModelContent(options: ContentBindingOptions) {
                 metadata: { litiActor: operation.actor.id },
             }),
         )
+        const notifications = []
+        for (const entry of selection)
+            notifications.push(
+                ...(await notifyCommitted(modelOf(entry.model), {
+                    action: 'publish',
+                    id: entry.id,
+                    actor: operation.actor,
+                    revision: result.revision.id,
+                })),
+            )
         return {
             revision: result.revision.id,
             publishedRevision: result.revision.id,
             entries: selection.map((entry) => ({ model: entry.model, id: entry.id })),
-            postCommitErrors: result.postCommitErrors.map(() => ({
-                code: 'LITI_POST_COMMIT',
-                message: 'Publication committed; a post-commit listener failed.',
-            })),
+            postCommitErrors: [
+                ...notifications,
+                ...result.postCommitErrors.map(() => ({
+                    code: 'LITI_POST_COMMIT',
+                    message: 'Publication committed; a post-commit listener failed.',
+                })),
+            ],
         }
     }
     const publish = async (selection: readonly PublishSelection[], operation: ModelOperation) => {
@@ -707,6 +742,15 @@ export function createModelContent(options: ContentBindingOptions) {
                     (revision) => revision,
                 ),
         )
+        for (const entry of selection)
+            receipt.postCommitErrors.push(
+                ...(await notifyCommitted(modelOf(entry.model), {
+                    action: 'schedule',
+                    id: entry.id,
+                    actor: operation.actor,
+                    revision: receipt.result.id,
+                })),
+            )
         return { id, at: job.at, revision: job.revision, postCommitErrors: receipt.postCommitErrors }
     }
     const cancelSchedule = async (id: string, operation: ModelOperation) => {
@@ -737,6 +781,15 @@ export function createModelContent(options: ContentBindingOptions) {
                     (revision) => revision,
                 ),
         )
+        for (const entry of job.selection)
+            receipt.postCommitErrors.push(
+                ...(await notifyCommitted(modelOf(entry.model), {
+                    action: 'cancelSchedule',
+                    id: entry.id,
+                    actor: operation.actor,
+                    revision: receipt.result.id,
+                })),
+            )
         return { id, revision: receipt.result.id, postCommitErrors: receipt.postCommitErrors }
     }
     const inspect = async (name: string, id: string, operation: ModelOperation, locale?: string) => {
@@ -871,10 +924,18 @@ export function createModelContent(options: ContentBindingOptions) {
         return {
             id,
             revision: result.revision.id,
-            postCommitErrors: result.postCommitErrors.map(() => ({
-                code: 'LITI_POST_COMMIT',
-                message: 'Publication committed; a post-commit listener failed.',
-            })),
+            postCommitErrors: [
+                ...(await notifyCommitted(model, {
+                    action: 'unpublish',
+                    id,
+                    actor: operation.actor,
+                    revision: result.revision.id,
+                })),
+                ...result.postCommitErrors.map(() => ({
+                    code: 'LITI_POST_COMMIT',
+                    message: 'Publication committed; a post-commit listener failed.',
+                })),
+            ],
         }
     }
     const remove = async (
@@ -919,6 +980,18 @@ export function createModelContent(options: ContentBindingOptions) {
                 () => undefined,
             ),
         )
+        receipt.postCommitErrors.push(
+            ...(await notifyCommitted(
+                model,
+                {
+                    action: 'remove',
+                    id,
+                    locale,
+                    actor: operation.actor,
+                },
+                dataOf(current),
+            )),
+        )
         return { id, locale, postCommitErrors: receipt.postCommitErrors }
     }
     const restore = async (
@@ -932,7 +1005,7 @@ export function createModelContent(options: ContentBindingOptions) {
         await check(model, 'restore', id, locale, operation)
         const previous = await stored(model, id, locale, await workspace().history.open(revision))
         if (!previous) throw new ModelError('LITI_NOT_FOUND', 'The revision contains no entry.')
-        return await save(
+        return await saveDraft(
             name,
             id,
             {
@@ -941,6 +1014,7 @@ export function createModelContent(options: ContentBindingOptions) {
                 order: Number(previous.data['_litiOrder']),
             },
             operation,
+            'restore',
         )
     }
     const reorder = async (name: string, ids: readonly string[], operation: ModelOperation & { ifHead: string }) => {
@@ -982,6 +1056,15 @@ export function createModelContent(options: ContentBindingOptions) {
                 (revision) => revision,
             ),
         )
+        for (const id of ids)
+            receipt.postCommitErrors.push(
+                ...(await notifyCommitted(model, {
+                    action: 'reorder',
+                    id,
+                    actor: operation.actor,
+                    revision: receipt.result.id,
+                })),
+            )
         return { revision: receipt.result.id, postCommitErrors: receipt.postCommitErrors }
     }
     return {

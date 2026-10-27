@@ -87,6 +87,25 @@ export interface ModelSaveInput {
     body?: string | null
     order?: number
 }
+export interface ModelCommit {
+    action:
+        | 'create'
+        | 'update'
+        | 'remove'
+        | 'restore'
+        | 'publish'
+        | 'unpublish'
+        | 'schedule'
+        | 'cancelSchedule'
+        | 'reorder'
+    model: string
+    id: string
+    actor: Actor
+    locale?: string
+    revision?: string
+    version?: number
+    label?: string
+}
 export interface ModelOptions<F extends Fields = Fields> {
     name: string
     label?: string
@@ -96,6 +115,8 @@ export interface ModelOptions<F extends Fields = Fields> {
     authorize(context: AuthorizationContext): boolean | Promise<boolean>
     prepare?(input: ModelSaveInput, context: ModelValidationContext): ModelSaveInput | Promise<ModelSaveInput>
     validate?(data: InferData<F>, context: ModelValidationContext): void | Promise<void>
+    /** Runs after commit; failure is reported in the receipt without undoing the committed write. */
+    committed?(event: ModelCommit): void | Promise<void>
 }
 export interface ContentModelOptions<F extends Fields = Fields> extends ModelOptions<F> {
     locales?: { default: string; supported: readonly string[] }

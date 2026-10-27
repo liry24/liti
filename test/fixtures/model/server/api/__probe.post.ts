@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { registerWorkspacePlugin, useWorkspace } from 'vite-hub/workspace'
 import { models, records } from '../utils/models'
 import { content } from '../content'
+import { commits } from '../models/definitions'
 
 export default defineEventHandler(async (event) => {
     const token = process.env.LITI_PROBE_TOKEN
@@ -459,5 +460,59 @@ export default defineEventHandler(async (event) => {
     )
     assert.equal((await models.readDraft('posts', bodyContextId, operation, 'ja'))?.body, 'Retained Markdown body')
     checks.push('preparation receives the effective body when a field-only save retains Markdown')
+    assert.equal(
+        commits.some((event) => event.actor.id === 'denied'),
+        false,
+    )
+    assert.equal(JSON.stringify(commits).includes('privateNote'), false)
+    assert.equal(JSON.stringify(commits).includes('EXPECT_BODY_CONTEXT'), false)
+    for (const action of [
+        'create',
+        'update',
+        'remove',
+        'restore',
+        'publish',
+        'unpublish',
+        'schedule',
+        'cancelSchedule',
+        'reorder',
+    ])
+        assert.ok(
+            commits.some((event) => event.action === action),
+            `Missing committed ${action} event`,
+        )
+    assert.equal(
+        commits.filter((event) => event.model === 'games' && event.action === 'create' && event.id.startsWith(dbId))
+            .length,
+        1,
+    )
+    const listenerId = crypto.randomUUID()
+    const committedReceipt = await models.save(
+        'posts',
+        listenerId,
+        {
+            data: { title: 'COMMITTED_LISTENER_THROW', slug: listenerId, tags: [] },
+        },
+        { ...operation, ifDigest: null, locale: 'ja' },
+    )
+    assert.equal(committedReceipt.postCommitErrors.length, 1)
+    assert.equal(JSON.stringify(committedReceipt).includes('PRIVATE_COMMIT_LISTENER_ERROR'), false)
+    assert.equal((await models.readDraft('posts', listenerId, operation, 'ja'))?.digest, committedReceipt.digest)
+    assert.equal(commits.filter((event) => event.id === listenerId).length, 1)
+    await assert.rejects(
+        models.save(
+            'posts',
+            listenerId,
+            {
+                data: { title: 'Conflict', slug: listenerId, tags: [] },
+            },
+            { ...operation, ifDigest: null, locale: 'ja' },
+        ),
+        /draft changed/,
+    )
+    assert.equal(commits.filter((event) => event.id === listenerId).length, 1)
+    checks.push(
+        'Model commit listeners observe only successful writes and cannot hide a committed receipt or expose hook errors',
+    )
     return { checks, documentId: id }
 })

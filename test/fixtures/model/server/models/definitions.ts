@@ -1,6 +1,12 @@
-import { defineContentModel, defineRecordModel, field } from '@litijs/model'
+import { defineContentModel, defineRecordModel, field, type ModelCommit } from '@litijs/model'
 import { recordSchema } from '@litijs/model/records/schema'
 import { z } from 'zod'
+
+export const commits: ModelCommit[] = []
+const committed = (event: ModelCommit) => {
+    commits.push(event)
+    if (event.label === 'COMMITTED_LISTENER_THROW') throw new Error('PRIVATE_COMMIT_LISTENER_ERROR')
+}
 
 const authorize = ({ actor, action }: { actor: { id: string; email?: unknown }; action: string }) =>
     actor.id === 'writer' ||
@@ -17,6 +23,7 @@ export const games = defineRecordModel({
     },
     unique: [['igdbId'], ['slug'], ['optionalCode']],
     authorize,
+    committed,
 })
 export const gameStats = defineRecordModel({
     name: 'gameStats',
@@ -27,6 +34,7 @@ export const gameStats = defineRecordModel({
     },
     unique: [['game', 'periodKey']],
     authorize,
+    committed,
 })
 export const posts = defineContentModel({
     name: 'posts',
@@ -41,6 +49,7 @@ export const posts = defineContentModel({
     },
     url: ({ locale, data }) => `/${locale}/posts/${data.slug}`,
     authorize,
+    committed,
     prepare: (input, context) => {
         if (input.data.secret === 'EXPECT_BODY_CONTEXT' && context.body !== 'Retained Markdown body')
             throw new Error('Preparation must receive the retained Markdown body.')
@@ -55,11 +64,13 @@ export const works = defineContentModel({
     format: 'json',
     fields: { name: field(z.string()), post: field(z.string().optional(), { reference: 'posts' }) },
     authorize,
+    committed,
 })
 export const cards = defineContentModel({
     name: 'cards',
     format: 'json',
     fields: { name: field(z.string()) },
     authorize,
+    committed,
 })
 export const tables = recordSchema([games, gameStats])
