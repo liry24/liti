@@ -6,8 +6,9 @@ import {
     uniqueIndex,
     type AnySQLiteColumn,
     type SQLiteColumnBuilderBase,
+    type SQLiteTableWithColumns,
 } from 'drizzle-orm/sqlite-core'
-import type { RecordModel } from '../definition/model'
+import type { RecordModel, ModelData } from '../definition/model'
 import { ModelError } from '../definition/errors'
 
 const baseTable = (
@@ -34,9 +35,21 @@ const baseTable = (
                 ),
             ),
     )
-export type RecordTable = ReturnType<typeof baseTable>
+type BaseRecordTable = ReturnType<typeof baseTable>
+export type RecordTable<M extends RecordModel = RecordModel> = string extends keyof M['fields']
+    ? BaseRecordTable
+    : SQLiteTableWithColumns<
+          Omit<BaseRecordTable['_']['config'], 'columns'> & {
+              columns: BaseRecordTable['_']['columns'] & {
+                  [Key in keyof ModelData<M> & string]: AnySQLiteColumn<{
+                      data: Exclude<ModelData<M>[Key], undefined>
+                      notNull: false
+                  }>
+              }
+          }
+      >
 export type RecordTables<Models extends readonly RecordModel[] = readonly RecordModel[]> = {
-    [Name in Models[number]['name']]: RecordTable
+    [Name in Models[number]['name']]: RecordTable<Extract<Models[number], { name: Name }>>
 }
 
 function sqlKind(input: unknown): string | undefined {
