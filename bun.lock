@@ -98,9 +98,10 @@
   },
   "patchedDependencies": {
     "vite-hub@https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-nuxt-24ddab7.patch",
-    "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch",
+    "nuxt@4.6.2": "patches/nuxt@4.6.2-async-data.patch",
     "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
     "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-content-publication-24ddab7.patch",
+    "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch",
     "@vite-hub/blob@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/blob@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-blob-h3-types-24ddab7.patch",
   },
   "overrides": {

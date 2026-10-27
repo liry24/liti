@@ -337,6 +337,29 @@
             },
             "regression": "test/fixtures/integration enables the native generated Blob route; packed Nuxt typecheck plus Node/workerd Blob GET/HEAD byte/content-type assertions in __blog.post.ts.",
             "removalCondition": "Remove this patch and the root entry with an upstream-fixed distribution; the native generated route must typecheck and pass the same GET/HEAD tests on Node and workerd without relaxing TypeScript checks."
+        },
+        {
+            "id": "nuxt-extracted-async-data-arguments",
+            "kind": "bun-patch",
+            "packages": ["nuxt@4.6.2"],
+            "environment": "Nuxt 4.6.2 with experimental.extractAsyncDataHandlers=true; browser hydration and management forms",
+            "symptom": "Extracted handlers drop their callback parameters and references to enclosing function parameters. Query/form/admin handlers then throw options is not defined or signal is not defined after hydration.",
+            "reproduction": "Independent app Worker browser run native-browser-2.log reproduces the unpatched failure. Emitted client chunks CNAEjxfm.js and u-vZumM6.js reference options/signal without declarations. The packed integration fixture enables extraction and exercises queries, cancellation, forms and authentication.",
+            "patch": "patches/nuxt@4.6.2-async-data.patch",
+            "scope": "The executed dist/index.mjs transform uses Nuxt's existing free-identifier analysis, captures enclosing parameters, and extracts the original callback function with all callback arguments. No runtime stubs, disabled extraction, changed storage, authorization or type-check bypass.",
+            "regressions": [
+                "test/upstream-regressions/nuxt-async-data.test.mjs",
+                "test/fixtures/integration/nuxt.config.ts",
+                "test/fixtures/integration/verify-http.mjs",
+                "test/fixtures/integration/app/pages/browser.vue"
+            ],
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "Install an upstream-fixed Nuxt distribution, remove the root/consumer patch entries and patch file together, and pass extracted query default/transform, cancellation, stale response, authenticated forms and in-flight edits in Node/workerd/browser without undeclared options or signal. Retain extraction-enabled regressions."
         }
     ],
     "featureGaps": [

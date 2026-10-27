@@ -1,0 +1,68 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index d84a71d..4147f10 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -8856,26 +8856,12 @@ const ExtractAsyncDataHandlersPlugin = (options) => createUnplugin(() => {
+ 						s ||= rolldownString(code, id, meta);
+ 						const referencedVariables = /* @__PURE__ */ new Set();
+ 						const imports = /* @__PURE__ */ new Set();
+-						walk(fetcherFunction.body, {
+-							scopeTracker,
+-							enter(innerNode, parent) {
+-								if (innerNode.type !== "Identifier") return;
+-								if (parent) {
+-									if (parent.type === "MemberExpression" && parent.property === innerNode && parent.computed === false) return;
+-									if (parent.type === "Property" && parent.key === innerNode && parent.computed === false) return;
+-									if (parent.type === "MethodDefinition" && parent.key === innerNode && parent.computed === false) return;
+-									if (parent.type === "PropertyDefinition" && parent.key === innerNode && parent.computed === false) return;
+-								}
+-								const declaration = scopeTracker.getDeclaration(innerNode.name);
+-								if (!declaration) return;
+-								if (declaration.type === "Import") imports.add(innerNode.name);
+-								else if (declaration.type !== "FunctionParam") {
+-									const functionBodyStart = fetcherFunction.body.start;
+-									const functionBodyEnd = fetcherFunction.body.end;
+-									if (declaration.start < functionBodyStart || declaration.end > functionBodyEnd) referencedVariables.add(innerNode.name);
+-								}
+-							}
+-						});
++						for (const name of getUndeclaredIdentifiersInFunction(fetcherFunction)) {
++							const declaration = scopeTracker.getDeclaration(name);
++							if (!declaration) continue;
++							if (declaration.type === "Import") imports.add(name);
++							else referencedVariables.add(name);
++						}
+ 						const importStatements = /* @__PURE__ */ new Set();
+ 						walk(parseResult.program, { enter(importDecl) {
+ 							if (importDecl.type !== "ImportDeclaration") return;
+@@ -8883,25 +8869,17 @@ const ExtractAsyncDataHandlersPlugin = (options) => createUnplugin(() => {
+ 						} });
+ 						const imps = Array.from(importStatements).join("\n");
+ 						const key = `${dirname(id)}/async-data-chunk-${count++}.js`;
+-						const isBlockStatement = fetcherFunction.body.type === "BlockStatement";
+-						const startOffset = codeIndex + fetcherFunction.body.start;
+-						const endOffset = codeIndex + fetcherFunction.body.end;
++						const startOffset = codeIndex + fetcherFunction.start;
++						const endOffset = codeIndex + fetcherFunction.end;
+ 						const chunk = s.clone();
+ 						const parameters = [...referencedVariables].join(", ");
+-						const preface = `${imps}\nexport default async function (${parameters}) { ${isBlockStatement ? "" : "return "}`;
+-						const suffix = ` }`;
+-						if (isBlockStatement) {
+-							chunk.overwrite(0, startOffset + 1, preface);
+-							chunk.overwrite(endOffset - 1, code.length, suffix);
+-						} else {
+-							chunk.overwrite(0, startOffset, preface);
+-							chunk.overwrite(endOffset, code.length, suffix);
+-						}
++						chunk.overwrite(0, startOffset, `${imps}\nexport default function (${parameters}) { return `);
++						chunk.overwrite(endOffset, code.length, " }");
+ 						asyncDatas[key] = {
+ 							code: chunk.toString(),
+ 							map: options.sourcemap ? chunk.generateMap({ hires: true }) : void 0
+ 						};
+-						const importCall = `() => import('${key}').then(r => (r.default || r)(${parameters}))`;
++						const importCall = `(...args) => import('${key}').then(r => (r.default || r)(${parameters})(...args))`;
+ 						s.overwrite(codeIndex + fetcherFunction.start, codeIndex + fetcherFunction.end, importCall);
+ 					}
+ 				});

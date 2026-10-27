@@ -67,12 +67,24 @@ try {
             .getSetCookie()
             .map((value) => value.split(';')[0])
             .join('; ')
+    const fetchReady = async (url, options = {}) => {
+        for (let attempt = 0; attempt < 120; attempt++) {
+            const response = await fetch(url, { ...options, signal: AbortSignal.timeout(10000) })
+            if (
+                response.status !== 503 ||
+                !response.headers.get('content-type')?.includes('text/html') ||
+                !(await response.clone().text()).includes('__NUXT_LOADING__')
+            )
+                return response
+            await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+        throw new Error(`Nuxt remained on its HMR loading page:\n${logs}`)
+    }
     const manage = (body) =>
-        fetch(`${origin}/api/_liti/manage`, {
+        fetchReady(`${origin}/api/_liti/manage`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', origin, cookie },
             body: JSON.stringify(body),
-            signal: AbortSignal.timeout(10000),
         })
     const metadata = await manage({ action: 'models' })
     assert.equal(metadata.status, 200, `${await metadata.clone().text()}\n${logs}`)
@@ -104,10 +116,10 @@ try {
             ifDigest: null,
         })
         assert.equal(saved.status, 200, `${await saved.clone().text()}\n${logs}`)
-        const page = await fetch(`${origin}/private?id=${user.id}`, { headers: { cookie } })
+        const page = await fetchReady(`${origin}/private?id=${user.id}`, { headers: { cookie } })
         assert.equal(page.status, 200, `${await page.clone().text()}\n${logs}`)
         assert.ok((await page.text()).includes(secret), logs)
-        assert.ok(!(await (await fetch(`${origin}/private?id=${user.id}`)).text()).includes(secret))
+        assert.ok(!(await (await fetchReady(`${origin}/private?id=${user.id}`)).text()).includes(secret))
         console.log('PASS Nuxt dev model-definition HMR, native authenticated writes and private SSR')
     } finally {
         try {

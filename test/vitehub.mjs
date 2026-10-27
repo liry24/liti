@@ -35,6 +35,7 @@ for (const patch of Object.values(manifest.patchedDependencies)) {
 run('bun', ['install', '--frozen-lockfile'])
 run(process.execPath, [
     '--test',
+    fileURLToPath(new URL('./upstream-regressions/nuxt-async-data.test.mjs', import.meta.url)),
     fileURLToPath(new URL('./upstream-regressions/vitehub-generated-paths.test.mjs', import.meta.url)),
     fileURLToPath(new URL('./upstream-regressions/vitehub-schedule-plugin.test.mjs', import.meta.url)),
 ])
