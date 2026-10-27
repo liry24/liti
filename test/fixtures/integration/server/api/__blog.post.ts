@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { runAgent } from 'vite-hub/agent'
 import { useWorkspace } from 'vite-hub/workspace'
+import { blob } from 'vite-hub/blob'
 import { MockLanguageModelV4 } from 'ai/test'
 import { articleDates, createEditorialReview } from '@litijs/blog'
 import { proofreadingAgent, slugAgent, summaryAgent, suggestArticleSlug } from '@litijs/blog/agents'
@@ -21,11 +22,20 @@ export default defineEventHandler(async (event) => {
     const operation = { actor: { id: 'writer' }, locale: 'ja' },
         id = crypto.randomUUID(),
         checks: string[] = []
+    const png = Uint8Array.from(
+        atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0e0AAAAASUVORK5CYII='),
+        (value) => value.charCodeAt(0),
+    )
+    const pathname = `blog/${id}.png`
+    const [imageError, uploaded] = await blob.put(pathname, png, { contentType: 'image/png' })
+    assert.equal(imageError, null)
+    assert.ok(uploaded)
+    const cover = { pathname: uploaded.pathname, contentType: uploaded.contentType, size: uploaded.size }
     const first = await models.save(
         'articles',
         id,
         {
-            data: { title: '日本語の記事', authoredAt: '2020-01-02', secret: 'BLOG_PRIVATE_VALUE' },
+            data: { title: '日本語の記事', authoredAt: '2020-01-02', cover, secret: 'BLOG_PRIVATE_VALUE' },
             body: 'Original. `code`',
         },
         { ...operation, ifDigest: null },
@@ -37,6 +47,11 @@ export default defineEventHandler(async (event) => {
     const published = (await models.read('articles', id, 'en'))!,
         dates = articleDates(published)
     assert.equal(dates.authoredAt, '2020-01-02')
+    assert.deepEqual(published.data.cover, cover)
+    const [readError, imageFile] = await blob.get(pathname)
+    assert.equal(readError, null)
+    assert.ok(imageFile)
+    assert.deepEqual(new Uint8Array(await imageFile.arrayBuffer()), png)
     assert.ok(dates.firstPublishedAt)
     assert.equal(published.data.secret, undefined)
     const later = await models.save(

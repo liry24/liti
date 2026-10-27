@@ -1,4 +1,6 @@
 import { defineContentModel, field, ModelError, type ContentModelOptions, type Fields } from '@litijs/model'
+import { image } from '@vite-hub/blob/reference'
+import { optional } from '@vite-hub/content/collections'
 
 import { z } from 'zod'
 import { articleSlug } from './slug'
@@ -17,7 +19,7 @@ const standardFields = {
     summary: field(z.string().optional(), { localized: true, input: 'textarea' }),
     tags: field(z.array(z.string()).default([])),
     author: field(z.string().optional()),
-    cover: field(z.string().optional(), { input: 'image' }),
+    cover: field(optional(image()), { input: 'image' }),
     authoredAt: field(
         z
             .union([z.iso.date(), z.iso.datetime({ offset: true })])
