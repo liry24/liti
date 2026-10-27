@@ -92,6 +92,27 @@ onMounted(async () => {
             'Read the committed immutable revision',
         )
         checks.push('native form save preserves later edits and the committed receipt')
+        const reviewedDigest = receipt.value?.digest
+        const successCount = callbacks.length
+        form.setFieldValue('data.title', '')
+        let saveRejected = false
+        try {
+            await save()
+        } catch {
+            saveRejected = true
+        }
+        check(saveRejected && resource.error.value, 'A failed save must reject and retain its error')
+        check(
+            receipt.value?.digest === reviewedDigest && callbacks.length === successCount,
+            'A failed save changed its receipt or emitted success',
+        )
+        check(values.value.data.title === '' && hasUnsavedChanges.value, 'A failed save discarded the editable values')
+        form.setFieldValue('data.title', 'Recovered browser')
+        const retry = await save()
+        check(retry?.digest && !resource.error.value, 'A corrected submission must save normally')
+        form.setFieldValue('data.title', 'Keep later browser edit')
+        await until(() => values.value.data.title === 'Keep later browser edit' && hasUnsavedChanges.value)
+        checks.push('failed native form save rejects, keeps edits and the reviewed receipt, and retries successfully')
         locale.value = 'en'
         await until(() => resource.status.value === 'success' && receipt.value === null)
         form.setFieldValue('data.title', 'English browser')
@@ -134,7 +155,7 @@ onMounted(async () => {
         await session.refresh()
         await until(() => values.value.data.title !== 'Keep later browser edit')
         await signUp()
-        await until(() => resource.status.value === 'success' && values.value.data.title === 'Submitted browser')
+        await until(() => resource.status.value === 'success' && values.value.data.title === 'Recovered browser')
         check(!hasUnsavedChanges.value, 'Another actor inherited the prior actor draft')
         checks.push('authentication change clears the prior actor draft')
         ;(window as unknown as { __litiProbe: object }).__litiProbe = { done: true, success: true, checks }

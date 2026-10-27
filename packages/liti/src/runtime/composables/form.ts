@@ -76,79 +76,99 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
         activeScope = session.scope.value,
         saving: Promise<WriteReceipt | undefined> | undefined,
         lastReceipt: WriteReceipt | undefined
+    let submissionFailure: { cause: unknown } | undefined
     const form = useForm({
         defaultValues: defaults(),
-        onSubmit: async ({ value }) => {
-            const submittedIdentity = identity.value,
-                submitted = clone(value)
-            const previous = receipt.value,
-                storage = descriptor.value?.storage
-            if (!storage || (toValue(options.id) && !previous && resource.status.value !== 'success'))
-                throw new Error('Load the model and reviewed entry before saving.')
-            error.value = null
-            warnings.value = []
-            const committed = await requestBody<WriteReceipt>({
-                action: 'save',
-                data: submitted.data,
-                ...(storage === 'content'
-                    ? {
-                          ...(submitted.body === undefined ? {} : { body: submitted.body }),
-                          ifDigest: previous?.digest ?? null,
-                      }
-                    : { ifVersion: previous?.version ?? null }),
-            })
-            if (identity.value !== submittedIdentity) return
-            receipt.value = committed
-            lastReceipt = committed
-            warnings.value = committed.postCommitErrors ?? []
-            let canonical = submitted
+        onSubmit: async ({ value, createValidationError }) => {
+            const submittedIdentity = identity.value
             try {
-                const saved = await requestBody<Draft<Name>>({
-                    action: 'read',
-                    ...(committed.revision ? { revision: committed.revision } : {}),
-                    ...(committed.version === undefined ? {} : { ifVersion: committed.version }),
+                const submitted = clone(value)
+                const previous = receipt.value,
+                    storage = descriptor.value?.storage
+                if (!storage || (toValue(options.id) && !previous && resource.status.value !== 'success'))
+                    throw new Error('Load the model and reviewed entry before saving.')
+                error.value = null
+                warnings.value = []
+                const committed = await requestBody<WriteReceipt>({
+                    action: 'save',
+                    data: submitted.data,
+                    ...(storage === 'content'
+                        ? {
+                              ...(submitted.body === undefined ? {} : { body: submitted.body }),
+                              ifDigest: previous?.digest ?? null,
+                          }
+                        : { ifVersion: previous?.version ?? null }),
                 })
                 if (identity.value !== submittedIdentity) return
-                canonical = {
-                    data: saved.data,
-                    ...('body' in saved && saved.body !== undefined ? { body: saved.body } : {}),
-                }
-            } catch (cause) {
-                if (identity.value !== submittedIdentity) return
-                error.value = cause
-                warnings.value = [
-                    ...warnings.value,
-                    { code: 'LITI_POST_COMMIT', message: 'The save committed; reloading its canonical values failed.' },
-                ]
-            }
-            const edited = clone(form.state.values)
-            baseline.value = clone(canonical)
-            const body = submitted.body === edited.body ? canonical.body : edited.body
-            form.reset({
-                data: reconcile(submitted.data, edited.data, canonical.data),
-                ...(body === undefined ? {} : { body }),
-            })
-            try {
-                await options.onSuccess?.(committed, { hasUnsavedChanges: hasUnsavedChanges.value })
-            } catch (cause) {
-                if (identity.value === submittedIdentity) {
+                receipt.value = committed
+                lastReceipt = committed
+                warnings.value = committed.postCommitErrors ?? []
+                let canonical = submitted
+                try {
+                    const saved = await requestBody<Draft<Name>>({
+                        action: 'read',
+                        ...(committed.revision ? { revision: committed.revision } : {}),
+                        ...(committed.version === undefined ? {} : { ifVersion: committed.version }),
+                    })
+                    if (identity.value !== submittedIdentity) return
+                    canonical = {
+                        data: saved.data,
+                        ...('body' in saved && saved.body !== undefined ? { body: saved.body } : {}),
+                    }
+                } catch (cause) {
+                    if (identity.value !== submittedIdentity) return
                     error.value = cause
                     warnings.value = [
                         ...warnings.value,
-                        { code: 'LITI_POST_COMMIT', message: 'The save committed; the success callback failed.' },
+                        {
+                            code: 'LITI_POST_COMMIT',
+                            message: 'The save committed; reloading its canonical values failed.',
+                        },
                     ]
                 }
-            }
-            try {
-                await refreshQueries()
+                const edited = clone(form.state.values)
+                baseline.value = clone(canonical)
+                const body = submitted.body === edited.body ? canonical.body : edited.body
+                form.reset({
+                    data: reconcile(submitted.data, edited.data, canonical.data),
+                    ...(body === undefined ? {} : { body }),
+                })
+                try {
+                    await options.onSuccess?.(committed, { hasUnsavedChanges: hasUnsavedChanges.value })
+                } catch (cause) {
+                    if (identity.value === submittedIdentity) {
+                        error.value = cause
+                        warnings.value = [
+                            ...warnings.value,
+                            { code: 'LITI_POST_COMMIT', message: 'The save committed; the success callback failed.' },
+                        ]
+                    }
+                }
+                try {
+                    await refreshQueries()
+                } catch (cause) {
+                    if (identity.value === submittedIdentity) {
+                        error.value = cause
+                        warnings.value = [
+                            ...warnings.value,
+                            { code: 'LITI_POST_COMMIT', message: 'The save committed; refreshing public data failed.' },
+                        ]
+                    }
+                }
             } catch (cause) {
+                submissionFailure = { cause }
                 if (identity.value === submittedIdentity) {
                     error.value = cause
-                    warnings.value = [
-                        ...warnings.value,
-                        { code: 'LITI_POST_COMMIT', message: 'The save committed; refreshing public data failed.' },
-                    ]
+                    if (lastReceipt)
+                        warnings.value = [
+                            ...warnings.value,
+                            {
+                                code: 'LITI_POST_COMMIT',
+                                message: 'The save committed; updating the form failed.',
+                            },
+                        ]
                 }
+                if (!lastReceipt) return createValidationError('The entry was not saved.')
             }
         },
     })
@@ -210,12 +230,17 @@ export function useLitiForm<Name extends ModelName>(model: Name, options: FormOp
     if (getCurrentScope()) onScopeDispose(() => subscription.unsubscribe())
     const save = () => {
         if (saving) return saving
+        const savedIdentity = identity.value
         lastReceipt = undefined
+        submissionFailure = undefined
         saving = form
             .handleSubmit()
-            .then(() => lastReceipt)
+            .then(() => {
+                if (submissionFailure && !lastReceipt) throw submissionFailure.cause
+                return lastReceipt
+            })
             .catch((cause: unknown) => {
-                error.value = cause
+                if (identity.value === savedIdentity) error.value = cause
                 throw cause
             })
             .finally(() => {
