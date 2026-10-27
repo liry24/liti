@@ -14,7 +14,25 @@ export default defineNuxtConfig({
                 preset: cloudflare ? 'cloudflare' : 'node',
                 auth: true,
                 schedule: true,
-                blob: { serve: { route: '/media' } },
+                blob: {
+                    ...(cloudflare
+                        ? {
+                              stores: {
+                                  default: {
+                                      driver: 'cloudflare-r2',
+                                      binding: 'BLOB',
+                                      bucketName: 'liti-probe-media',
+                                  },
+                                  content: {
+                                      driver: 'cloudflare-r2',
+                                      binding: 'CONTENT',
+                                      bucketName: 'liti-probe-content',
+                                  },
+                              },
+                          }
+                        : {}),
+                    serve: { route: '/media' },
+                },
                 console: {
                     auth: 'app',
                     authorize: fileURLToPath(new URL('./server/console-authorize.ts', import.meta.url)),

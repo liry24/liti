@@ -31,7 +31,7 @@ assert.ok(
 const run = (command, args, cwd = consumer, env = process.env) => {
     const result = spawnSync(command, args, { cwd, env, stdio: 'inherit', shell: false })
     if (result.error) throw result.error
-    if (result.status !== 0) process.exit(result.status ?? 1)
+    if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed (exit ${result.status}).`)
 }
 const copy = (source, target) => {
     mkdirSync(dirname(target), { recursive: true })
@@ -136,7 +136,29 @@ run(
 run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'migrate'])
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'])
 run(process.execPath, ['verify-node.mjs'])
-if (integrated) run(process.execPath, ['verify-dev.mjs'])
+if (integrated) {
+    run(process.execPath, ['verify-dev.mjs'])
+    const database = resolve(consumer, '.vitehub/data/database/sqlite.db')
+    assert.ok(existsSync(database), 'Use the installed native local SQLite target.')
+    const saved = ['', '-wal', '-shm'].filter((suffix) => existsSync(database + suffix))
+    for (const suffix of saved) assert.ok(!existsSync(database + suffix + '.node-probe'))
+    const moved = []
+    let isolated = false
+    try {
+        for (const suffix of saved) {
+            renameSync(database + suffix, database + suffix + '.node-probe')
+            moved.push(suffix)
+        }
+        isolated = true
+        // A fresh local database keeps filesystem-backed and R2-backed Workspace histories separate.
+        const env = { ...process.env, LITI_PROBE_PRESET: 'cloudflare', LITI_DEV_R2: 'true' }
+        run(process.execPath, ['node_modules/vite-hub/dist/bin.js', 'db', 'migrate'], consumer, env)
+        run(process.execPath, ['verify-dev.mjs'], consumer, env)
+    } finally {
+        if (isolated) for (const suffix of ['', '-wal', '-shm']) rmSync(database + suffix, { force: true })
+        for (const suffix of moved) renameSync(database + suffix + '.node-probe', database + suffix)
+    }
+}
 run(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'], consumer, {
     ...process.env,
     LITI_PROBE_PRESET: 'cloudflare',

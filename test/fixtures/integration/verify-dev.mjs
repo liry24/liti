@@ -11,6 +11,8 @@ await once(probe, 'listening')
 const { port } = probe.address()
 await new Promise((resolve, reject) => probe.close((error) => (error ? reject(error) : resolve())))
 const origin = `http://127.0.0.1:${port}`
+const cloudflare = process.env.LITI_DEV_R2 === 'true',
+    token = crypto.randomUUID()
 const child = spawn(
     process.execPath,
     [
@@ -27,7 +29,7 @@ const child = spawn(
     ],
     {
         cwd: process.cwd(),
-        env: { ...process.env, LITI_PROBE_PRESET: 'node' },
+        env: { ...process.env, LITI_PROBE_PRESET: cloudflare ? 'cloudflare' : 'node', LITI_PROBE_TOKEN: token },
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -88,6 +90,26 @@ try {
         })
     const metadata = await manage({ action: 'models' })
     assert.equal(metadata.status, 200, `${await metadata.clone().text()}\n${logs}`)
+    const publicPage = await fetchReady(`${origin}/query?id=missing-dev-entry`)
+    assert.equal(publicPage.status, 200, `${await publicPage.clone().text()}\n${logs}`)
+    assert.ok((await publicPage.text()).includes('id="many"'), logs)
+    if (cloudflare) {
+        const config = JSON.parse(await readFile('.nuxt/vitehub-blob-wrangler.json', 'utf8'))
+        assert.equal(config.d1_databases, undefined, 'Native CLI migrations and Nuxt dev keep the same SQLite database')
+        assert.deepEqual(config.r2_buckets.map((bucket) => bucket.binding).sort(), ['BLOB', 'CONTENT'])
+        const upload = await fetchReady(`${origin}/api/__blob`, {
+            method: 'POST',
+            headers: { 'x-liti-probe': token },
+        })
+        assert.equal(upload.status, 200, `${await upload.clone().text()}\n${logs}`)
+        const { pathname } = await upload.json()
+        const file = await fetchReady(`${origin}/media/${pathname}`)
+        assert.equal(file.status, 200, `${await file.clone().text()}\n${logs}`)
+        assert.deepEqual(new Uint8Array(await file.arrayBuffer()), new Uint8Array([0, 1, 2, 255]))
+        console.log(
+            'PASS Cloudflare Nuxt dev R2 bytes and native local SQLite authentication without HTTP storage credentials',
+        )
+    }
     const file = new URL('./server/models/memos.ts', import.meta.url),
         original = await readFile(file, 'utf8')
     try {

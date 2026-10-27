@@ -20,6 +20,31 @@
     ],
     "fixes": [
         {
+            "id": "nuxt-dev-r2-bindings",
+            "kind": "public-hook-workaround",
+            "packages": ["vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9", "nitropack@2.13.5"],
+            "environment": "Nuxt dev on Node, Cloudflare preset with explicit native cloudflare-r2 Blob stores and no user Wrangler configuration.",
+            "symptom": "ViteHub contributes R2 buckets to Nitro's deployment Wrangler configuration, but Nitro 2 development emulation does not read that object. Blob sees no binding and attempts HTTP R2 access, failing without credentials.",
+            "reproduction": "In a fresh independent liry24.com synthetic consumer: official db migrate, Nuxt dev, durable auth and management succeed; image upload returns 400 with an R2 HTTP missing-accountId cause. Supplying the generated R2 bindings through cloudflare.dev.configPath makes image bytes, Content save/publication and public HTTP queries pass.",
+            "productionWorkaround": "packages/liti/src/internal/vitehub-workarounds/dev-blob-bindings.ts",
+            "productionRegistration": "packages/liti/src/internal/vitehub-workarounds/index.ts",
+            "scope": "Only Cloudflare Nuxt dev without an explicit configPath or root Wrangler file. Write native R2 bucket contributions to .nuxt and pass their path through Nitro's public configuration. Database stays on the same native local SQLite target used by ViteHub's CLI; D1 production bindings are not copied into the dev proxy. No credentials, migrations, driver replacement, errors suppressed or other storage fallback. Builds and user-owned Wrangler configuration remain native.",
+            "regressions": [
+                "test/nuxt-dev-blob.test.ts",
+                "test/fixtures/integration/verify-dev.mjs",
+                "test/fixtures/integration/server/api/__blob.post.ts",
+                "test/model-native.mjs"
+            ],
+            "verification": "Unmodified independent application distribution fails with the missing R2 HTTP credentials error; its public-config control passes native R2 upload, Content save/publication/query and article SSR. A fresh packed consumer passes generated types, Node/public/private SSR, both Node and Cloudflare Nuxt dev HMR, R2 bytes/serve, native local SQLite authentication and Workspace writes. Node/filesystem and Cloudflare-dev/R2 histories use separate synthetic SQLite databases, with the Node database restored afterward. The full production workerd/browser/restart/Cron/performance suite also passes. The focused unit regression preserves explicit configPath and user root Wrangler files. No upstream-fixed distribution is available yet.",
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "removalCondition": "Remove this module and its registration, then pass the packed Cloudflare Nuxt dev regression with native local SQLite authentication, R2 upload/read/serve and Workspace writes/SSR using no R2 HTTP credentials or root Wrangler file. Preserve tests."
+        },
+        {
             "id": "windows-canonical-cli-root",
             "kind": "public-api-workaround",
             "packages": ["vite-hub@0.0.4", "@vite-hub/source@0.0.4", "nitro@3.0.260903-beta", "vite@8.3.5"],
