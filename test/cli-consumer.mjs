@@ -2,12 +2,11 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, writeFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
-import { consumerPackages, archiveDependencies, archiveOverrides } from './consumer-packages.mjs'
+import { consumerPackages, consumerTemporaryRoot, archiveDependencies, archiveOverrides } from './consumer-packages.mjs'
 
-const directory = await mkdtemp(join(tmpdir(), 'liti-cli-consumer-'))
+const directory = await mkdtemp(join(consumerTemporaryRoot, 'liti-cli-consumer-'))
 const run = (command, args, cwd = directory) => {
     console.log(`CLI consumer: ${command} ${args.join(' ')}`)
     const result = spawnSync(command, args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 16 * 1024 * 1024 })

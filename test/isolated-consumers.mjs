@@ -2,13 +2,12 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { installDependencies } from 'nypm'
-import { consumerPackages, archiveDependencies, archiveOverrides } from './consumer-packages.mjs'
+import { consumerPackages, consumerTemporaryRoot, archiveDependencies, archiveOverrides } from './consumer-packages.mjs'
 
 const manager = process.env.LITI_PACKAGE_MANAGER ?? 'bun'
 assert.ok(['bun', 'npm', 'pnpm'].includes(manager))
-const directory = await mkdtemp(join(tmpdir(), `liti-isolated-${manager}-`))
+const directory = await mkdtemp(join(consumerTemporaryRoot, `liti-isolated-${manager}-`))
 const run = (command, args, cwd = directory) => {
     const result = spawnSync(command, args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, windowsHide: true })
     if (result.error) throw result.error

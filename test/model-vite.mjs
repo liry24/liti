@@ -1,22 +1,24 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, readFile, writeFile, access } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, writeFile, access, realpath } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:net'
 import { once } from 'node:events'
-import { consumerPackages } from './consumer-packages.mjs'
+import { consumerPackages, consumerTemporaryRoot } from './consumer-packages.mjs'
 import { stopProcess } from './stop-process.ts'
 import { verifyNativeDeclarations } from './declarations.ts'
 import { createHash } from 'node:crypto'
 
 const root = fileURLToPath(new URL('../', import.meta.url)),
     consumer = process.env.LITI_VITE_CONSUMER
-        ? resolve(process.env.LITI_VITE_CONSUMER)
-        : await mkdtemp(join(tmpdir(), 'liti-model-vite-'))
-assert.ok(consumer.startsWith(resolve(tmpdir(), 'liti-model-vite-')), 'Reuse only the isolated Vite test consumer')
+        ? await realpath(resolve(process.env.LITI_VITE_CONSUMER))
+        : await mkdtemp(join(consumerTemporaryRoot, 'liti-model-vite-'))
+assert.ok(
+    consumer.startsWith(resolve(consumerTemporaryRoot, 'liti-model-vite-')),
+    'Reuse only the isolated Vite test consumer',
+)
 const run = (command, args, cwd = consumer) => {
     const result = spawnSync(command, args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, windowsHide: true })
     if (result.error) throw result.error

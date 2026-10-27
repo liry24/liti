@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdir, readdir, readFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+
+export const consumerTemporaryRoot = await realpath(tmpdir())
 
 const workspace = fileURLToPath(new URL('../', import.meta.url))
 export const publicPackages = (

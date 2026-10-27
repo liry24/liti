@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vite-plus/test'
 import * as nypm from 'nypm'
-import { mkdtemp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, readdir, symlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { editModules } from '../packages/liti/src/cli/config'
@@ -35,6 +35,14 @@ async function project() {
     await writeFile(resolve(patch, 'native.patch'), 'native patch\n')
     return { cwd, patchDirectory: pathToFileURL(patch + '/') }
 }
+it('uses the canonical project directory when a CLI caller supplies an alias', async () => {
+    const { cwd, patchDirectory } = await project()
+    const alias = cwd + '-alias'
+    await symlink(cwd, alias, 'junction')
+    const result = await runCommand(['init'], { cwd: alias, 'dry-run': true }, manifest, patchDirectory)
+    expect(result.join('\n')).toContain(resolve(cwd, 'server/content.ts'))
+    expect(result.join('\n')).not.toContain(alias)
+})
 it('reports dependency installation changes when the package manager fails after scaffolding', async () => {
     const { cwd, patchDirectory } = await project()
     const install = vi.mocked(nypm.addDependency).mockRejectedValueOnce(new Error('Synthetic install failure'))

@@ -1,21 +1,31 @@
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+    cpSync,
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    renameSync,
+    rmSync,
+    writeFileSync,
+    realpathSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { tmpdir } from 'node:os'
+import { consumerTemporaryRoot } from './consumer-packages.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const integrated = process.argv.includes('--nuxt')
 const temporary = resolve(root, '.tmp')
 mkdirSync(temporary, { recursive: true })
 const consumer = process.env.LITI_MODEL_CONSUMER
-    ? resolve(process.env.LITI_MODEL_CONSUMER)
-    : mkdtempSync(resolve(tmpdir(), 'liti-model-consumer-'))
+    ? realpathSync.native(resolve(process.env.LITI_MODEL_CONSUMER))
+    : mkdtempSync(resolve(consumerTemporaryRoot, 'liti-model-consumer-'))
 assert.ok(
     (consumer.startsWith(temporary + sep) && consumer.includes('model-consumer-')) ||
-        consumer.startsWith(resolve(tmpdir(), 'liti-model-consumer-')),
+        consumer.startsWith(resolve(consumerTemporaryRoot, 'liti-model-consumer-')),
     'Reuse only an isolated test consumer.',
 )
 const run = (command, args, cwd = consumer, env = process.env) => {

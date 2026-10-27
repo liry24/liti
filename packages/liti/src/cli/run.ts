@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
@@ -41,7 +41,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
     )
         throw new Error('Invalid command. Run liti --help.')
     if (options.to !== undefined && command !== 'upgrade') throw new Error('--to applies only to upgrade.')
-    const cwd = resolve(options.cwd ?? process.cwd())
+    const cwd = await realpath(resolve(options.cwd ?? process.cwd()))
     const projectFile = resolve(cwd, 'package.json'),
         source = await read(projectFile)
     if (!source) throw new Error('Run this command inside a Nuxt project with package.json.')

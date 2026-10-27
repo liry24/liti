@@ -1,6 +1,35 @@
 {
     "vitehubCommit": "24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+    "limitations": [
+        {
+            "id": "connections-types-retry-after-invalid-route",
+            "status": "observed-not-fixed",
+            "package": "@vite-hub/connections@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+            "environment": "Windows Node 24.21.0, standalone Vite/Nitro 3 synthetic consumer",
+            "reproduction": "After generation, add server/api/content/[...].ts and run Vite build: native SOURCE_B0001 correctly rejects it. Remove that route and build again: Connections can time out acquiring connections-types-owners.json.lock. Observed in an isolated fresh consumer; the retry remains blocked in that affected consumer.",
+            "evidence": "Operational model-vite-canonical-fresh.log; no real data or application files involved.",
+            "handling": "Unresolved upstream build-tool issue, outside runtime Model authorization/publication. No workaround or patch is introduced. Normal valid-config acceptance runs in independent clean consumers; recovery after an invalid configuration is not claimed. Native errors remain failures. Liti never deletes native lock/ownership bookkeeping or applies database migrations to recover a build.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "An upstream-fixed distribution must reject the conflicting route and then successfully build after its removal, preserving native ownership locking."
+        }
+    ],
     "fixes": [
+        {
+            "id": "windows-canonical-cli-root",
+            "kind": "public-api-workaround",
+            "packages": ["vite-hub@0.0.4", "@vite-hub/source@0.0.4", "nitro@3.0.260903-beta", "vite@8.3.5"],
+            "symptom": "On Windows with an 8.3 TEMP path (including GitHub's RUNNER~1 profile), native Vite types prepare treats the same generated Content route as a conflicting handler (SOURCE_B0002). The equivalent canonical physical TEMP path succeeds.",
+            "environment": "Windows Node 24.21.0 and the pinned full-commit distribution; standalone Vite/Nitro 3 consumer, without Nuxt.",
+            "reproduction": "The actual preview Windows consumer failed in run 40501231673. A local installed-distribution reproduction with TEMP/TMP set to a valid 8.3 alias fails types prepare; its canonical-path control succeeds.",
+            "productionWorkaround": "packages/liti/src/cli/run.ts",
+            "productionRegistration": "packages/liti/src/cli/index.ts",
+            "consumerWorkaround": "test/consumer-packages.mjs",
+            "scope": "Canonicalize the existing CLI project directory and consumer temporary root using Node's public realpath API before invoking the native toolchain. Standalone Vite consumers must also start from a canonical physical project path; direct native execution from 8.3 aliases remains unsupported. No process-wide chdir, Model alias/dedupe layer, Source patch, storage change or route-guard bypass is introduced.",
+            "regressions": ["test/cli-rebuild.test.ts", "test/model-vite.mjs", ".github/workflows/preview.yml"],
+            "verification": "The unmodified preview reproduces SOURCE_B0002 with a short TEMP path, while its canonical-path control and full canonical Vite production/dev/HMR runner pass. The complete consumer runner with a short TEMP environment and canonicalized invocation is being verified.",
+            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "removalCondition": "Remove the CLI/consumer realpath normalization and pass native types prepare, generation, build, HTTP and HMR in a fresh Windows consumer invoked through a valid 8.3 TEMP path. Native Content owner identity, Workspace validation and real user-owned route collision rejection must remain intact. Retain the regression tests."
+        },
         {
             "id": "nuxt-dev-sourcemap-memory",
             "kind": "public-hook-workaround",
