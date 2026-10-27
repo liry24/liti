@@ -37,6 +37,7 @@
         "@litijs/model": "workspace:*",
         "@types/node": "^26.6.5",
         "@vue/compiler-sfc": "3.6.0-rc.12",
+        "drizzle-orm": "0.45.4",
         "knip": "6.42.1",
         "liti": "workspace:*",
         "nitropack": "2.13.5",

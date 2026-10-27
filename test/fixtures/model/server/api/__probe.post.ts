@@ -444,5 +444,20 @@ export default defineEventHandler(async (event) => {
         stop()
     }
     checks.push('atomic reorder publication, unpublish without draft loss and no-op date stability')
+    const bodyContextId = crypto.randomUUID()
+    const bodyContext = await models.save(
+        'posts',
+        bodyContextId,
+        { data: { title: 'Body context', slug: bodyContextId, tags: [] }, body: 'Retained Markdown body' },
+        { ...operation, ifDigest: null, locale: 'ja' },
+    )
+    await models.save(
+        'posts',
+        bodyContextId,
+        { data: { title: 'Fields only', slug: bodyContextId, tags: [], secret: 'EXPECT_BODY_CONTEXT' } },
+        { ...operation, ifDigest: bodyContext.digest, locale: 'ja' },
+    )
+    assert.equal((await models.readDraft('posts', bodyContextId, operation, 'ja'))?.body, 'Retained Markdown body')
+    checks.push('preparation receives the effective body when a field-only save retains Markdown')
     return { checks, documentId: id }
 })

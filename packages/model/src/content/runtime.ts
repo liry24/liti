@@ -379,12 +379,18 @@ export function createModelContent(options: ContentBindingOptions) {
         const original = isOriginal ? before : await stored(model, id, originalLocale(model), snapshot)
         if (!isOriginal && !original)
             throw new ModelError('LITI_REFERENCE', 'Create the original translation group first.')
+        if (input.body !== undefined && input.body !== null && typeof input.body !== 'string')
+            throw new ModelError('LITI_INVALID_INPUT', 'A Markdown body must be a string.')
         const context = {
             ...write,
             id,
             locale,
             action: 'save' as const,
             previous: before ? dataOf(before) : null,
+            body:
+                input.body === null
+                    ? (original?.body ?? '')
+                    : (input.body ?? (before?.data['_litiBody'] ? before.body : original?.body) ?? ''),
             ...(snapshot ? { revision: snapshot.revision.id } : {}),
         }
         input = model.prepare ? await model.prepare(input, context) : input

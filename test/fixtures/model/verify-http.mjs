@@ -10,7 +10,7 @@ export async function verifyHttp(origin, token, logs = () => '') {
     const body = await response.text()
     assert.equal(response.status, 200, `${body}\n${logs()}`)
     const result = JSON.parse(body)
-    assert.equal(result.checks.length, 8)
+    assert.equal(result.checks.length, 9)
     for (const check of result.checks) console.log(`PASS ${check}`)
     const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
         method: 'POST',

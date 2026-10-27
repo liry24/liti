@@ -30,7 +30,7 @@ export function useLitiQuery<
     model: Name,
     options: QuerySelection<Mode, Fallback> & {
         transform?: (value: QueryValue<Name, Mode, Fallback>) => Data | Promise<Data>
-        default?: () => Data
+        default?: () => NoInfer<Data>
     } = {},
 ) {
     const nuxt = useNuxtApp(),

@@ -100,7 +100,7 @@ const module: NuxtModule<ModuleOptions, ModuleOptions> = defineNuxtModule<Module
                     return `import type { Model } from '@litijs/model'\nimport 'liti/types'\ntype Values<T> = T extends unknown ? T[keyof T] : never\ntype Models = Extract<Values<${union}>, Model>\ntype Registry = { [M in Models as M['name']]: M }\ndeclare module 'liti/types' { interface LitiModels extends Registry {} }\nexport {}\n`
                 },
             },
-            { nuxt: true, nitro: true, node: true },
+            { nuxt: true, nitro: true, node: true, shared: true },
         )
         addTypeTemplate(
             {
