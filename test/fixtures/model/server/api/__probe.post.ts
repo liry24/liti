@@ -199,6 +199,9 @@ export default defineEventHandler(async (event) => {
         at,
         operation,
     )
+    assert.deepEqual((await models.inspect('posts', id, operation, 'ja')).schedules, [
+        { id: job.id, at: job.at, revision: job.revision },
+    ])
     const later = await models.save(
         'posts',
         id,
@@ -210,6 +213,15 @@ export default defineEventHandler(async (event) => {
     const due = await Promise.all([models.publishDue(operation, at), models.publishDue(operation, at)])
     assert.ok(due.every((result) => result.failed.length === 0))
     assert.ok(due.some((result) => result.completed.includes(job.id)))
+    const inspected = await models.inspect('posts', id, operation, 'ja')
+    assert.ok(inspected.published?.digest)
+    assert.ok(inspected.publishedHead)
+    assert.ok(inspected.history.revisions.length)
+    assert.equal(
+        inspected.schedules.some((item) => item.id === job.id),
+        false,
+    )
+    await assert.rejects(models.inspect('posts', id, { actor: { id: 'reader' } }, 'ja'), /not authorized/i)
     assert.equal((await models.read('posts', id, 'ja'))?.data.title, 'Scheduled')
     assert.equal((await models.readDraft('posts', id, operation, 'ja'))?.digest, later.digest)
     assert.equal((await models.read('posts', id, 'ja'))?.publication?.firstPublishedAt, firstPublication)

@@ -36,6 +36,7 @@
     "@vite-hub/agent@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/agent@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-agent-24ddab7.patch",
     "nitropack@2.13.5": "patches/nitropack@2.13.5.patch",
     "@vite-hub/content@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-content-publication-24ddab7.patch",
+    "@vite-hub/blob@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/blob@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9": "patches/vitehub-blob-h3-types-24ddab7.patch",
   },
   "packages": {
     "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.106", "", { "dependencies": { "@ai-sdk/provider": "4.0.24", "@ai-sdk/provider-utils": "5.0.56", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-NprSdFzyVnbEp2SDWtIgsCFIUHFCehOD9S6FQkF/dLrCmnke8w4SOK3KcmUUiEbwtVzlUF8prkaELp+ohcQaQw=="],

@@ -9,7 +9,12 @@
             "reproduction": "After generation, add server/api/content/[...].ts and run Vite build: native SOURCE_B0001 correctly rejects it. Remove that route and build again: Connections can time out acquiring connections-types-owners.json.lock. Observed in an isolated fresh consumer; the retry remains blocked in that affected consumer.",
             "evidence": "Operational model-vite-canonical-fresh.log; no real data or application files involved.",
             "handling": "Unresolved upstream build-tool issue, outside runtime Model authorization/publication. No workaround or patch is introduced. Normal valid-config acceptance runs in independent clean consumers; recovery after an invalid configuration is not claimed. Native errors remain failures. Liti never deletes native lock/ownership bookkeeping or applies database migrations to recover a build.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "An upstream-fixed distribution must reject the conflicting route and then successfully build after its removal, preserving native ownership locking."
         }
     ],
@@ -27,7 +32,12 @@
             "scope": "Canonicalize the existing CLI project directory and consumer temporary root using Node's public realpath API before invoking the native toolchain. Standalone Vite consumers must also start from a canonical physical project path; direct native execution from 8.3 aliases remains unsupported. No process-wide chdir, Model alias/dedupe layer, Source patch, storage change or route-guard bypass is introduced.",
             "regressions": ["test/cli-rebuild.test.ts", "test/model-vite.mjs", ".github/workflows/preview.yml"],
             "verification": "The unmodified preview reproduces SOURCE_B0002 with a short TEMP path, while its canonical-path control and full canonical Vite production/dev/HMR runner pass. The complete consumer runner with a short TEMP environment and canonicalized invocation is being verified.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove the CLI/consumer realpath normalization and pass native types prepare, generation, build, HTTP and HMR in a fresh Windows consumer invoked through a valid 8.3 TEMP path. Native Content owner identity, Workspace validation and real user-owned route collision rejection must remain intact. Retain the regression tests."
         },
         {
@@ -47,7 +57,12 @@
                 "test/fixtures/integration/verify-dev.mjs"
             ],
             "verification": "The native-only server starts in about 21 seconds with the default heap and passes native Auth/Console/Content/Database/Agent/Schedule HTTP contracts. Packed Liti also passes model-definition HMR, authenticated writes and private SSR after reloading.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove the sourceMap assignment and run native-only plus packed Liti dev/HMR probes on Windows and Linux with default server sourcemaps and normal Node heap settings. Startup, authenticated writes, SSR and HMR must pass without exceeding the heap limit. Keep the generated-module inline fix until its independent regression also passes."
         },
         {
@@ -62,7 +77,12 @@
             "scope": "A public Nitro externals.inline matcher only includes ViteHub's generated directory under Nuxt's actual buildDir, with normalized Windows separators. It retains the selected native Database, schema and driver. Liti's own generated directory is independently registered for normal bundling by liti/nuxt.",
             "regressions": ["test/fixtures/vitehub/verify-node.mjs --dev", "test/fixtures/integration/verify-dev.mjs"],
             "verification": "With the matcher, the native-only dev consumer passes durable Auth signup/session, native SQL constraints and the remaining HTTP contracts. No .ts extension changes or runtime loaders were added to application definitions.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove the inline matcher and pass the native-only and packed Nuxt dev probes using unmodified ordinary application imports. Auth and SQL must execute the transformed native generated module without raw-Node module-resolution failures. Remove the file and registration when its separate sourcemap assignment is also obsolete."
         },
         {
@@ -78,7 +98,12 @@
             "scope": "Add the installed Schedule Vite plugin to the existing resolver/replay allowlist. The native registry renderer, Schedule authorization and runtime are reused unchanged. This does not claim support for the separately documented Nuxt Schedule CLI dev transport.",
             "regressions": ["test/fixtures/vitehub/verify-node.mjs --dev", "test/vitehub.mjs"],
             "verification": "Native-only dev compiles the existing registry without unresolved-import warnings and passes the native scheduled-snapshot/duplicate-execution contracts.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove this hunk from both patch copies, install an upstream-fixed Nuxt bridge, and pass the same dev generated-output assertion and native Schedule runtime contracts. Remove the shared patch entry only after its independent Env and Console-error hunks are also obsolete."
         },
         {
@@ -94,7 +119,12 @@
             "scope": "One line marks the public helper's error with the existing private actionFailureKey. Native readActionFailure still restricts exposed failures to 4xx; authorization and error handling remain active.",
             "regressions": ["test/fixtures/integration/verify-http.mjs", "test/model-native.mjs --nuxt"],
             "verification": "The installed distributed Console RPC returns 400 on invalid fields and still saves/publishes valid input on Node and workerd.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove this hunk from both patch copies, reinstall a fixed installed distribution and pass the same native Console RPC validation/save/publication tests on Node and workerd. Remove the patch entry only when its Env transform hunk is also obsolete."
         },
         {
@@ -111,7 +141,12 @@
             "scope": "Expose commitPublished on the installed Content runtime and its declarations. It uses the existing native publication scope, conditional Workspace commit, validators and publish listeners. Direct Workspace deletion guards remain unchanged. Confirm an exact transaction receipt after a write:after failure and return explicit postCommitErrors; still notify native listeners after a committed transaction.",
             "regressions": ["test/model-native.mjs", "test/fixtures/model/server/api/__probe.post.ts"],
             "verification": "Packed independent consumer rejects unauthorized direct Content, Console, raw Workspace deletion and commitPublished calls; Model unpublish preserves the draft, atomically checks incoming references and keeps the original publication date. A failing post-commit hook returns a committed receipt with sanitized warnings on Node and workerd.",
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Adopt an installed upstream public publication transaction with equivalent validators, CAS, draft-preserving deletion, atomic metadata and post-commit notification semantics. Replace the single Model integration call, remove both patch copies and root/consumer patch entries together, then pass the same packed Node/workerd contracts without the patch. Keep every regression. Until then, consumer roots must explicitly apply this identical patch; npm/pnpm without an equivalent configured patch are unsupported for Content writes."
         },
         {
@@ -236,7 +271,12 @@
             "patch": "patches/vitehub-nuxt-24ddab7.patch",
             "consumerPatch": "test/fixtures/vitehub/patches/vitehub-nuxt-24ddab7.patch",
             "regressions": ["test/fixtures/vitehub/verify-cloudflare.mjs"],
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove the consumer entry and both copies, reinstall the fixed distribution and boot the built Node/Console Worker without unresolved Env imports. The patch forwards only the installed Env plugin transform."
         },
         {
@@ -248,7 +288,12 @@
             "patch": "patches/nitropack@2.13.5.patch",
             "consumerPatch": "test/fixtures/vitehub/patches/nitropack@2.13.5.patch",
             "regressions": ["test/fixtures/vitehub/verify-cloudflare.mjs"],
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove this hunk from both copies and pass the modern-date generated-config assertions and workerd probe without overriding the generated flags. Legacy dates retain the old default."
         },
         {
@@ -265,8 +310,32 @@
                 "test/upstream-regressions/vitehub-schedule-plugin.test.mjs",
                 "test/fixtures/vitehub/verify-cloudflare.mjs"
             ],
-            "upstream": { "status": "not-reported", "issue": null, "pullRequest": null, "fixedVersion": null },
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
             "removalCondition": "Remove registration/file and pass builds and the discovered Worker scheduled handler with native Nitro 2. Only the generated Schedule plugin import is transformed; native defineNitroPlugin and the original handler remain intact."
+        },
+        {
+            "id": "blob-h3-request-type",
+            "kind": "distribution-type-patch",
+            "packages": [
+                "@vite-hub/blob@https://pkg.pr.new/vite-hub/vitehub/@vite-hub/blob@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
+            ],
+            "symptom": "Enabling the native Blob serve route in Nuxt generates .vitehub/blob/serve-route.ts which fails TS2345: IncomingMessage has no arbitrary symbol index signature. The runtime only reads known request fields; a structural symbol index is not part of the Node HTTP contract.",
+            "environment": "Nuxt 4.6.2/Nitro 2.13.5; Windows installed app distribution",
+            "reproduction": "Set blob.serve.route to /media and run nuxt typecheck on an otherwise valid generated application. The unpatched application fails at blob.store(storeName).serve(event, pathname, options).",
+            "patch": "patches/vitehub-blob-h3-types-24ddab7.patch",
+            "upstream": {
+                "status": "not-reported",
+                "issue": null,
+                "pullRequest": null,
+                "fixedVersion": null
+            },
+            "regression": "test/fixtures/integration enables the native generated Blob route; packed Nuxt typecheck plus Node/workerd Blob GET/HEAD byte/content-type assertions in __blog.post.ts.",
+            "removalCondition": "Remove this patch and the root entry with an upstream-fixed distribution; the native generated route must typecheck and pass the same GET/HEAD tests on Node and workerd without relaxing TypeScript checks."
         }
     ],
     "featureGaps": [

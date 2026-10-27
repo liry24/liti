@@ -1,0 +1,11 @@
+diff --git a/dist/types-DGH0qXmg.d.ts b/dist/types-DGH0qXmg.d.ts
+--- a/dist/types-DGH0qXmg.d.ts
++++ b/dist/types-DGH0qXmg.d.ts
+@@ -17,7 +17,6 @@
+     remoteAddress?: string;
+   };
+   url?: string;
+-  [key: symbol]: unknown;
+ }
+ /** The Node response fields that ViteHub writes through an H3 1 event. */
+ interface H3V1NodeResponse {

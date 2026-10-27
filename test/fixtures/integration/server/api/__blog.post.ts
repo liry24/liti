@@ -52,6 +52,12 @@ export default defineEventHandler(async (event) => {
     assert.equal(readError, null)
     assert.ok(imageFile)
     assert.deepEqual(new Uint8Array(await imageFile.arrayBuffer()), png)
+    const imageResponse = await $fetch.raw<ArrayBuffer>(`/media/${pathname}`, { responseType: 'arrayBuffer' })
+    assert.equal(imageResponse.status, 200)
+    assert.deepEqual(new Uint8Array(imageResponse._data!), png)
+    const imageHead = await $fetch.raw(`/media/${pathname}`, { method: 'HEAD' })
+    assert.equal(imageHead.status, 200)
+    assert.equal(imageHead.headers.get('content-type'), 'image/png')
     assert.ok(dates.firstPublishedAt)
     assert.equal(published.data.secret, undefined)
     const later = await models.save(

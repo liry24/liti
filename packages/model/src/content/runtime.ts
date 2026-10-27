@@ -733,6 +733,36 @@ export function createModelContent(options: ContentBindingOptions) {
         )
         return { id, revision: receipt.result.id, postCommitErrors: receipt.postCommitErrors }
     }
+    const inspect = async (name: string, id: string, operation: ModelOperation, locale?: string) => {
+        const model = modelOf(name),
+            selected = modelLocale(model, locale)
+        await check(model, 'readDraft', assertIdentity(id), selected, operation)
+        const queue = await view(queueRef),
+            publishedView = await view('published')
+        const published = publishedView
+            ? await collection(model).get(documentId(model, id, selected), { revision: publishedView.revision.id })
+            : null
+        const schedules: { id: string; at: string; revision: string }[] = []
+        for (const file of (await files(queue)).filter((candidate) =>
+            candidate.path.startsWith(`${metaRoot}/schedules/`),
+        )) {
+            const job = await json<SnapshotJob>(queue, file.path)
+            if (
+                job?.selection.some((entry) => entry.model === name && entry.id === id) &&
+                !(await has(publishedView, receiptPath(job.id)))
+            )
+                schedules.push({ id: job.id, at: job.at, revision: job.revision })
+        }
+        return {
+            published: published ? { digest: published.digest, revision: published.revision } : null,
+            publishedHead: publishedView?.revision.id ?? null,
+            history: await options.content.revisions(name, documentId(model, id, selected), {
+                ref: 'draft',
+                limit: 100,
+            }),
+            schedules,
+        }
+    }
     const publishDue = async (operation: ModelOperation, now = new Date()) => {
         if (!Number.isFinite(now.getTime()))
             throw new ModelError('LITI_INVALID_INPUT', 'Invalid schedule execution time.')
@@ -960,6 +990,7 @@ export function createModelContent(options: ContentBindingOptions) {
         unpublish,
         schedule,
         cancelSchedule,
+        inspect,
         publishDue,
         reorder,
         dispose,

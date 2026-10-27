@@ -12,6 +12,7 @@ export default defineNuxtConfig({
                 preset: cloudflare ? 'cloudflare' : 'node',
                 auth: true,
                 schedule: true,
+                blob: { serve: { route: '/media' } },
                 console: {
                     auth: 'app',
                     authorize: fileURLToPath(new URL('./server/console-authorize.ts', import.meta.url)),

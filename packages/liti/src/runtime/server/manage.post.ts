@@ -24,6 +24,8 @@ export default defineEventHandler((event) =>
             operation = { actor }
         const id = text(input.id),
             locale = input.locale === undefined ? undefined : text(input.locale)
+        if (action === 'inspect' && model.storage === 'content')
+            return await runtime.content.inspect(name, id, operation, locale)
         if (action === 'read') {
             if (model.storage === 'content')
                 return await runtime.content.readDraft(
