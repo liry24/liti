@@ -1,0 +1,26 @@
+diff --git a/dist/presets/cloudflare/utils.mjs b/dist/presets/cloudflare/utils.mjs
+index 51648c3a1be7f3e8542a218649fba818cfb34c9f..9a52e51893f492d63fbece421b08cf48c987b9d0 100644
+--- a/dist/presets/cloudflare/utils.mjs
++++ b/dist/presets/cloudflare/utils.mjs
+@@ -273,7 +273,7 @@ export async function writeWranglerConfig(nitro, cfTarget) {
+       if (!compatDate || compatDate < NODEJS_COMPAT_DEFAULT_ON_DATE) {
+         compatFlags.add("nodejs_compat");
+       }
+-      compatFlags.add("no_nodejs_compat_v2");
++      if (!compatDate || compatDate < NODEJS_COMPAT_DEFAULT_ON_DATE) compatFlags.add("no_nodejs_compat_v2");
+     }
+   }
+   wranglerConfig.compatibility_flags = [...compatFlags];
+diff --git a/dist/rollup/index.mjs b/dist/rollup/index.mjs
+index abe4dd820151dc163c0305a3e7ca739c38aa9e26..970577cf6f69e08bad9da51a7cd15cbacd45506a 100644
+--- a/dist/rollup/index.mjs
++++ b/dist/rollup/index.mjs
+@@ -1203,7 +1203,7 @@ function importMeta(nitro) {
+       if (!isEntry && (!ImportMetaRe.test(code) || code.includes("ROLLUP_NO_REPLACE"))) {
+         return;
+       }
+-      const url = nitro.options.node && isEntry && !code.includes("ROLLUP_NO_REPLACE") ? "_import_meta_url_" : '"file:///_entry.js"';
++      const url = nitro.options.node && !code.includes("ROLLUP_NO_REPLACE") ? "_import_meta_url_" : '"file:///_entry.js"';
+       const envImport = nitro.options.node ? "import process from 'node:process';" : "";
+       const env = nitro.options.node ? "process.env" : "{}";
+       const ref = "globalThis._importMeta_";

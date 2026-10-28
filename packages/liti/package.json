@@ -1,7 +1,7 @@
 {
     "name": "liti",
     "version": "0.0.3",
-    "description": "Runtime-first, schema-driven site administration for Nuxt",
+    "description": "Nuxt integration for native ViteHub models",
     "homepage": "https://github.com/liry24/liti#readme",
     "license": "MIT",
     "repository": {
@@ -10,7 +10,7 @@
         "directory": "packages/liti"
     },
     "bin": {
-        "liti": "./dist/cli.mjs"
+        "liti": "./dist/cli/index.js"
     },
     "files": [
         "dist",
@@ -19,129 +19,28 @@
     "type": "module",
     "sideEffects": false,
     "exports": {
-        "./adapter": {
-            "types": "./dist/adapter.d.ts",
-            "import": "./dist/adapter.js"
-        },
         ".": {
             "types": "./dist/index.d.ts",
-            "import": "./dist/index.js"
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        },
+        "./types": {
+            "types": "./dist/nuxt/types.d.ts",
+            "import": "./dist/nuxt/types.js",
+            "default": "./dist/nuxt/types.js"
         },
         "./nuxt": {
-            "types": "./dist/nuxt.d.ts",
-            "import": "./dist/nuxt.js"
-        },
-        "./vue": {
-            "types": "./dist/vue.d.ts",
-            "import": "./dist/vue.js"
-        },
-        "./config": {
-            "types": "./dist/config.d.ts",
-            "import": "./dist/config.js"
-        },
-        "./package.json": "./package.json",
-        "./module.json": "./dist/module.json",
-        "./internal/runtime/tasks/publish-due": {
-            "types": "./dist/runtime/tasks/publish-due.d.ts",
-            "import": "./dist/runtime/tasks/publish-due.js"
-        },
-        "./internal/runtime/tasks/sync-assets": {
-            "types": "./dist/runtime/tasks/sync-assets.d.ts",
-            "import": "./dist/runtime/tasks/sync-assets.js"
-        },
-        "./internal/runtime/tasks/asset-gc": {
-            "types": "./dist/runtime/tasks/asset-gc.d.ts",
-            "import": "./dist/runtime/tasks/asset-gc.js"
-        },
-        "./internal/config-resolution": {
-            "types": "./dist/config-resolution.d.ts",
-            "import": "./dist/config-resolution.js"
-        },
-        "./internal/runtime/context": {
-            "types": "./dist/runtime/context.d.ts",
-            "import": "./dist/runtime/context.js"
-        },
-        "./internal/runtime/presentation": {
-            "types": "./dist/runtime/presentation.d.ts",
-            "import": "./dist/runtime/presentation.js"
-        },
-        "./internal/runtime/tasks": {
-            "types": "./dist/runtime/tasks.d.ts",
-            "import": "./dist/runtime/tasks.js"
-        },
-        "./internal/nuxt/server": {
-            "types": "./dist/nuxt/server.d.ts",
-            "import": "./dist/nuxt/server.js"
-        },
-        "./internal/adapter": {
-            "types": "./dist/adapter.d.ts",
-            "import": "./dist/adapter.js"
-        },
-        "./internal/client": {
-            "types": "./dist/client.d.ts",
-            "import": "./dist/client.js"
-        },
-        "./internal/server": {
-            "types": "./dist/server.d.ts",
-            "import": "./dist/server.js"
-        },
-        "./internal/model": {
-            "types": "./dist/model.d.ts",
-            "import": "./dist/model.js"
-        },
-        "./internal/form": {
-            "types": "./dist/form.d.ts",
-            "import": "./dist/form.js"
-        },
-        "./internal/seo": {
-            "types": "./dist/seo.d.ts",
-            "import": "./dist/seo.js"
-        },
-        "./client": {
-            "types": "./dist/public-client.d.ts",
-            "import": "./dist/public-client.js"
+            "types": "./dist/nuxt/index.d.ts",
+            "import": "./dist/nuxt/index.js",
+            "default": "./dist/nuxt/index.js"
         },
         "./server": {
-            "types": "./dist/server.d.ts",
-            "import": "./dist/server.js"
+            "types": "./dist/nuxt/server.d.ts",
+            "import": "./dist/nuxt/server.js",
+            "default": "./dist/nuxt/server.js"
         },
-        "./internal/admin-client": {
-            "types": "./dist/admin-client.d.ts",
-            "import": "./dist/admin-client.js"
-        },
-        "./internal/descriptor": {
-            "types": "./dist/descriptor.d.ts",
-            "import": "./dist/descriptor.js"
-        },
-        "./internal/runtime/public-handler": "./dist/runtime/public-handler.js",
-        "./internal/runtime/management-handler": "./dist/runtime/management-handler.js",
-        "./internal/runtime/devtools-snapshot": "./dist/runtime/devtools-snapshot.js",
-        "./internal/runtime/nitro2": "./dist/runtime/nitro2.js",
-        "./internal/runtime/composables": {
-            "types": "./dist/runtime/composables.d.ts",
-            "import": "./dist/runtime/composables.js"
-        },
-        "./internal/runtime/forms": {
-            "types": "./dist/runtime/forms.d.ts",
-            "import": "./dist/runtime/forms.js"
-        },
-        "./internal/runtime/tasks/rebuild-search": {
-            "types": "./dist/runtime/tasks/rebuild-search.d.ts",
-            "import": "./dist/runtime/tasks/rebuild-search.js"
-        },
-        "./internal/runtime/seo": {
-            "types": "./dist/runtime/seo.d.ts",
-            "import": "./dist/runtime/seo.js"
-        },
-        "./tooling": {
-            "types": "./dist/tooling.d.ts",
-            "import": "./dist/tooling.js"
-        },
-        "./nuxt/server": {
-            "types": "./dist/server-api.d.ts",
-            "import": "./dist/server-api.js"
-        },
-        "./internal/runtime/action-handler": "./dist/runtime/action-handler.js"
+        "./package.json": "./package.json",
+        "./module.json": "./dist/module.json"
     },
     "publishConfig": {
         "access": "public",
@@ -154,30 +53,18 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "@babel/parser": "^8.0.7",
-        "@noble/hashes": "2.4.0",
-        "@standard-schema/spec": "^1.1.0",
-        "@types/markdown-it": "^14.2.0",
-        "comark": "^0.8.1",
-        "comark-content": "^0.4.1",
-        "jiti": "^2.7.0",
-        "nypm": "^0.6.11",
-        "rou3": "^1.0.0",
-        "semver": "^7.8.5",
-        "yaml": "^2.9.1"
+        "@litijs/model": "workspace:*",
+        "@tanstack/vue-form": "2.0.0-alpha.2",
+        "@vite-hub/auth": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/auth@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "@vite-hub/content": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "h3": "^1.15.11",
+        "magicast": "0.5.5",
+        "nypm": "0.6.11",
+        "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9"
     },
     "peerDependencies": {
-        "@nuxtjs/i18n": "^10.6.0",
-        "@nuxtjs/robots": "^7.0.2",
-        "@nuxtjs/sitemap": "^9.1.0",
-        "@takumi-rs/core": "^2.16.2",
-        "@takumi-rs/wasm": "^2.16.2",
-        "nuxt": "^4.6.1",
-        "nuxt-llms": "^0.3.0",
-        "nuxt-og-image": "^7.0.7",
-        "nuxt-schema-org": "^7.0.1",
-        "nuxt-seo-utils": "^9.0.1",
-        "nuxt-site-config": "^5.0.3",
+        "nitropack": "2.13.5",
+        "nuxt": "^4.6.2",
         "vue": "^3.5.44 || ^3.6.0-rc.2"
     },
     "peerDependenciesMeta": {
@@ -187,34 +74,7 @@
         "vue": {
             "optional": true
         },
-        "@nuxtjs/i18n": {
-            "optional": true
-        },
-        "@nuxtjs/robots": {
-            "optional": true
-        },
-        "@nuxtjs/sitemap": {
-            "optional": true
-        },
-        "nuxt-llms": {
-            "optional": true
-        },
-        "nuxt-og-image": {
-            "optional": true
-        },
-        "nuxt-schema-org": {
-            "optional": true
-        },
-        "nuxt-seo-utils": {
-            "optional": true
-        },
-        "nuxt-site-config": {
-            "optional": true
-        },
-        "@takumi-rs/core": {
-            "optional": true
-        },
-        "@takumi-rs/wasm": {
+        "nitropack": {
             "optional": true
         }
     },

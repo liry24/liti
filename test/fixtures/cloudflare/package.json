@@ -1,8 +1,0 @@
-{
-    "name": "liti-cloudflare-fixture",
-    "private": true,
-    "type": "module",
-    "devDependencies": {
-        "wrangler": "^4.150.0"
-    }
-}
