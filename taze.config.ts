@@ -9,8 +9,7 @@ export default defineConfig({
     includeLocked: true,
     ignorePaths: ['**/node_modules/**', '**/.tmp/**', '**/.data/**'],
     ignoreOtherWorkspaces: true,
-    // Update the verified native host/alpha cohort separately from feature work.
-    exclude: ['h3@>=2', 'vite', 'vite-plus', 'nuxt', 'nitropack', 'vite-hub', '@vite-hub/*'],
+    exclude: ['h3@>=2'],
     depFields: {
         overrides: false,
         'bun-workspace': true,

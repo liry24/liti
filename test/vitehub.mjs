@@ -23,10 +23,7 @@ const run = (command, args, cwd = fixture, env = process.env) => {
     if (result.status !== 0) process.exit(result.status ?? 1)
 }
 const manifest = JSON.parse(readFileSync(new URL('./fixtures/vitehub/package.json', import.meta.url), 'utf8'))
-assert.equal(
-    manifest.dependencies['vite-hub'],
-    'https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9',
-)
+assert.equal(manifest.dependencies['vite-hub'], '0.1.0')
 for (const patch of Object.values(manifest.patchedDependencies)) {
     const installedCopy = readFileSync(new URL(`./fixtures/vitehub/${patch}`, import.meta.url))
     const repositoryCopy = readFileSync(new URL(`../patches/${patch.split('/').at(-1)}`, import.meta.url))

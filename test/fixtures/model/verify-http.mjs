@@ -30,10 +30,10 @@ export async function verifyHttp(origin, token, logs = () => '') {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie: editor, origin },
         body: JSON.stringify({
-            method: 'vitehub:console:documents',
+            operation: 'documents.action',
             input: {
-                method: 'POST',
-                query: { section: 'content', action: 'save' },
+                section: 'content',
+                action: 'save',
                 body: {
                     collection: 'posts',
                     id: `${crypto.randomUUID()}/ja`,

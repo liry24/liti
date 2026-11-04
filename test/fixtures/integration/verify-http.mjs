@@ -21,8 +21,8 @@ export async function verifyHttp(origin, token, logs) {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie, origin },
             body: JSON.stringify({
-                method: 'vitehub:console:documents',
-                input: { method: 'POST', query: { section: 'content', action }, body },
+                operation: 'documents.action',
+                input: { section: 'content', action, body },
             }),
         })
     assert.equal((await manage({ action: 'models' }, '')).status, 401)
@@ -93,8 +93,8 @@ export async function verifyHttp(origin, token, logs) {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie: context.editor, origin },
         body: JSON.stringify({
-            method: 'vitehub:console:database',
-            input: { method: 'GET', query: { database: 'default' } },
+            operation: 'databases.browse',
+            input: { database: 'default' },
         }),
     })
     assert.equal(rawDatabase.status, 403, await rawDatabase.clone().text())

@@ -15,7 +15,7 @@ const manifest = {
     version: '0.0.3',
     dependencies: {
         '@litijs/model': 'https://pkg.pr.new/liry24/liti/@litijs/model@0123456789012345678901234567890123456789',
-        'vite-hub': 'https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9',
+        'vite-hub': '0.1.0',
     },
 }
 async function project() {

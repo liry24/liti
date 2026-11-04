@@ -52,9 +52,9 @@
     },
     "dependencies": {
         "@standard-schema/spec": "^1.1.0",
-        "@vite-hub/content": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
-        "@vite-hub/database": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/database@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
-        "@vite-hub/workspace": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/workspace@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "@vite-hub/content": "0.1.0",
+        "@vite-hub/database": "0.1.0",
+        "@vite-hub/workspace": "0.1.0",
         "drizzle-orm": "0.45.4"
     },
     "devDependencies": {

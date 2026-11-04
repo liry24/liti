@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const dev = process.argv.includes('--dev')
-const commit = '24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9'
+const nativeVersion = '0.1.0'
 const manifest = JSON.parse(await readFile(resolve(root, 'node_modules/vite-hub/package.json'), 'utf8'))
 for (const name of ['./content', './content/presets/cms', './nuxt', './workspace/blob-database']) {
     assert.ok(manifest.exports[name], `Missing installed export ${name}`)
@@ -17,7 +17,7 @@ for (const name of ['./content', './content/presets/cms', './nuxt', './workspace
     await access(resolve(root, 'node_modules/vite-hub', manifest.exports[name].import))
 }
 for (const [name, version] of Object.entries(manifest.dependencies)) {
-    if (name.startsWith('@vite-hub/')) assert.equal(version, `https://pkg.pr.new/vite-hub/vitehub/${name}@${commit}`)
+    if (name.startsWith('@vite-hub/')) assert.equal(version, nativeVersion)
 }
 
 const portProbe = createServer()
