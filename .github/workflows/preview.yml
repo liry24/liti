@@ -17,3 +17,33 @@ jobs:
             - run: bun run build
             - run: bun run package:check
             - run: bun run preview:package
+    consumer:
+        needs: publish
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - { os: ubuntu-latest, package-manager: bun }
+                    - { os: windows-latest, package-manager: bun }
+                    - { os: ubuntu-latest, package-manager: npm }
+                    - { os: ubuntu-latest, package-manager: pnpm }
+        runs-on: ${{ matrix.os }}
+        env:
+            PREVIEW_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+            LITI_PACKAGE_MANAGER: ${{ matrix.package-manager }}
+            CHROMIUM_PATH: ${{ matrix.os == 'windows-latest' && 'C:/Program Files/Google/Chrome/Application/chrome.exe' || 'google-chrome' }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with: { persist-credentials: false }
+            - uses: ./.github/actions/setup
+            - if: matrix.package-manager == 'pnpm'
+              run: npm install --global pnpm@10.25.0
+            - name: Verify published commit-specific artifacts and patches
+              run: node scripts/verify-preview.mjs ${{ env.PREVIEW_COMMIT }}
+            - run: bun run test:packed
+            - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+              if: always()
+              with:
+                  name: preview-${{ matrix.os }}-${{ matrix.package-manager }}
+                  path: .tmp/preview-${{ env.PREVIEW_COMMIT }}/manifest.json
+                  if-no-files-found: error

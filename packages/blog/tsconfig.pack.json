@@ -1,0 +1,9 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "paths": {
+            "@litijs/model": ["../model/dist/index.d.ts"],
+            "@litijs/model/*": ["../model/dist/*"]
+        }
+    }
+}

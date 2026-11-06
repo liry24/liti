@@ -1,0 +1,22 @@
+diff --git a/dist/vite.js b/dist/vite.js
+index 5e74efc..742a459 100644
+--- a/dist/vite.js
++++ b/dist/vite.js
+@@ -3,7 +3,7 @@ import { t as sourceErrorDiagnostics } from "./error-diagnostics-X0kuFjBT.js";
+ import { i as resolveGlobInput, r as globFilePath, t as collectGlobFiles } from "./glob-BmFqTvJY.js";
+ import { tmpdir } from "node:os";
+ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+-import { basename, dirname, extname, isAbsolute, join, parse, relative, resolve } from "node:path";
++import { basename, dirname, extname, isAbsolute, join, normalize, parse, relative, resolve } from "node:path";
+ import { pathToFileURL } from "node:url";
+ import { statSync } from "node:fs";
+ import { findExportNames } from "mlly";
+@@ -954,7 +954,7 @@ function mergeGeneratedSourceNitroConfig(value, generatedHandlers) {
+ 			kit.addPlugin(handler.handler);
+ 			continue;
+ 		}
+-		if (handlers.some((candidate) => candidate.handler === handler.handler && candidate.route === handler.route && candidate.method?.toLowerCase() === handler.method?.toLowerCase())) continue;
++		if (handlers.some((candidate) => normalize(candidate.handler) === normalize(handler.handler) && candidate.route === handler.route && candidate.method?.toLowerCase() === handler.method?.toLowerCase())) continue;
+ 		if (handlers.some((candidate) => !candidate.middleware && candidate.route === handler.route && methodsOverlap(candidate.method, handler.method))) throw sourceErrorDiagnostics.SOURCE_B0002({ message: `[vitehub] Generated ${generatedRouteOwner(handler)} route ${JSON.stringify(handler.route)} conflicts with an existing ${generatedRouteDescription(handler)}. Remove the matching server route.` });
+ 		kit.addHandler({
+ 			...handler,

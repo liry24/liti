@@ -1,0 +1,53 @@
+{
+    "name": "liti-vitehub-probe",
+    "private": true,
+    "workspaces": [],
+    "type": "module",
+    "scripts": {
+        "prepare": "nuxt prepare",
+        "dev": "nuxt dev",
+        "build": "nuxt build",
+        "typecheck": "nuxt typecheck",
+        "verify": "node verify-node.mjs",
+        "verify:cloudflare": "node verify-cloudflare.mjs",
+        "auth:generate": "node node_modules/auth/dist/index.mjs generate --config ./auth-schema.config.ts --adapter drizzle --dialect sqlite --output ./server/database/auth-schema.ts --yes"
+    },
+    "dependencies": {
+        "@iconify-json/lucide": "1.2.151",
+        "@iconify-json/ph": "1.2.2",
+        "@nuxt/ui": "4.12.0",
+        "better-auth": "1.7.16",
+        "comark-content": "0.5.0",
+        "drizzle-orm": "0.45.4",
+        "h3": "^1.15.11",
+        "nuxt": "4.6.4",
+        "vite-hub": "0.1.0",
+        "vue": "3.5.44",
+        "zod": "4.6.7"
+    },
+    "devDependencies": {
+        "@nuxt/kit": "4.6.4",
+        "@nuxt/nitro-server": "4.6.4",
+        "@vite-hub/database": "0.1.0",
+        "ai": "7.0.130",
+        "auth": "1.7.16",
+        "nitropack": "2.13.6",
+        "typescript": "6.0.3",
+        "vite": "8.3.5",
+        "vue-tsc": "3.3.14",
+        "wrangler": "4.157.0"
+    },
+    "overrides": {
+        "better-auth": "1.7.16"
+    },
+    "packageManager": "bun@1.4.4",
+    "patchedDependencies": {
+        "nitropack@2.13.6": "patches/nitropack@2.13.6.patch",
+        "@vite-hub/agent@0.1.0": "patches/vitehub-agent-0.1.0.patch",
+        "vite-hub@0.1.0": "patches/vitehub-nuxt-0.1.0.patch",
+        "@vite-hub/content@0.1.0": "patches/vitehub-content-publication-0.1.0.patch",
+        "@vite-hub/blob@0.1.0": "patches/vitehub-blob-h3-0.1.0.patch",
+        "nuxt@4.6.4": "patches/nuxt@4.6.4-async-data.patch",
+        "@vite-hub/source@0.1.0": "patches/vitehub-source-paths-0.1.0.patch"
+    }
+}

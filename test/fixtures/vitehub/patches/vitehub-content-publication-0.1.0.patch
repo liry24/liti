@@ -1,0 +1,82 @@
+diff --git a/dist/collections.js b/dist/collections.js
+index 7d6a612..4f0bd20 100644
+--- a/dist/collections.js
++++ b/dist/collections.js
+@@ -2498,6 +2498,30 @@ function createContentCollections(options) {
+ 		collections: new Map([...collections].map(([name, runtime]) => [name, runtime.collection])),
+ 		collection: (name) => requireCollection(name).collection,
+ 		publish,
++		commitPublished: async (options) => {
++			const retained = await history();
++			const paths = [...Object.keys(options.changes.put ?? {}), ...(options.changes.delete ?? [])];
++			const documents = [...collections.values()].flatMap((collection) => paths.filter((path) => collection.compiled.match(path)).map((path) => ({ collection: collection.name, id: collection.idFor(path) })));
++			const postCommitErrors = [];
++			const transaction = crypto.randomUUID();
++			let revision;
++			try {
++				revision = await contentPublishes.run(true, () => retained.commit({ ...options, ref: "published", metadata: writeMetadata({ ...options.metadata, contentPublicationTransaction: transaction }, { action: "publish", documents }) }));
++			} catch (error) {
++				let current = await retained.head({ ref: "published" });
++				while (current && current.id !== options.ifHead) {
++					if (current.metadata?.contentPublicationTransaction === transaction) { revision = current; break; }
++					current = current.parentId ? (await retained.open(current.parentId)).revision : null;
++				}
++				if (!revision) throw error;
++				postCommitErrors.push(error);
++			}
++			for (const listener of publishListeners) {
++				try { await listener([...new Set(documents.map((document) => document.collection))]); }
++				catch (error) { postCommitErrors.push(error); }
++			}
++			return { revision, postCommitErrors };
++		},
+ 		resolve,
+ 		supportsScheduling,
+ 		schedule: async (scheduleOptions) => {
+diff --git a/dist/index.js b/dist/index.js
+index 11b442b..bee5f8a 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1313,6 +1313,7 @@ function defineContent(options = {}) {
+ 		},
+ 		collection: (name) => requireDocuments().collection(name),
+ 		publish: (publishOptions) => requireDocuments().publish(publishOptions),
++		commitPublished: (options) => requireDocuments().commitPublished(options),
+ 		resolve: (path, resolveOptions) => requireDocuments().resolve(path, resolveOptions),
+ 		supportsScheduling: () => requireDocuments().supportsScheduling(),
+ 		schedule: (scheduleOptions) => requireDocuments().schedule(scheduleOptions),
+diff --git a/dist/collections-types-CbdL44dz.d.ts b/dist/collections-types-CbdL44dz.d.ts
+index a32454b..ee6b01f 100644
+--- a/dist/collections-types-CbdL44dz.d.ts
++++ b/dist/collections-types-CbdL44dz.d.ts
+@@ -590,6 +590,9 @@ interface ContentCollectionsRuntime extends Omit<ContentSchedulesRuntime, "docum
+   readonly collections: ReadonlyMap<string, AnyContentCollection>;
+   collection(name: string): AnyContentCollection;
+   publish(options?: ContentPublishOptions): Promise<ContentPublishResult>;
++  /** Trusted publication transaction for integrations. Authorize before calling; every Workspace validator still runs. Post-commit listener failures are returned with the committed revision. */
++  commitPublished(options: { ifHead: string | null; ifHeads?: Record<string, string | null>; changes: { put?: Record<string, string | Uint8Array>; delete?: string[] }; metadata?: Record<string, unknown>; message?: string }): Promise<{ revision: ContentRevision; postCommitErrors: unknown[] }>;
++
+   /**
+    * The document that an app path shows, such as `/blog/hello`, or null. Each `documents()` collection maps a document
+    * to a path with its `url`; a document whose `url` is null does not resolve. A collection without `url` maps the id
+diff --git a/dist/index-BIU-vUZM.d.ts b/dist/index-BIU-vUZM.d.ts
+index 39824b4..0bffc41 100644
+--- a/dist/index-BIU-vUZM.d.ts
++++ b/dist/index-BIU-vUZM.d.ts
+@@ -1,5 +1,5 @@
+ import { h as SingletonDefinition, p as DocumentsDefinition, t as ContentCollectionDefinition } from "./documents-DocVXtEA.js";
+-import { B as ContentPublishDueResult, D as ContentSingleton, K as ContentSchedulesOptions, L as ContentSessions, S as ContentResolved, T as ContentRevisionsResult, U as ContentScheduleOptions, V as ContentSchedule, b as ContentRef, h as ContentPublishResult, m as ContentPublishOptions, n as ContentCollection, q as ContentUnscheduleOptions, t as AnyContentCollection, w as ContentRevisionsOptions, x as ContentResolveOptions, z as ContentPublishDueOptions } from "./collections-types-CbdL44dz.js";
++import { C as ContentRevision, B as ContentPublishDueResult, D as ContentSingleton, K as ContentSchedulesOptions, L as ContentSessions, S as ContentResolved, T as ContentRevisionsResult, U as ContentScheduleOptions, V as ContentSchedule, b as ContentRef, h as ContentPublishResult, m as ContentPublishOptions, n as ContentCollection, q as ContentUnscheduleOptions, t as AnyContentCollection, w as ContentRevisionsOptions, x as ContentResolveOptions, z as ContentPublishDueOptions } from "./collections-types-CbdL44dz.js";
+ import { n as ContentSitemapOptions, r as DefineContentSeoOptions, t as ContentSitemapEntry } from "./sitemap-CS9xLdt2.js";
+ import { r as ContentPresetSelection } from "./presets-Db7tl0mR.js";
+ import { Source, SourceItem, SourceName } from "@vite-hub/source";
+@@ -322,6 +322,9 @@ interface ContentDocumentsRuntime<TCollections extends ContentCollections = Cont
+   collection<TName extends CollectionName<TCollections>>(name: TName): CollectionOf<TCollections[TName]>;
+   /** Copy draft documents to the `published` ref in one revision. Pass `expect` to publish exactly what was reviewed. */
+   publish(options?: ContentPublishOptions<CollectionName<TCollections>>): Promise<ContentPublishResult>;
++  /** Trusted publication transaction for integrations. Authorize before calling; every Workspace validator still runs. Post-commit listener failures are returned with the committed revision. */
++  commitPublished(options: { ifHead: string | null; ifHeads?: Record<string, string | null>; changes: { put?: Record<string, string | Uint8Array>; delete?: string[] }; metadata?: Record<string, unknown>; message?: string }): Promise<{ revision: ContentRevision; postCommitErrors: unknown[] }>;
++
+   /** Whether the Workspace store supports scheduled publishing. False for the GitHub store; does not check for a Schedule runner. */
+   supportsScheduling(): Promise<boolean>;
+   /**
