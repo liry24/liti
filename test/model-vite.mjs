@@ -36,7 +36,7 @@ await cp(resolve(root, 'test/fixtures/model-vite'), consumer, { recursive: true 
 await cp(resolve(root, 'test/fixtures/vitehub/patches'), join(consumer, 'patches'), { recursive: true })
 const native = JSON.parse(await readFile(resolve(root, 'test/fixtures/vitehub/package.json'), 'utf8'))
 const patchedDependencies = { ...native.patchedDependencies }
-delete patchedDependencies['nitropack@2.13.5']
+delete patchedDependencies['nitropack@2.13.6']
 await writeFile(
     join(consumer, 'package.json'),
     JSON.stringify(

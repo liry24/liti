@@ -81,7 +81,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
     if (command === 'init') {
         if (manager !== 'bun')
             throw new Error(
-                'This pinned ViteHub alpha requires explicit Bun root patches. Use Bun for the CMS runtime; bare Model/Blog imports support other package managers.',
+                'This pinned ViteHub distribution requires explicit Bun root patches. Use Bun for the CMS runtime; bare Model/Blog imports support other package managers.',
             )
         for (const name of ['@litijs/model', 'vite-hub']) {
             const spec = manifest.dependencies[name]
@@ -89,7 +89,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
                 throw new Error('Run init from a packed commit-specific Liti distribution.')
             if (name === 'vite-hub' && dependencies[name] && dependencies[name] !== spec)
                 throw new Error(
-                    'The project selects a different ViteHub distribution. Verify that alpha cohort separately before changing it. No files changed.',
+                    'The project selects a different ViteHub distribution. Verify that distribution cohort separately before changing it. No files changed.',
                 )
             if (!dependencies[name]) packages.push(`${name}@${spec}`)
         }
@@ -154,7 +154,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
     if (command === 'upgrade') {
         if (!options.to)
             throw new Error(
-                'Choose an exact version or full commit SHA with --to; alpha updates are never selected automatically.',
+                'Choose an exact version or full commit SHA with --to; native updates are never selected automatically.',
             )
         for (const name of ['liti', '@litijs/model', ...(dependencies['@litijs/blog'] ? ['@litijs/blog'] : [])]) {
             const spec = cohort(name, options.to)
@@ -205,7 +205,7 @@ export async function runCommand(commands: string[], options: Options, manifest:
                 installed = JSON.parse(await readFile(require.resolve('liti/package.json'), 'utf8')) as Manifest
             if (installed.dependencies['vite-hub'] !== manifest.dependencies['vite-hub'])
                 throw new Error(
-                    'The selected cohort changes ViteHub alpha. Review its contract tests and root patches as a separate change before using it.',
+                    'The selected cohort changes ViteHub distribution. Review its contract tests and root patches as a separate change before using it.',
                 )
             const directory = resolve(dirname(require.resolve('liti/package.json')), 'dist/patches')
             const required = JSON.parse(await readFile(resolve(directory, 'required.json'), 'utf8')) as Record<

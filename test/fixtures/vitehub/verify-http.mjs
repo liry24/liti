@@ -6,10 +6,10 @@ export async function verifyHttp(origin, token, logs = () => '') {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'x-vitehub-console': '1', cookie, origin },
             body: JSON.stringify({
-                method: 'vitehub:console:documents',
+                operation: 'documents.action',
                 input: {
-                    method: 'POST',
-                    query: { section: 'content', action },
+                    section: 'content',
+                    action,
                     body,
                 },
             }),

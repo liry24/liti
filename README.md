@@ -52,4 +52,4 @@ liti remove blog --dry-run
 liti upgrade --to <full-commit> --dry-run
 ```
 
-Configure durable native Auth and explicit model policies before enabling management. The pinned alpha requires the identical root Bun patches printed by `liti init`; dependency postinstall never changes consumer settings. npm/pnpm without equivalent patches do not support Content writes.
+Configure durable native Auth and explicit model policies before enabling management. The pinned distribution requires the identical root Bun patches printed by `liti init`; dependency postinstall never changes consumer settings. npm/pnpm without equivalent patches do not support Content writes.

@@ -9,7 +9,7 @@ assert.match(commit, /^[a-f0-9]{40}$/u)
 const root = process.cwd(),
     directory = resolve(root, '.tmp', 'preview-' + commit)
 await mkdir(directory, { recursive: true })
-const native = JSON.parse(await readFile('patches/manifest.json', 'utf8')).vitehubCommit
+const native = JSON.parse(await readFile('patches/manifest.json', 'utf8')).vitehubVersion
 const required = JSON.parse(await readFile('package.json', 'utf8')).patchedDependencies
 const names = ['@litijs/model', 'liti', '@litijs/blog']
 const member = (file, path) => {
@@ -40,8 +40,7 @@ const results = await Promise.all(
         assert.equal(manifest.scripts.postinstall, undefined)
         for (const [dependency, spec] of Object.entries({ ...manifest.dependencies, ...manifest.peerDependencies })) {
             if (names.includes(dependency)) assert.equal(spec, `https://pkg.pr.new/liry24/liti/${dependency}@${commit}`)
-            if (dependency === 'vite-hub' || dependency.startsWith('@vite-hub/'))
-                assert.equal(spec, `https://pkg.pr.new/vite-hub/vitehub/${dependency}@${native}`)
+            if (dependency === 'vite-hub' || dependency.startsWith('@vite-hub/')) assert.equal(spec, native)
         }
         if (name === 'liti') {
             assert.deepEqual(JSON.parse(member(path, 'dist/patches/required.json')), required)

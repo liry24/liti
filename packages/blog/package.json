@@ -48,20 +48,20 @@
     "dependencies": {
         "@litijs/model": "workspace:*",
         "@standard-schema/spec": "^1.1.0",
-        "@vite-hub/blob": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/blob@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
-        "@vite-hub/content": "https://pkg.pr.new/vite-hub/vitehub/@vite-hub/content@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "@vite-hub/blob": "0.1.0",
+        "@vite-hub/content": "0.1.0",
         "comark": "^0.8.1",
         "zod": "^4.6.7"
     },
     "devDependencies": {
         "@types/markdown-it": "14.2.0",
-        "nuxt": "4.6.2",
-        "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
-        "vue": "3.6.0-rc.12"
+        "nuxt": "4.6.4",
+        "vite-hub": "0.1.0",
+        "vue": "3.6.0-rc.14"
     },
     "peerDependencies": {
         "nuxt": "^4.6.2",
-        "vite-hub": "https://pkg.pr.new/vite-hub/vitehub/vite-hub@24ddab7ff9885d1b5ea176b8824f6e3f1a0e3ca9",
+        "vite-hub": "0.1.0",
         "vue": "^3.5.44 || ^3.6.0-rc.2"
     },
     "peerDependenciesMeta": {

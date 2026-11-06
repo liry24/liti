@@ -9,7 +9,7 @@ const help = `Usage: liti <init|add blog|remove blog|generate|upgrade> [options]
 init registers native ViteHub and liti/nuxt and creates explicit Content/Model definitions.
 add/remove blog changes its optional Nuxt integration; existing article definitions/data remain yours.
 generate delegates to Nuxt prepare and ViteHub db generate. It never applies migrations.
-upgrade selects one exact Liti package cohort. ViteHub alpha updates remain separate changes.
+upgrade selects one exact Liti package cohort. ViteHub distribution updates remain separate changes.
 Dry runs never load configuration, install dependencies, execute generators or change files.
 `
 const args = process.argv.slice(2)

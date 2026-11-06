@@ -1,0 +1,80 @@
+diff --git a/dist/types-DGH0qXmg.d.ts b/dist/types-DGH0qXmg.d.ts
+index 0309757..c2017ae 100644
+--- a/dist/types-DGH0qXmg.d.ts
++++ b/dist/types-DGH0qXmg.d.ts
+@@ -17,7 +17,6 @@ interface H3V1NodeRequest extends AsyncIterable<unknown> {
+     remoteAddress?: string;
+   };
+   url?: string;
+-  [key: symbol]: unknown;
+ }
+ /** The Node response fields that ViteHub writes through an H3 1 event. */
+ interface H3V1NodeResponse {
+diff --git a/dist/vite.js b/dist/vite.js
+index 2dcfb6b..7da7560 100644
+--- a/dist/vite.js
++++ b/dist/vite.js
+@@ -1546,37 +1546,40 @@ function renderBlobServeRouteHandler(serve, importBase = blobPackageName, author
+ 	const cacheControl = Object.entries(headers ?? {}).findLast(([name]) => name.toLowerCase() === "cache-control")?.[1] ?? (serve.authorize ? "private, no-cache" : "public, max-age=0, s-maxage=0");
+ 	return [
+ 		`import { blob, parseImageVariant } from '${importBase}'`,
++		`import { normalizeServeEvent } from ${JSON.stringify(fileURLToPath(new URL('./storage-Vi3pLYjb.js', import.meta.url)))}`,
+ 		...serve.authorize ? [`import { withAuthorization } from ${JSON.stringify(AUTH_SERVER_ID)}`] : [],
+ 		...authorizeModule ? [`import { authorize } from ${JSON.stringify(authorizeModule)}`] : [],
+-		`import { createError, defineEventHandler, getQuery, getResponseStatus, getRouterParam, setResponseHeader${headers ? ", removeResponseHeader, setResponseHeaders" : ""} } from 'h3'`,
++		`import { createError, defineEventHandler, getRouterParam } from 'h3'`,
+ 		"import type { H3Event } from 'h3'",
+ 		"",
+ 		`const storeName = ${JSON.stringify(serve.store)}`,
+ 		...headers ? [`const responseHeaders = ${JSON.stringify(headers)}`] : [],
+ 		"",
+ 		"async function serveBlob(event: H3Event) {",
++		"  const response = normalizeServeEvent(event).res",
+ 		"  const pathname = getRouterParam(event, '_', { decode: false }) || ''",
+ 		"  if (!pathname) throw createError({ statusCode: 404, statusMessage: 'Blob not found' })",
+ 		"  // ?w=&h=&fit=&fmt=&q=&crop= selects an image variant. Invalid values are client errors.",
+ 		`  const options: { variant?: NonNullable<ReturnType<typeof parseImageVariant>>, cacheControl: string } = { cacheControl: ${JSON.stringify(cacheControl)} }`,
+ 		"  try {",
+-		"    const variant = parseImageVariant(getQuery(event))",
++		"    const query = new URL(event.path, 'http://localhost').searchParams",
++		"    const variant = parseImageVariant(Object.fromEntries([...query.keys()].map((key) => [key, query.getAll(key)])))",
+ 		"    if (variant) options.variant = variant",
+ 		"  }",
+ 		"  catch (error) {",
+ 		"    throw createError({ cause: error, statusCode: 400, statusMessage: error instanceof Error ? error.message : 'Invalid image variant' })",
+ 		"  }",
+-		...headers ? ["  setResponseHeaders(event, responseHeaders)"] : [],
++		...headers ? ["  for (const [name, value] of Object.entries(responseHeaders)) response.headers.set(name, value)"] : [],
+ 		"  try {",
+ 		"    const [error, stream] = await blob.store(storeName).serve(event, pathname, options)",
+ 		"    if (error?.code === 'BLOB_NOT_FOUND') throw createError({ cause: error, statusCode: 404, statusMessage: 'Blob not found' })",
+ 		"    if (error) throw error",
+-		`    setResponseHeader(event, 'Cache-Control', ${JSON.stringify(cacheControl)})`,
+-		"    if (stream === null && getResponseStatus(event) === 304) return new Response(null, { status: 304 })",
++		`    response.headers.set('Cache-Control', ${JSON.stringify(cacheControl)})`,
++		"    if (stream === null && response.status === 304) return new Response(null, { status: 304 })",
+ 		"    return stream",
+ 		"  }",
+ 		"  catch (error) {",
+-		...headers ? ["    for (const name of Object.keys(responseHeaders)) removeResponseHeader(event, name)"] : [],
++		...headers ? ["    for (const name of Object.keys(responseHeaders)) response.headers.delete(name)"] : [],
+ 		"    throw error",
+ 		"  }",
+ 		"}",
+diff --git a/dist/storage-Vi3pLYjb.js b/dist/storage-Vi3pLYjb.js
+index 47103b7..00eeb91 100644
+--- a/dist/storage-Vi3pLYjb.js
++++ b/dist/storage-Vi3pLYjb.js
+@@ -599,4 +599,4 @@ function createBlobStorage(driver, store = driver.name, options = {}) {
+ 	return storage;
+ }
+ //#endregion
+-export { handleBlobUpload as a, handleBlobMultipartUpload as i, toBlobMultipartUpload as n, createLazyBlobMedia as r, createBlobStorage as t };
++export { normalizeServeEvent, handleBlobUpload as a, handleBlobMultipartUpload as i, toBlobMultipartUpload as n, createLazyBlobMedia as r, createBlobStorage as t };
+diff --git a/dist/storage-Vi3pLYjb.d.ts b/dist/storage-Vi3pLYjb.d.ts
+new file mode 100644
+--- /dev/null
++++ b/dist/storage-Vi3pLYjb.d.ts
+@@ -0,0 +1,2 @@
++import type { BlobStorage } from "./index.js";
++export declare function normalizeServeEvent(event: Parameters<BlobStorage["serve"]>[0]): { res: { headers: Headers; status?: number } };

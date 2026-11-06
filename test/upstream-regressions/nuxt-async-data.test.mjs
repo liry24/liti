@@ -10,7 +10,7 @@ const walker = await dependency('oxc-walker')
 const strings = await dependency('rolldown-string')
 const { createUnplugin } = await dependency('unplugin')
 const start = source.indexOf('const functionsToExtract =')
-const end = source.indexOf('//#endregion', start)
+const end = source.indexOf('\n// src/', start)
 assert.ok(start >= 0 && end > start, 'Locate the installed Nuxt extraction transform.')
 const filters = ['SUPPORTED_EXT_RE', 'STYLE_QUERY_RE', 'MACRO_QUERY_RE$2']
     .map((name) => source.split('\n').find((line) => line.startsWith(`const ${name} =`)))

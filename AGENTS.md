@@ -1,5 +1,12 @@
 # ViteHub rebuild — 2026-10-27 acceptance contract
 
+## Dependency refresh — 2026-11-04
+
+- Native packages now use the exact npm `0.1.0` cohort. Liti's three public packages retain their development versions and commit-specific preview publication; stable release/deployment approval is unchanged.
+- Rebase all required root/consumer patches together. The Blob patch reuses native event normalization for H3 1 headers/status and preserves native variant validation. The Source patch normalizes generated handler paths before identity comparison, while still rejecting distinct user handlers. Keep their unit and Node/workerd regressions.
+- Nuxt fixtures retain TypeScript 6.0.3 because vue-tsc cannot load TypeScript 7's compiler API. Native Agent 0.1.0 fixes AI SDK 7.0.130 internally, so keep the fixture mock provider on that version. Align the fixture's Better Auth override with its host version to avoid mixing native 1.7.7 with 1.7.16 during Nitro tracing.
+- TanStack Vue Form alpha.3 exposes slot fields through `field.value` and `field.meta`; consumers must not read the removed `field.state` object.
+
 The user's 2026-10-27 phased rebuild plan supersedes the implementation architecture recorded below. Work on `rebuild/vitehub` in the dedicated managed worktree, starting at local main `7715fdc`. Do not modify the separate application checkout, its resources, data, deployment configuration, or remote dev before the package acceptance gate. Keep existing local commits intact.
 
 All stable releases still use the existing `.github/workflows/release.yml` uppt PR/tag/pack/publish flow. Stable publication and production changes each require explicit approval. Use commit-specific pkg.pr.new artifacts for package verification. No compatibility aliases, old adapters, automatic old-config discovery, legacy URI runtime readers, or dual writes. Preserve existing content, IDs, references, known dates and URLs through separate, one-time migration tooling. Do not create `docs/`.
